@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "game": "포켓로그 (PokéRogue)",
+  "source": "audio/se/*.wav, 2026-10-29 beta 소스 기준 (damage-anim-phase, faint-phase, attempt-capture-phase)",
+  "detect": {"webHosts": ["pokerogue.net"]},
+  "rules": [
+    {"sound": "hit_strong.", "match": "prefix", "strong": 1.0, "weak": 0.6, "duration": 0.28},
+    {"sound": "hit_weak.", "match": "prefix", "strong": 0.25, "weak": 0.3, "duration": 0.1},
+    {"sound": "hit.", "match": "prefix", "strong": 0.6, "weak": 0.4, "duration": 0.16},
+    {"sound": "faint.", "match": "prefix", "strong": 0.8, "weak": 0.2, "duration": 0.45},
+    {"sound": "crit_throw.", "match": "prefix", "strong": 0.5, "weak": 0.7, "duration": 0.14},
+    {"sound": "pb_throw.", "match": "prefix", "strong": 0.2, "weak": 0.5, "duration": 0.1},
+    {"sound": "pb_bounce_", "match": "prefix", "strong": 0.5, "weak": 0.3, "duration": 0.08},
+    {"sound": "pb_move.", "match": "prefix", "strong": 0.45, "weak": 0.2, "duration": 0.12, "note": "볼 흔들림"},
+    {"sound": "pb_catch.", "match": "prefix", "strong": 0.7, "weak": 0.5, "duration": 0.3},
+    {"sound": "pb_lock.", "match": "prefix", "strong": 0.3, "weak": 0.6, "duration": 0.1},
+    {"sound": "flee.", "match": "prefix", "strong": 0.3, "weak": 0.3, "duration": 0.18},
+    {"sound": "egg_crack.", "match": "prefix", "strong": 0.4, "weak": 0.3, "duration": 0.1},
+    {"sound": "egg_hatch.", "match": "prefix", "strong": 0.5, "weak": 0.6, "duration": 0.35},
+    {"sound": "level_up.", "match": "prefix", "strong": 0.2, "weak": 0.5, "duration": 0.2}
+  ]
+}

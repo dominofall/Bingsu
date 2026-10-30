@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- 빙수 기본 게임 "Bingsu". 빙수 앱 번들에 들어가 오프라인으로 돈다(외부 요청 없음). 브라우저로 열어도 동작한다 -->
+<title>Bingsu</title>
+<style>
+/* 한 화면 가게: 위 주문서, 가운데 픽셀 가게(빙수기·놋그릇·북극곰 손님), 아래 패드(왼쪽 토핑 십자, 오른쪽 A 갈기). 여름 가게 한 장면만 쓰는 단일 테마 */
+:root {
+  --sky: #d9eef2;
+  --paper: #fbfdfd;
+  --ink: #17323f;
+  --muted: #557482;
+  --line: #b4d0d7;
+  --glass: #eef9fc;
+  --steel: #a9bfc8;
+  --steel-dark: #6f8995;
+  --brass: #d6a446;
+  --brass-light: #f3d58c;
+  --brass-dark: #9c6f22;
+  --red: #c8323c;
+  --red-dark: #8f2129;
+  --pat: #6b2a26;
+  --berry: #e2475b;
+  --milk: #f0d9a2;
+  --inj: #d8b55f;
+  --zone: #2b9aa6;
+  --good: #2f9e6a;
+  --counter: #b9d3da;
+  --frost: #e2f2f6;
+  --drop: #7cc4e0;
+  --cheek: #f4a6b4;
+  --display: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --body: "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+  --k: clamp(46px, 12.5vw, 62px);
+  color-scheme: light;
+}
+html, body { height: 100%; margin: 0; }
+[hidden] { display: none !important; }
+body {
+  background: var(--sky); color: var(--ink); font-family: var(--body); font-size: 15px;
+  overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+#app {
+  height: 100%; box-sizing: border-box; max-width: 860px; margin: 0 auto;
+  display: grid; grid-template-rows: auto 1fr auto; grid-template-areas: "hud" "stage" "pad"; gap: 10px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* 주문서 줄 */
+.hud { grid-area: hud; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px 12px; }
+.stat { display: grid; gap: 1px; min-width: 64px; }
+.stat.right { text-align: right; }
+/* 콤보: 점수판 아래 작은 배지. 오를 때 한 번 튀고, 끊기면 사라진다 */
+.combo { justify-self: end; margin-top: 2px; padding: 1px 7px; border-radius: 99px; font-size: 12px; font-weight: 800; color: var(--paper); background: var(--red); }
+.combo.jump { animation: combo-pop .35s ease-out; }
+@keyframes combo-pop { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .combo.jump { animation: none; } }
+.stat .lbl { font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.stat b { font-family: var(--display); font-weight: 800; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+.ticket {
+  min-width: 0; justify-self: center; background: var(--paper); border-radius: 4px; padding: 8px 12px 9px;
+  border-top: 3px dotted var(--line); box-shadow: 0 1px 0 var(--line);
+  display: grid; gap: 6px;
+}
+.tk-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.tk-head small { font-size: 12px; color: var(--muted); }
+.tk-head b { font-family: var(--display); font-weight: 800; font-size: 19px; }
+.tk-head span { font-size: 13px; color: var(--paper); background: var(--zone); border-radius: 3px; padding: 1px 6px; }
+.tops { display: flex; flex-wrap: wrap; gap: 5px; }
+/* 주문서 한 칸: 큰 화살표(누를 방향) 아래에 토핑 이름. 아래 테두리 색 = 토핑 색 */
+.chip {
+  display: grid; justify-items: center; gap: 0; min-width: 40px; padding: 2px 6px 3px;
+  border: 1px solid var(--line); border-bottom: 4px solid var(--c); border-radius: 6px; color: var(--muted); background: var(--paper);
+}
+.chip b { font-family: var(--display); font-weight: 900; font-size: 26px; line-height: 1.05; }
+.chip span { font-size: 11px; line-height: 1.2; }
+.chip.next { color: var(--ink); border-color: var(--ink); border-bottom-color: var(--c); background: var(--sky); }
+.chip.done { color: var(--good); border-color: var(--good); opacity: .55; }
+.chip.done b { text-decoration: line-through; }
+.bar { grid-column: 1 / -1; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 100%; background: var(--zone); transform-origin: left; }
+.bar i.low { background: var(--red); }
+
+/* 가게 장면 */
+.stage { grid-area: stage; position: relative; min-height: 0; border-radius: 10px; overflow: hidden; cursor: pointer; background: var(--sky); }
+.view { position: absolute; inset: 0; }
+.view canvas { display: block; image-rendering: pixelated; }
+/* 점수판: 그릇 옆 놋쇠 테 작은 판. 왼쪽 위 기준점을 오른쪽 가운데로 옮겨 그릇 왼쪽 끝에 붙인다 */
+.board {
+  position: absolute; left: 24%; top: 62%; transform: translate(-100%, -50%); --fs: 26px;
+  display: grid; justify-items: end; gap: 1px; padding: 5px 10px 6px; pointer-events: none;
+  background: var(--paper); border: 2px solid var(--brass-dark); border-radius: 6px; box-shadow: 0 3px 0 var(--brass-dark);
+}
+.board .lbl { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+.board b { font-family: var(--display); font-weight: 900; font-size: var(--fs); line-height: 1; font-variant-numeric: tabular-nums; }
+.board.bump b { animation: bump .25s ease-out; }
+@keyframes bump { 0% { transform: scale(1.25); color: var(--red); } 100% { transform: scale(1); } }
+/* 5콤보부터: 판이 반짝인다 */
+.board.fever { border-color: var(--red); box-shadow: 0 3px 0 var(--red-dark), 0 0 0 4px rgb(200 50 60 / .18); }
+/* 그릇 위로 떠오르는 글자(+점수·콤보·초) */
+.pops { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.pop {
+  position: absolute; transform: translate(-50%, -50%); white-space: nowrap; font-family: var(--display); font-weight: 900;
+  font-size: var(--fs, 24px); color: var(--ink); paint-order: stroke fill; -webkit-text-stroke: 4px var(--paper);
+  animation: rise 1s ease-out forwards;
+}
+.pop.score { color: var(--red); }
+.pop.combo-pop { color: var(--brass-dark); }
+.pop.time { color: var(--zone); }
+.pop.bad { color: var(--red-dark); }
+@keyframes rise {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(.6); }
+  15% { opacity: 1; transform: translate(-50%, -60%) scale(1.15); }
+  30% { transform: translate(-50%, -70%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -190%) scale(1); }
+}
+/* 단계 오를 때 가운데 큰 글자 */
+.banner {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;
+  font-family: var(--display); font-weight: 900; font-size: clamp(30px, 9vmin, 64px); color: var(--red);
+  paint-order: stroke fill; -webkit-text-stroke: 6px var(--paper); animation: banner 1.4s ease-out forwards;
+}
+@keyframes banner {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(2); }
+  15% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -70%) scale(1); }
+}
+.stat b.tick { color: var(--red); }
+@media (prefers-reduced-motion: reduce) {
+  .board.bump b, .banner { animation: none; }
+  .pop { animation-name: fade; }
+  @keyframes fade { 0%, 60% { opacity: 1; } 100% { opacity: 0; } }
+}
+.toast {
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px);
+  background: var(--ink); color: var(--paper); font-size: 14px; padding: 6px 12px; border-radius: 99px; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.toast.good { background: var(--good); }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; background: rgb(217 238 242 / .55); }
+.card {
+  background: var(--paper); border-radius: 12px; padding: 18px 20px; max-width: 340px; display: grid; gap: 10px;
+  box-shadow: 0 6px 24px rgb(23 50 63 / .18); cursor: default;
+}
+.card h1, .card h2 { font-family: var(--display); font-weight: 900; margin: 0; line-height: 1.15; text-wrap: balance; }
+.card h1 { font-size: 34px; color: var(--red); }
+.card h2 { font-size: 26px; }
+.card p { margin: 0; line-height: 1.6; }
+.card .small { font-size: 13px; color: var(--muted); }
+.keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+kbd { font-family: var(--display); font-size: 13px; background: var(--sky); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; }
+.go {
+  font: inherit; font-family: var(--display); font-size: 18px; color: var(--paper); background: var(--red);
+  border: 0; border-radius: 8px; padding: 10px 14px; cursor: pointer;
+}
+
+/* 패드 */
+.pad { grid-area: pad; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.cross { display: grid; grid-template-columns: repeat(3, var(--k)); grid-template-rows: repeat(3, calc(var(--k) * .82)); gap: 4px; }
+.tp, .abtn { font: inherit; color: var(--ink); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.tp {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 8px; padding: 0;
+  display: grid; place-items: center; align-content: center; gap: 2px; font-size: 13px;
+}
+.tp i { width: 14px; height: 14px; border-radius: 50%; background: var(--c); }
+.tp.up { grid-area: 1 / 2; } .tp.left { grid-area: 2 / 1; } .tp.right { grid-area: 2 / 3; } .tp.down { grid-area: 3 / 2; }
+.abtn {
+  width: calc(var(--k) * 1.7); height: calc(var(--k) * 1.7); border-radius: 50%; border: 0;
+  background: var(--red); color: var(--paper); display: grid; place-items: center; align-content: center; gap: 0;
+  box-shadow: 0 4px 0 var(--red-dark);
+}
+.abtn b { font-family: var(--display); font-weight: 800; font-size: 34px; line-height: 1; }
+.abtn span { font-size: 13px; }
+.tp.down-on, .tp:active { background: var(--sky); transform: translateY(1px); }
+.abtn.down-on, .abtn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--red-dark); }
+button:focus-visible { outline: 3px solid var(--zone); outline-offset: 2px; }
+
+@media (orientation: landscape) and (max-height: 600px) {
+  #app { grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; grid-template-areas: "hud pad" "stage pad"; max-width: none; }
+  .pad { align-self: center; }
+  :root { --k: clamp(40px, 11vh, 54px); }
+}
+/* 빙수 앱 안: 빙수가 게임을 16:9 상자에 넣고 가상 패드를 그 밖(세로)이나 양옆(가로)에 두므로, 자체 버튼은 빼고 가게를 넓게 */
+.in-bingsu .pad { display: none; }
+.in-bingsu #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; grid-template-areas: "hud" "stage"; max-width: none; }
+@media (prefers-reduced-motion: reduce) {
+  .tp.down-on, .tp:active, .abtn.down-on, .abtn:active { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <header class="hud">
+    <div class="stat"><span class="lbl">단계</span><b id="stagelbl">1</b></div>
+    <div class="ticket" aria-live="polite">
+      <div class="tk-head"><small id="o-no">주문</small><b id="o-name">팥빙수</b><span id="o-size">보통</span></div>
+      <div class="tops" id="o-tops"></div>
+    </div>
+    <div class="stat right"><span class="lbl">남은 시간</span><b id="time">60</b></div>
+    <div class="bar"><i id="bar"></i></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="view" id="view" role="img" aria-label="빙수기 아래 놋그릇에 얼음이 쌓이고, 북극곰 손님이 기다리는 가게"></div>
+    <!-- 점수판: 그릇 왼쪽에 붙는다(자리는 픽셀 장면이 매 프레임 맞춤) -->
+    <div class="board" id="board"><span class="lbl">점수</span><b id="score">0</b><span class="combo" id="combo" hidden></span></div>
+    <div class="pops" id="pops" aria-hidden="true"></div>
+    <div class="banner" id="banner" hidden></div>
+    <div class="toast" id="toast" hidden></div>
+    <div class="overlay" id="overlay">
+      <div class="card" id="intro">
+        <h1>Bingsu</h1>
+        <p>A 를 연타해 얼음을 갈아 목표선까지 채우고, 주문서 순서대로 토핑을 올리세요. 얼음은 계속 녹아요. 한 그릇 낼 때마다 시간이 조금 늘고, 실수 없이 빠르게 이어 내면 콤보로 점수가 커져요. 단계가 오를수록 주문이 길어지고 늘어나는 시간은 줄어요.</p>
+        <ul class="keys">
+          <li><kbd>A</kbd> 얼음 갈기 (가게 그림을 눌러도 돼요)</li>
+          <li><kbd>↑</kbd> 팥 <kbd>→</kbd> 딸기 <kbd>↓</kbd> 연유 <kbd>←</kbd> 인절미</li>
+        </ul>
+        <p class="small" id="how">화면 버튼, 키보드(Z·스페이스·방향키), 게임패드 모두 돼요.</p>
+        <button class="go" data-act="a" id="start">시작하기</button>
+      </div>
+      <div class="card" id="result" hidden>
+        <h2 id="r-title">3그릇 냈어요</h2>
+        <p id="r-body"></p>
+        <button class="go" data-act="a" id="again">다시 하기</button>
+      </div>
+    </div>
+  </main>
+
+  <nav class="pad" aria-label="조작 버튼">
+    <div class="cross">
+      <button class="tp up" data-act="up" aria-label="팥 올리기, 위"><i style="--c: var(--pat)"></i><span>팥</span></button>
+      <button class="tp left" data-act="left" aria-label="인절미 올리기, 왼쪽"><i style="--c: var(--inj)"></i><span>인절미</span></button>
+      <button class="tp right" data-act="right" aria-label="딸기 올리기, 오른쪽"><i style="--c: var(--berry)"></i><span>딸기</span></button>
+      <button class="tp down" data-act="down" aria-label="연유 올리기, 아래"><i style="--c: var(--milk)"></i><span>연유</span></button>
+    </div>
+    <button class="abtn" data-act="a" aria-label="얼음 갈기, A"><b>A</b><span>갈기</span></button>
+  </nav>
+</div>
+
+<!-- 픽셀 장면은 Phaser 3.80.1(github.com/phaserjs/phaser, MIT, phaser-LICENSE.md). 못 불러와도 게임 규칙·버튼은 그대로 돈다 -->
+<script src="phaser.min.js"></script>
+<!-- 효과음은 ZzFX Micro 1.4.0(github.com/KilledByAPixel/ZzFX, MIT, zzfx-LICENSE.md): 숫자 몇 개로 소리를 합성한다. 없으면 소리 없이 돈다 -->
+<script src="zzfx.js"></script>
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const css = getComputedStyle(document.documentElement);
+  const C = Object.fromEntries(["sky", "paper", "ink", "line", "glass", "steel", "steel-dark", "brass", "brass-light", "brass-dark",
+    "red", "pat", "berry", "milk", "inj", "zone", "good", "counter", "frost", "drop", "cheek"].map((k) => [k, css.getPropertyValue("--" + k).trim()]));
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // 빙수 앱이 넣는 다리(window.__bingsu)가 있으면 빙수 가상 패드(A = Z 키, 십자키 = 방향키)로 조작한다
+  if (window.__bingsu) {
+    document.documentElement.classList.add("in-bingsu");
+    $("#how").textContent = "빙수 가상 패드나 컨트롤러로 조작해요.";
+  }
+
+  const TOP = {
+    pat: { name: "팥", arrow: "↑" }, berry: { name: "딸기", arrow: "→" },
+    milk: { name: "연유", arrow: "↓" }, inj: { name: "인절미", arrow: "←" },
+  };
+  const BY_DIR = { up: "pat", right: "berry", down: "milk", left: "inj" };
+  const MENU = [
+    { name: "팥빙수", tops: ["pat", "inj", "milk"] },
+    { name: "딸기빙수", tops: ["berry", "milk"] },
+    { name: "인절미빙수", tops: ["inj", "pat"] },
+    { name: "우유빙수", tops: ["milk"] },
+    { name: "딸기 팥빙수", tops: ["pat", "berry", "milk"] },
+  ];
+  const ROUND = 45, MAX_TIME = 99, SHAVE = 0.045;
+  const KEYS_OF = Object.keys(TOP);
+
+  // 단계: 두 그릇마다 하나씩 오른다. 오를수록 주문(화살표)이 길어지고, 목표선이 좁아지고, 얼음이 빨리 녹는다
+  const stageOf = (servedCount) => 1 + Math.floor(servedCount / 2);
+  function makeOrder(servedCount) {
+    const stage = stageOf(servedCount);
+    const len = Math.max(1, Math.min(7, Math.round(1 + stage * 0.6 + (Math.random() - 0.5))));
+    const named = stage <= 3 ? MENU.filter((m) => m.tops.length === len) : [];
+    let menu;
+    if (named.length) menu = named[Math.floor(Math.random() * named.length)];
+    else {
+      // 특제: 무작위 순서. 4단계부터는 같은 토핑이 연달아 나와 헷갈리게
+      const tops = [];
+      while (tops.length < len) {
+        const k = KEYS_OF[Math.floor(Math.random() * KEYS_OF.length)];
+        if (stage < 4 && k === tops[tops.length - 1]) continue;
+        tops.push(k);
+      }
+      menu = { name: "특제 빙수", tops };
+    }
+    const width = Math.max(0.1, 0.2 - 0.012 * (stage - 1));
+    const lo = 0.42 + Math.random() * (0.88 - width - 0.42);
+    const size = { name: lo + width / 2 > 0.66 ? "곱빼기" : "보통", lo, hi: lo + width };
+    const melt = Math.min(0.032, 0.018 + 0.002 * (stage - 1));
+    return { menu, size, melt, stage, no: servedCount + 1 };
+  }
+
+  // 처음 화면: 완성된 팥빙수 한 그릇과 기다리는 손님
+  let phase = "title", ice = 0.6, order = { menu: MENU[0], size: { name: "보통", lo: 0.48, hi: 0.68 }, melt: 0.018, stage: 1, no: 0 }, placed = [], decor = [];
+  let combo = 0, clean = true, bestCombo = 0, inZone = false;
+  let score = 0, served = 0, timeLeft = ROUND, orderAt = 0, crank = 0, overAt = 0, now = 0, warned = "";
+  let best = 0;
+  try { best = Number(localStorage.getItem("bingsu-sample-best")) || 0; } catch {}
+  // 픽셀 장면이 채우는 연출 고리 (Phaser 를 못 불러오면 아무것도 안 함)
+  const fx = { shave() {}, serve() {}, miss() {}, enter() {}, topping() {}, zone() {}, levelup() {} };
+
+  /* ---------- 소리 ---------- */
+  // ZzFX 인자 순서: 크기, 흔들림, 주파수, 어택, 서스테인, 릴리스, 파형(0 사인 1 삼각 2 톱니 4 잡음), 파형 곡선, 슬라이드, …, 음 점프, 점프 시각, 반복
+  const z = (...a) => { try { if (typeof zzfx === "function") zzfx(...a); } catch {} };
+  function ensureAudio() { try { if (typeof zzfxX !== "undefined" && zzfxX.state === "suspended") zzfxX.resume(); } catch {} }
+  const sfx = {
+    shave() { z(.35, .3, 2600, 0, .01, .05, 4, 1, 0, 0, 0, 0, 0, 2); },             // 사각사각
+    pop() { z(.6, .05, 520, 0, .01, .07, 1, 1.5, 0, 0, 380, .02); },               // 토핑 톡
+    // 콤보가 오를수록 반음씩 높게 (최대 7반음)
+    ding(step = 0) { const f = 880 * 2 ** (Math.min(step, 7) / 12); z(.6, 0, f, 0, .05, .4, 1, 1, 0, 0, f / 2, .07); },
+    buzz() { z(.5, .05, 160, 0, .06, .14, 2, 1, -8); },                            // 틀림
+    zone() { z(.3, 0, 1500, 0, .01, .06, 0, 1, 0, 0, 750, .03); },                 // 목표선 안
+    levelup() { z(.6, 0, 523, .01, .25, .25, 1, 1, 0, 0, 262, .07, .07); },        // 단계 오름
+    tick() { z(.25, 0, 1900, 0, 0, .03, 1); },                                     // 5초 남음부터 째깍
+    over() { z(.6, 0, 440, .02, .3, .45, 1, 1, -1.2); },                           // 끝
+  };
+  // 진동: 빙수 안에서는 앱의 진동 다리(rumble, 값은 앱이 다시 검증)로 바로 보내 연결된 컨트롤러나 폰 햅틱으로 울린다.
+  // 브라우저에서는 표준 Gamepad API. 연타처럼 잦은 진동은 블루투스 이어폰 소리를 깨므로 굵직한 순간에만 쓴다
+  function rumble(strong, weak, ms) {
+    if (window.__bingsu) {
+      try { window.webkit.messageHandlers.rumble.postMessage({ duration: ms, strong, weak }); } catch {}
+      return;
+    }
+    for (const p of navigator.getGamepads ? navigator.getGamepads() : []) {
+      try { p?.vibrationActuator?.playEffect("dual-rumble", { duration: ms, strongMagnitude: strong, weakMagnitude: weak }); } catch {}
+    }
+  }
+
+  /* ---------- 화면 글자 ---------- */
+  // 픽셀 장면이 알려 주는 그릇 위치(화면 px). 장면이 없으면 대충 가운데
+  let anchor = { x: 0, y: 0, ok: false };
+  function pop(text, kind = "", dy = 0, size = 0) {
+    const r = $("#stage").getBoundingClientRect();
+    const el = document.createElement("span");
+    el.className = "pop " + kind; el.textContent = text;
+    el.style.left = (anchor.ok ? anchor.x : r.width * 0.42) + "px";
+    el.style.top = (anchor.ok ? anchor.y : r.height * 0.5) + dy + "px";
+    if (size) el.style.setProperty("--fs", size + "px");
+    el.addEventListener("animationend", () => el.remove());
+    $("#pops").append(el);
+    setTimeout(() => el.remove(), 1600);
+  }
+  function banner(text) {
+    const el = $("#banner");
+    el.hidden = true; void el.offsetWidth; el.textContent = text; el.hidden = false;
+    clearTimeout(banner.t); banner.t = setTimeout(() => { el.hidden = true; }, 1500);
+  }
+  const toastEl = $("#toast");
+  let toastTimer = 0;
+  function toast(msg, kind = "") {
+    toastEl.textContent = msg; toastEl.className = "toast " + kind; toastEl.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { toastEl.hidden = true; }, 1500);
+  }
+  function renderOrder() {
+    $("#o-no").textContent = order.no ? `${order.no}번 손님` : "주문";
+    $("#stagelbl").textContent = order.stage;
+    $("#o-name").textContent = order.menu.name;
+    $("#o-size").textContent = order.size.name;
+    $("#o-tops").replaceChildren(...order.menu.tops.map((k, i) => {
+      const c = document.createElement("span");
+      c.className = "chip" + (i < placed.length ? " done" : i === placed.length ? " next" : "");
+      c.style.setProperty("--c", C[k]);
+      const arrow = document.createElement("b"), name = document.createElement("span");
+      arrow.textContent = TOP[k].arrow; name.textContent = TOP[k].name;
+      c.append(arrow, name);
+      return c;
+    }));
+  }
+  const shown = {};
+  function renderHud() {
+    const t = Math.ceil(timeLeft);
+    // 점수는 한 번에 바뀌지 않고 세어 올라간다
+    if (shown.score !== score) {
+      const cur = shown.score ?? 0;
+      shown.score = score < cur ? score : Math.min(score, cur + Math.max(1, Math.ceil((score - cur) * 0.18)));
+      $("#score").textContent = shown.score.toLocaleString("ko-KR");
+    }
+    if (shown.t !== t) {
+      $("#time").textContent = t; $("#time").classList.toggle("tick", phase === "play" && t <= 5);
+      if (phase === "play" && t <= 5 && t > 0 && shown.t !== undefined) sfx.tick();
+      shown.t = t;
+    }
+    const bar = $("#bar");
+    bar.style.transform = `scaleX(${Math.min(1, timeLeft / ROUND)})`;
+    bar.classList.toggle("low", timeLeft <= 10);
+    if (shown.combo !== combo) {
+      $("#board").classList.toggle("fever", combo >= 5);
+      const el = $("#combo");
+      el.hidden = combo < 2;
+      el.textContent = `${combo} 콤보 ×${comboMult().toFixed(1)}`;
+      if (combo > (shown.combo ?? 0)) { el.classList.remove("jump"); void el.offsetWidth; el.classList.add("jump"); }
+      shown.combo = combo;
+    }
+  }
+
+  /* ---------- 게임 ---------- */
+  function newOrder() {
+    const prevStage = order.stage;
+    order = makeOrder(served);
+    placed = []; decor = []; ice = 0; orderAt = now; warned = ""; clean = true;
+    renderOrder();
+    inZone = false;
+    if (served > 0 && order.stage > prevStage) setTimeout(() => {
+      if (phase !== "play") return;
+      banner(`${order.stage}단계!`); sfx.levelup(); rumble(0.4, 0.8, 300); fx.levelup();
+      toast("주문이 길어지고 얼음이 빨리 녹아요");
+    }, 700);
+  }
+  function start() {
+    phase = "play"; score = 0; served = 0; timeLeft = ROUND; combo = 0; bestCombo = 0;
+    $("#overlay").hidden = true;
+    newOrder(); renderHud(); fx.enter();
+  }
+  function end() {
+    phase = "over"; overAt = now; sfx.over();
+    const record = score > best;
+    if (record) { best = score; try { localStorage.setItem("bingsu-sample-best", String(best)); } catch {} }
+    $("#r-title").textContent = served ? `${served}그릇 냈어요` : "아직 한 그릇도 못 냈어요";
+    $("#r-body").textContent = `${order.stage}단계까지 · 최대 ${bestCombo} 콤보 · 점수 ${score}점 · 최고 ${best}점` + (record && score > 0 ? " · 새 기록!" : "");
+    $("#intro").hidden = true; $("#result").hidden = false; $("#overlay").hidden = false;
+    $("#again").focus({ preventScroll: true });
+  }
+  function miss(msg) { toast(msg); sfx.buzz(); rumble(0.8, 0.2, 200); fx.miss(); }
+  // 실수(틀린 토핑·넘침)는 콤보를 바로 끊는다
+  function breakCombo() {
+    clean = false;
+    if (combo >= 2) setTimeout(() => toast(`${combo} 콤보 끊김`), 900);
+    combo = 0;
+  }
+  function shave() {
+    ice += SHAVE; crank += 0.9;
+    sfx.shave(); fx.shave();
+    if (ice > 1) { ice = 0.6; miss("넘쳤어요! 조금 덜어냈어요"); breakCombo(); }
+  }
+  function addDecor(key) {
+    if (key === "milk" && decor.some((t) => t.key === "milk")) return;   // 연유 줄은 한 번만 그린다
+    const n = Math.max(3, Math.round({ pat: 14, berry: 6, inj: 9, milk: 1 }[key] * (decor.length > 40 ? 0.4 : 1)));
+    const spread = key === "pat" ? 0.9 : 1.3;
+    for (let i = 0; i < n; i++) decor.push({ key, u: (Math.random() - 0.5) * spread, d: Math.random() * 7 });
+  }
+  function topping(key) {
+    if (placed.length >= order.menu.tops.length) return;
+    if (ice < order.size.lo) { miss("얼음을 목표선까지 먼저 갈아요"); return; }
+    const need = order.menu.tops[placed.length];
+    if (key !== need) {
+      timeLeft = Math.max(0, timeLeft - 1);
+      miss(`다음은 ${TOP[need].arrow} ${TOP[need].name} 이에요`);
+      pop("-1초", "bad", 0, 22);
+      breakCombo();
+      return;
+    }
+    placed.push(key); addDecor(key); sfx.pop(); fx.topping(key); renderOrder();
+  }
+  // 콤보 배율: 1콤보 1.0, 한 콤보마다 0.2씩, 최대 ×3
+  const comboMult = () => 1 + 0.2 * Math.min(Math.max(combo - 1, 0), 10);
+  function serve() {
+    const secs = (now - orderAt) / 1000;
+    const len = order.menu.tops.length;
+    // 실수 없이, 제한 시간 안에 내야 콤보가 이어진다 (늦으면 콤보가 1로 돌아감)
+    const fast = secs <= 5 + 1.5 * len;
+    combo = clean && fast ? combo + 1 : 1;
+    bestCombo = Math.max(bestCombo, combo);
+    const pts = Math.round((100 + 20 * len + Math.max(0, Math.round((12 - secs) * 8))) * order.stage * comboMult());
+    // 추가 시간은 단계가 오를수록 줄고(4→1초), 3콤보마다 2초를 더 준다. 주문은 길어지니 결국 시간이 모자라게 된다
+    const bonus = Math.max(0, Math.min(MAX_TIME - timeLeft, Math.max(1, 5 - order.stage) + (combo % 3 === 0 ? 2 : 0)));
+    score += pts; served++; timeLeft += bonus;
+    sfx.ding(combo - 1); rumble(combo >= 5 ? 0.9 : 0.6, 0.6, combo >= 5 ? 260 : 180); fx.serve(combo);
+    pop(`+${pts.toLocaleString("ko-KR")}`, "score", 0, Math.min(40, 24 + combo * 2));
+    if (combo >= 2) setTimeout(() => pop(`${combo} 콤보!`, "combo-pop", -8, Math.min(34, 18 + combo * 2)), 160);
+    else if (!fast) setTimeout(() => pop("늦어서 콤보 없음", "bad", -8, 16), 160);
+    if (bonus >= 1) setTimeout(() => pop(`+${Math.round(bonus)}초`, "time", 14, 18), 320);
+    const board = $("#board"); board.classList.remove("bump"); void board.offsetWidth; board.classList.add("bump");
+    newOrder();
+  }
+  function press(act) {
+    ensureAudio();
+    flash(act);
+    if (act === "a") {
+      if (phase === "play") shave();
+      else if (phase === "title" || now - overAt > 900) start();
+      return;
+    }
+    if (phase === "play") topping(BY_DIR[act]);
+  }
+  function update(dt) {
+    if (phase !== "play") return;
+    timeLeft -= dt;
+    ice = Math.max(0, ice - order.melt * dt);
+    const nowIn = ice >= order.size.lo && ice <= order.size.hi;
+    if (nowIn && !inZone) { sfx.zone(); fx.zone(); }
+    inZone = nowIn;
+    if (placed.length === order.menu.tops.length) {
+      const { lo, hi } = order.size;
+      if (ice >= lo && ice <= hi) serve();
+      else if (ice < lo && warned !== "low") { warned = "low"; toast("얼음이 녹았어요. 조금 더 갈아요"); }
+      else if (ice > hi && warned !== "high") { warned = "high"; toast("조금 많아요. 살짝 녹으면 바로 나가요"); }
+    }
+    if (timeLeft <= 0) { timeLeft = 0; end(); }
+    renderHud();
+  }
+
+  /* ---------- 입력 ---------- */
+  const buttons = {};
+  document.querySelectorAll("[data-act]").forEach((b) => {
+    (buttons[b.dataset.act] ??= []).push(b);
+    b.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); press(b.dataset.act); });
+    b.addEventListener("click", (e) => { if (e.detail === 0) press(b.dataset.act); });   // 키보드로 누른 버튼
+  });
+  const stage = $("#stage");
+  stage.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".card")) return;
+    e.preventDefault(); press("a");
+  });
+  function flash(act) {
+    for (const b of buttons[act] || []) {
+      if (!b.classList.contains("tp") && !b.classList.contains("abtn")) continue;
+      b.classList.add("down-on"); setTimeout(() => b.classList.remove("down-on"), 90);
+    }
+  }
+  const KEYS = { KeyZ: "a", Space: "a", Enter: "a", ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+  addEventListener("keydown", (e) => {
+    const act = KEYS[e.code];
+    if (!act) return;
+    e.preventDefault();
+    if (!e.repeat) press(act);
+  });
+  // 게임패드: A(0)·Start(9) 갈기, 십자키 12~15 토핑
+  const PAD = { 0: "a", 9: "a", 12: "up", 13: "down", 14: "left", 15: "right" };
+  const padPrev = {};
+  function pollPads() {
+    // 빙수 안에서는 컨트롤러 입력이 빙수를 거쳐 키로 들어오므로 직접 읽지 않는다(두 번 눌림 방지)
+    if (window.__bingsu || !navigator.getGamepads) return;
+    for (const p of navigator.getGamepads()) {
+      if (!p) continue;
+      for (const i in PAD) {
+        const b = p.buttons[i], down = !!b && (b.pressed || b.value > 0.5), k = p.index + ":" + i;
+        if (down && !padPrev[k]) press(PAD[i]);
+        padPrev[k] = down;
+      }
+    }
+  }
+
+  /* ---------- 픽셀 그림 ---------- */
+  // 글자 하나 = 픽셀 하나. '.' 은 투명, f 는 손님마다 다른 목도리 색
+  const PAL = {
+    k: C.ink, w: "#ffffff", i: C.frost, a: C.drop, s: C.steel, d: C["steel-dark"], r: C.red,
+    b: C.brass, B: C["brass-dark"], l: C["brass-light"], p: C.pat, e: C.berry, g: C.good, m: C.milk, y: C.inj, n: C.cheek,
+  };
+  const BEAR = [
+    "................",
+    "..kk........kk..",
+    ".kwwk......kwwk.",
+    ".kwwwkkkkkkwwwk.",
+    "..kwwwwwwwwwwk..",
+    "..kwwwwwwwwwwk..",
+    ".kwwkwwwwwwkwwk.",
+    ".kwwwwwkkwwwwwk.",
+    ".kwnwwwkkwwwnwk.",
+    ".kwwwwkwwkwwwwk.",
+    "..kwwwwwwwwwwk..",
+    "...kkffffffkk...",
+    "..kffffffffffk..",
+    ".kwwwwwwwwwwwwk.",
+    ".kwwwwwwwwwwwwk.",
+    ".kwwwwwwwwwwwwk.",
+  ];
+  const patch = (rows, p) => rows.map((r, i) => p[i] ?? r);
+  const down1 = (rows) => [".".repeat(16), ...rows.slice(0, -1)];
+  const up1 = (rows) => [...rows.slice(1), rows[rows.length - 1]];
+  const HAPPY = patch(BEAR, { 5: "..kwkwwwwwwkwk..", 6: ".kwkwkwwwwkwkwk.", 9: ".kwwwwkrrkwwwwk." });
+  const BEAR_FRAMES = [
+    BEAR,                                              // 0 기본
+    down1(BEAR),                                       // 1 숨쉬기
+    patch(BEAR, { 6: ".kwwdwwwwwwdwwk." }),            // 2 눈 깜빡
+    HAPPY,                                             // 3 웃음
+    up1(HAPPY),                                        // 4 웃으며 폴짝
+    patch(BEAR, { 4: "..kwwwwwwwwwwk.a", 5: "..kwwwwwwwwwwk.a", 9: ".kwwwwwkkwwwwwk." }),   // 5 식은땀
+  ];
+  const SCARVES = [C.red, C.zone, C.inj];
+  const HEART = [".e.e.", "eeeee", ".eee.", "..e.."];
+  const SPARK = [
+    [".....", "..a..", ".aaa.", "..a..", "....."],
+    ["..a..", "..a..", "aaaaa", "..a..", "..a.."],
+    [".....", ".....", "..a..", ".....", "....."],
+  ];
+  const TOPPINGS = { pat: ["pp", "pp"], berry: [".g.", "eee", "eee", ".e."], inj: ["yyy", "yyy", "BBB"] };
+
+  function startPixels() {
+    if (!window.Phaser) return;   // CDN 을 못 쓰면 그림 없이 진행
+    const view = $("#view");
+    const hex = (s) => parseInt(s.replace("#", ""), 16);
+    const P = Object.fromEntries(Object.entries({ ...PAL, glass: C.glass, line: C.line, counter: C.counter, zone: C.zone }).map(([k, v]) => [k, hex(v)]));
+    const sizeFor = () => {
+      const r = stage.getBoundingClientRect();
+      const z = Math.max(2, Math.floor(Math.min(r.width, r.height) / 110));
+      return { z, w: Math.max(60, Math.ceil(r.width / z)), h: Math.max(60, Math.ceil(r.height / z)) };
+    };
+    let sz = sizeFor();
+
+    function sheet(scene, key, frames, extra = {}) {
+      const pal = { ...PAL, ...extra }, fh = frames[0].length, fw = frames[0][0].length;
+      const tex = scene.textures.createCanvas(key, fw * frames.length, fh), c = tex.getContext();
+      frames.forEach((rows, fi) => rows.forEach((row, y) => [...row].forEach((ch, x) => {
+        if (!pal[ch]) return;
+        c.fillStyle = pal[ch]; c.fillRect(fi * fw + x, y, 1, 1);
+      })));
+      tex.refresh();
+      frames.forEach((_, fi) => tex.add(fi, 0, fi * fw, 0, fw, fh));
+    }
+    function layout(w, h) {
+      const counterY = h - Math.max(8, Math.round(h * 0.13));
+      const cx = Math.round(w * 0.42);
+      const mW = Phaser.Math.Clamp(Math.round(w * 0.28), 24, 44), mH = Math.round(mW * 0.62);
+      const mX = cx - Math.round(mW / 2), roof = 4 + mH + 3;
+      const bowlW = Phaser.Math.Clamp(Math.round(Math.min(w * 0.5, counterY - roof)), 28, 84);
+      const bowlH = Math.round(bowlW * 0.34);
+      const rimY = counterY + 1 - bowlH;
+      // 세로로 긴 화면에서도 얼음 산이 길쭉해지지 않게 높이는 그릇 너비에 맞추고, 빙수기를 그만큼 내려 매단다
+      const topY = rimY - Math.min(rimY - (roof + 4), Math.round(bowlW * 0.85));
+      const outletY = topY - 4, mY = outletY - 3 - mH;
+      return { w, h, counterY, cx, mW, mH, mX, mY, outletY, bowlW, bowlH, rimY, topY, hw: Math.round(bowlW * 0.46),
+               bearX: Math.min(w - 9, cx + Math.round(bowlW / 2) + 13) };
+    }
+
+    class Shop extends Phaser.Scene {
+      constructor() { super("shop"); }
+      create() {
+        SCARVES.forEach((col, v) => {
+          sheet(this, "bear" + v, BEAR_FRAMES, { f: col });
+          const fr = (list) => list.map((f) => ({ key: "bear" + v, frame: f }));
+          this.anims.create({ key: "idle" + v, frames: fr([0, 0, 0, 1, 1, 0, 0, 2]), frameRate: 6, repeat: -1 });
+          this.anims.create({ key: "happy" + v, frames: fr([3, 4]), frameRate: 8, repeat: -1 });
+          this.anims.create({ key: "sad" + v, frames: fr([5]), frameRate: 1 });
+        });
+        sheet(this, "heart", [HEART]);
+        sheet(this, "dot", [["w"]]);
+        sheet(this, "spark", SPARK);
+        for (const [k, rows] of Object.entries(TOPPINGS)) sheet(this, k, [rows]);
+        this.anims.create({ key: "twinkle", frames: [0, 1, 0, 2].map((f) => ({ key: "spark", frame: f })), frameRate: 10 });
+
+        this.back = this.add.graphics().setDepth(0);
+        this.v = 0; this.busy = false; this.crankV = crank; this.flakes = []; this.tops = []; this.twinkleAt = 0;
+        this.bear = this.add.sprite(layout(sz.w, sz.h).bearX, 0, "bear0", 0).setOrigin(0.5, 1).setDepth(1).play("idle0");
+        this.counter = this.add.graphics().setDepth(2);
+        this.ice = this.add.graphics().setDepth(3);
+        this.front = this.add.graphics().setDepth(5);
+        this.zoneFlash = 0; this.feverAt = 0;
+        // 입자: 낼 때 얼음 가루·반짝이가 터지고, 토핑을 올리면 그 색 가루가 튄다
+        const T = (k) => P[{ pat: "p", berry: "e", inj: "y", milk: "m" }[k]];
+        this.burst = this.add.particles(0, 0, "dot", {
+          emitting: false, lifespan: { min: 450, max: 900 }, speed: { min: 25, max: 70 }, angle: { min: 200, max: 340 },
+          gravityY: 110, scale: { start: 1, end: 1 }, alpha: { start: 1, end: 0 }, tint: [P.w, P.a, P.i, P.y],
+        }).setDepth(6);
+        this.sparkle = this.add.particles(0, 0, "spark", {
+          emitting: false, frame: [0, 1], lifespan: 600, speed: { min: 15, max: 45 }, angle: { min: 0, max: 360 },
+          alpha: { start: 1, end: 0 },
+        }).setDepth(6);
+        this.puff = this.add.particles(0, 0, "dot", {
+          emitting: false, lifespan: 380, speed: { min: 12, max: 34 }, angle: { min: 190, max: 350 }, gravityY: 90,
+          alpha: { start: 1, end: 0 },
+        }).setDepth(6);
+        fx.topping = (key) => {
+          const L = layout(this.scale.width, this.scale.height), apex = this.apex ?? L.rimY;
+          this.puff.setParticleTint(T(key));
+          this.puff.explode(8, L.cx, apex);
+        };
+        fx.zone = () => { this.zoneFlash = 1; };
+        fx.levelup = () => {
+          if (!reduceMotion) this.cameras.main.flash(220, 255, 255, 255);
+          const L = layout(this.scale.width, this.scale.height);
+          this.sparkle.explode(16, L.cx, L.rimY - 10);
+        };
+
+        fx.shave = () => {
+          for (let i = 0; i < 4; i++) this.flakes.push({ x: (Math.random() - 0.5) * 4, y: 0, vx: (Math.random() - 0.5) * 10, vy: 40 + Math.random() * 30 });
+        };
+        fx.miss = () => {
+          if (!reduceMotion) this.cameras.main.shake(180, 0.012);
+          if (this.busy) return;
+          this.bear.play("sad" + this.v);
+          this.time.delayedCall(600, () => { if (!this.busy) this.bear.play("idle" + this.v); });
+        };
+        fx.serve = (c = 1) => {
+          this.busy = true;
+          const L = layout(this.scale.width, this.scale.height), apex = this.apex ?? L.rimY;
+          this.burst.explode(14 + Math.min(c, 8) * 3, L.cx, apex);
+          if (c >= 2) this.sparkle.explode(Math.min(c, 10), L.cx, apex);
+          if (c >= 5 && !reduceMotion) this.cameras.main.shake(120, 0.006);
+          this.bear.play("happy" + this.v);
+          const hearts = 2 + Math.min(c, 6);   // 콤보가 오를수록 하트가 많이 뜬다
+          for (let i = 0; i < hearts; i++) {
+            const h = this.add.image(this.bear.x + (i - (hearts - 1) / 2) * 6, this.bear.y - 15 - (i % 2) * 4, "heart").setDepth(6);
+            this.tweens.add({ targets: h, y: h.y - 12, alpha: 0, duration: 700, delay: i * 90, onComplete: () => h.destroy() });
+          }
+          this.time.delayedCall(600, () => {
+            this.tweens.add({ targets: this.bear, x: this.scale.width + 12, duration: 320, ease: "Quad.easeIn", onComplete: () => fx.enter() });
+          });
+        };
+        fx.enter = () => {
+          this.busy = true;
+          this.v = (this.v + 1) % SCARVES.length;
+          this.bear.x = this.scale.width + 12;
+          this.bear.play("idle" + this.v);
+          this.tweens.add({ targets: this.bear, x: layout(this.scale.width, this.scale.height).bearX, duration: 420, ease: "Quad.easeOut",
+                            onComplete: () => { this.busy = false; } });
+        };
+      }
+
+      update(time, delta) {
+        const L = layout(this.scale.width, this.scale.height), dt = Math.min(0.1, delta / 1000);
+        this.crankV += (crank - this.crankV) * Math.min(1, dt * 14);
+        const base = L.rimY + 1, apex = L.rimY - Math.min(ice, 1.05) * (L.rimY - L.topY);
+        const surf = (u) => Math.round(base + (1 - u * u) * (apex - base));
+        this.apex = apex;
+        this.zoneFlash = Math.max(0, this.zoneFlash - dt * 3);
+        // 점수판·떠오르는 글자 자리를 화면 px 로 알려 준다
+        // 옆자리가 넉넉하면 그릇 왼쪽, 좁으면(세로 화면) 그릇 왼쪽 아래 카운터 앞판에 붙인다
+        const z = sz.z, b = $("#board"), bw = b.offsetWidth;
+        const side = Math.round((L.cx - L.bowlW / 2 - 4) * z);
+        let bx = side, by = Math.round((L.rimY - (L.rimY - L.topY) * 0.25) * z);
+        if (side - bw < 6) { bx = Math.max(bw + 6, Math.round((L.cx - L.bowlW * 0.2) * z)); by = Math.round((L.counterY + (L.h - L.counterY) / 2) * z); }
+        anchor = { x: L.cx * z, y: (apex - 6) * z, ok: true };
+        const key = bx + "," + by + "," + side;
+        if (this.boardAt !== key) {
+          this.boardAt = key;
+          b.style.left = bx + "px"; b.style.top = by + "px";
+          b.style.setProperty("--fs", Math.round(Phaser.Math.Clamp(side / 5, 22, 34)) + "px");
+        }
+        // 5콤보부터 그릇 둘레에 반짝이가 계속 핀다
+        if (combo >= 5 && phase === "play" && time > this.feverAt) {
+          this.feverAt = time + Math.max(90, 260 - combo * 12);
+          this.sparkle.emitParticleAt(L.cx + (Math.random() - 0.5) * L.bowlW, L.rimY - Math.random() * (L.rimY - apex + 6), 1);
+        }
+        this.drawBack(L);
+        if (!this.busy) this.bear.x = L.bearX;
+        this.bear.y = L.counterY + 3;
+        this.drawCounter(L);
+        this.drawIce(L, base, apex, surf);
+        this.syncToppings(L, surf);
+        this.drawFront(L, apex, dt);
+        if (time > this.twinkleAt && ice > 0.15) {
+          this.twinkleAt = time + 350 + Math.random() * 400;
+          const u = Math.random() * 1.4 - 0.7, top = surf(u);
+          const s = this.add.sprite(L.cx + Math.round(u * L.hw), top + 2 + Math.round(Math.random() * (base - top) * 0.6), "spark", 0).setDepth(4.5);
+          s.play("twinkle"); s.once("animationcomplete", () => s.destroy());
+        }
+      }
+
+      drawBack(L) {
+        const g = this.back; g.clear();
+        // 창문 너머 여름 해
+        const ww = Math.max(18, Math.round(L.w * 0.2)), wh = Math.round(ww * 0.75), wx = 5, wy = 6;
+        g.fillStyle(P.d); g.fillRect(wx - 1, wy - 1, ww + 2, wh + 2);
+        g.fillStyle(P.glass); g.fillRect(wx, wy, ww, wh);
+        g.fillStyle(P.y); g.fillCircle(wx + ww - 6, wy + 6, 3);
+        g.fillStyle(P.w); g.fillRect(wx + 3, wy + wh - 6, 7, 2); g.fillRect(wx + 5, wy + wh - 8, 4, 2);
+        g.fillStyle(P.d); g.fillRect(wx + Math.floor(ww / 2), wy, 1, wh);
+        // 빙수기: 천장 걸이, 몸통, 빨간 간판, 얼음 나오는 곳, 손잡이 바퀴
+        const { mX, mY, mW, mH, cx } = L;
+        g.fillStyle(P.d); g.fillRect(mX + 4, 0, 2, mY); g.fillRect(mX + mW - 6, 0, 2, mY);
+        g.fillStyle(P.k); g.fillRect(mX - 1, mY - 1, mW + 2, mH + 2);
+        g.fillStyle(P.s); g.fillRect(mX, mY, mW, mH);
+        g.fillStyle(P.w); g.fillRect(mX + 1, mY + 1, mW - 2, 2);
+        g.fillStyle(P.d); g.fillRect(mX, mY + mH - 2, mW, 2);
+        const sy = mY + Math.round(mH * 0.36), sb = Math.max(4, Math.round(mH * 0.3));
+        g.fillStyle(P.r); g.fillRect(mX + 3, sy, mW - 6, sb);
+        g.fillStyle(P.w);
+        for (let i = 0; i < 3; i++) g.fillRect(mX + Math.round(mW * (0.3 + i * 0.2)) - 1, sy + Math.floor(sb / 2) - 1, 2, 2);
+        g.fillStyle(P.d); g.fillRect(cx - 3, mY + mH, 6, 2); g.fillRect(cx - 2, mY + mH + 2, 4, 1);
+        const r = Math.max(4, Math.round(mH * 0.33)), kx = mX - Math.round(r * 0.4), ky = mY + Math.round(mH / 2);
+        g.lineStyle(1, P.k); g.strokeCircle(kx, ky, r);
+        for (let i = 0; i < 3; i++) {
+          const a = this.crankV + i * Math.PI * 2 / 3;
+          g.lineBetween(kx, ky, kx + Math.cos(a) * r, ky + Math.sin(a) * r);
+        }
+        g.fillStyle(P.r); g.fillRect(Math.round(kx + Math.cos(this.crankV) * r) - 1, Math.round(ky + Math.sin(this.crankV) * r) - 1, 3, 3);
+      }
+
+      drawCounter(L) {
+        const c = this.counter; c.clear();
+        c.fillStyle(P.counter); c.fillRect(0, L.counterY, L.w, L.h - L.counterY);
+        c.fillStyle(P.w); c.fillRect(0, L.counterY, L.w, 1);
+        c.fillStyle(P.line); c.fillRect(0, L.counterY + 1, L.w, 1);
+        c.fillStyle(P.d, 0.25);
+        for (let x = 6; x < L.w; x += 12) c.fillRect(x, L.counterY + 4, 1, L.h - L.counterY - 4);
+      }
+
+      drawIce(L, base, apex, surf) {
+        const g = this.ice; g.clear();
+        if (ice <= 0.01) return;
+        for (let x = -L.hw; x <= L.hw; x++) {
+          const u = x / L.hw, top = surf(u);
+          if (top >= base) continue;
+          g.fillStyle(u > 0.45 ? P.i : P.w); g.fillRect(L.cx + x, top, 1, base - top);
+          g.fillStyle(P.line); g.fillRect(L.cx + x, top - 1, 1, 1);
+        }
+        if (decor.some((t) => t.key === "milk")) {
+          g.fillStyle(P.m);
+          const span = Math.round(L.hw * 0.72);
+          for (let x = -span; x <= span; x++) {
+            const u = x / L.hw, y = surf(u) + 2 + Math.round(Math.sin(u * 9) * 1.5);
+            g.fillRect(L.cx + x, y, 1, 2);
+            if (x % 9 === 0) g.fillRect(L.cx + x, y + 2, 1, 2 + (Math.abs(x) % 3));
+          }
+        }
+      }
+
+      syncToppings(L, surf) {
+        const items = decor.filter((t) => t.key !== "milk");
+        while (this.tops.length < items.length) this.tops.push(this.add.image(0, 0, "pat").setOrigin(0.5, 1).setDepth(4));
+        while (this.tops.length > items.length) this.tops.pop().destroy();
+        items.forEach((t, i) => {
+          const im = this.tops[i];
+          if (im.texture.key !== t.key) im.setTexture(t.key);
+          im.x = L.cx + Math.round(t.u * L.hw);
+          im.y = surf(t.u) + 2 + Math.round(t.d * 0.35);
+        });
+      }
+
+      drawFront(L, apex, dt) {
+        const f = this.front; f.clear();
+        const { cx, hw, rimY, bowlW, bowlH } = L;
+        // 목표선 (점선 + 양쪽 화살표)
+        if (phase !== "title") {
+          const span = rimY - L.topY;
+          const yHi = Math.round(rimY - order.size.hi * span), yLo = Math.round(rimY - order.size.lo * span);
+          const col = ice >= order.size.lo && ice <= order.size.hi ? P.g : P.zone;
+          if (this.zoneFlash > 0) { f.fillStyle(P.w, this.zoneFlash * 0.6); f.fillRect(cx - hw - 6, yHi - 1, hw * 2 + 12, yLo - yHi + 2); }
+          const x0 = cx - hw - 6, x1 = cx + hw + 6, mid = Math.round((yHi + yLo) / 2);
+          f.fillStyle(col, 0.15); f.fillRect(x0, yHi, x1 - x0, yLo - yHi);
+          f.fillStyle(col, 0.9);
+          for (let x = x0; x < x1; x += 3) { f.fillRect(x, yHi, 2, 1); f.fillRect(x, yLo, 2, 1); }
+          for (let i = 0; i < 3; i++) {
+            f.fillRect(x0 - 3 + i, mid - 2 + i, 1, 5 - i * 2);
+            f.fillRect(x1 + 2 - i, mid - 2 + i, 1, 5 - i * 2);
+          }
+        }
+        // 놋그릇
+        for (let y = 0; y < bowlH; y++) {
+          const t = y / bowlH, half = Math.round(bowlW / 2 * (1 - 0.42 * t * t)), Y = rimY + y;
+          f.fillStyle(P.B); f.fillRect(cx - half, Y, half * 2 + 1, 1);
+          f.fillStyle(P.b); f.fillRect(cx - half + 1, Y, half * 2 - 1, 1);
+          f.fillStyle(P.l); f.fillRect(cx - half + 2, Y, Math.max(1, Math.round(half * 0.45)), 1);
+          f.fillStyle(P.B); f.fillRect(cx + half - 2, Y, 2, 1);
+        }
+        const rimL = cx - Math.round(bowlW / 2) - 1;
+        f.fillStyle(P.l); f.fillRect(rimL, rimY - 1, bowlW + 3, 2);
+        f.fillStyle(P.B); f.fillRect(rimL, rimY + 1, bowlW + 3, 1);
+        const fw = Math.round(bowlW * 0.36);
+        f.fillRect(cx - Math.round(fw / 2), rimY + bowlH, fw, 2);
+        f.fillStyle(P.w, 0.7); f.fillRect(cx - Math.round(bowlW * 0.32), rimY + 3, 1, Math.max(2, Math.round(bowlH * 0.4)));
+        // 떨어지는 얼음 가루
+        this.flakes = this.flakes.filter((fl) => {
+          fl.x += fl.vx * dt; fl.y += fl.vy * dt;
+          const Y = L.outletY + Math.round(fl.y);
+          if (Y >= apex) return false;
+          f.fillStyle(fl.vx > 0 ? P.w : P.a); f.fillRect(cx + Math.round(fl.x), Y, 1, 1);
+          return true;
+        });
+      }
+    }
+
+    const game = new Phaser.Game({
+      type: Phaser.AUTO, parent: view, width: sz.w, height: sz.h, zoom: sz.z, pixelArt: true, backgroundColor: C.sky,
+      scale: { mode: Phaser.Scale.NONE }, input: { keyboard: false, mouse: false, touch: false, gamepad: false },
+      audio: { noAudio: true }, banner: false, scene: Shop,
+    });
+    new ResizeObserver(() => {
+      const n = sizeFor();
+      if (n.z === sz.z && n.w === sz.w && n.h === sz.h) return;
+      sz = n; game.scale.setZoom(n.z); game.scale.resize(n.w, n.h);
+    }).observe(stage);
+  }
+
+  /* ---------- 시작 ---------- */
+  ["pat", "inj", "milk"].forEach((k) => { placed.push(k); addDecor(k); });
+  renderOrder(); renderHud();
+  startPixels();
+  let last = 0;
+  function frame(t) {
+    const dt = last ? Math.min(0.1, (t - last) / 1000) : 0;
+    last = t; now = t;
+    pollPads(); update(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

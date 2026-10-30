@@ -1,0 +1,112 @@
+<title>빙수 개인정보 처리방침</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* 한 단 문서: 좁은 본문 폭, 위에 얼음빛 머리띠 하나, 항목은 표처럼 줄맞춤 */
+:root {
+  --bg: #f6fafc;
+  --surface: #ffffff;
+  --fg: #1c2a33;
+  --muted: #5b6e7a;
+  --line: #d8e5ec;
+  --accent: #2f6fb3;
+  --ice: #e3f1f8;
+  --display: "Gowun Dodum", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --body: "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f171c; --surface: #152027; --fg: #e3edf2; --muted: #93a8b4;
+    --line: #26363f; --accent: #8cc0f0; --ice: #18303d; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f171c; --surface: #152027; --fg: #e3edf2; --muted: #93a8b4;
+  --line: #26363f; --accent: #8cc0f0; --ice: #18303d; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.75; }
+.wrap { max-width: 42rem; margin: 0 auto; padding-block: 3rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { display: grid; gap: .5rem; padding-bottom: 1.75rem; border-bottom: 1px solid var(--line); }
+.eyebrow { font-size: .8rem; letter-spacing: .08em; color: var(--accent); font-weight: 500; }
+h1 { font-family: var(--display); font-weight: 400; font-size: 2.1rem; line-height: 1.25; margin: 0; text-wrap: balance; }
+.meta { color: var(--muted); font-size: .9rem; margin: 0; }
+.summary { margin-top: 2rem; background: var(--ice); border-radius: 12px; padding: 1.1rem 1.25rem; }
+.summary p { margin: 0; }
+section { display: grid; gap: .6rem; margin-top: 2.25rem; }
+h2 { font-family: var(--display); font-weight: 400; font-size: 1.3rem; margin: 0; text-wrap: balance; }
+p, ul { margin: 0; }
+ul { padding-left: 1.2rem; display: grid; gap: .35rem; }
+.rows { display: grid; border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 9.5rem 1fr; gap: 1rem; padding: .75rem 0; border-bottom: 1px solid var(--line); }
+.row > * { min-width: 0; }
+.row dt { font-weight: 500; }
+.row dd { margin: 0; color: var(--fg); }
+code { font-size: .9em; background: var(--ice); padding: .05rem .3rem; border-radius: 4px; overflow-wrap: anywhere; }
+footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
+@media (max-width: 520px) { .row { grid-template-columns: 1fr; gap: .15rem; } h1 { font-size: 1.75rem; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">빙수 · iPhone·iPad 게임 런처</div>
+    <h1>개인정보 처리방침</h1>
+    <p class="meta">시행일 2026년 10월 30일 · 적용 대상: 빙수 앱(TestFlight 베타 포함)</p>
+  </header>
+
+  <div class="summary">
+    <p>빙수는 이용자의 개인정보를 수집하지 않으며, 개발자가 운영하는 서버도 없습니다. 앱에서 만들어지는 모든 데이터는 이용자의 기기와 이용자 본인의 iCloud 안에만 저장됩니다.</p>
+  </div>
+
+  <section>
+    <h2>1. 수집하는 정보</h2>
+    <p>없습니다. 빙수에는 회원가입, 광고, 분석 도구, 추적 기능이 없고, 개발자에게 어떤 데이터도 보내지 않습니다.</p>
+  </section>
+
+  <section>
+    <h2>2. 기기 안에 저장하는 정보</h2>
+    <p>앱이 동작하는 데 필요한 아래 데이터는 이용자의 기기에만 저장되며, 앱을 지우면 함께 지워집니다.</p>
+    <dl class="rows">
+      <div class="row"><dt>가져온 게임 파일</dt><dd>이용자가 직접 고른 zip 파일을 풀어 둔 것입니다. 빙수는 직접 만든 기본 게임 "Bingsu" 말고는 게임 파일을 포함하거나 제공하지 않습니다.</dd></div>
+      <div class="row"><dt>기본 게임 기록</dt><dd>기본 게임 "Bingsu"의 최고 점수 하나. 인터넷에 접속하지 않고 기기 안에만 남습니다.</dd></div>
+      <div class="row"><dt>게임 저장 데이터</dt><dd>게임 진행 상황과 백업 파일. 앱 안에만 저장되며, 이용자가 게임 설정의 "백업 파일 내보내기"로 직접 꺼낼 수 있습니다.</dd></div>
+      <div class="row"><dt>설정</dt><dd>가상 패드 배치, 진동 세기, 표지 이미지 같은 앱·게임별 설정.</dd></div>
+      <div class="row"><dt>성능 기록</dt><dd>프레임 수, 메모리, 기기 온도 상태, 기기 모델명, iOS·앱 버전. 이름이나 기기 고유 식별자는 들어가지 않으며 기기 밖으로 보내지 않습니다.</dd></div>
+      <div class="row"><dt>웹 게임 데이터</dt><dd>이용자가 추가한 웹 게임의 쿠키와 사이트 저장소. 게임마다 따로 보관하며, 목록에서 그 게임을 삭제하면 함께 지워집니다.</dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>3. iCloud 동기화</h2>
+    <p>설정에서 iCloud 동기화를 켜 두면, 기기에서 가져온 게임의 저장 데이터와 게임별 설정이 이용자 본인 Apple ID 의 iCloud Drive 에 있는 빙수 전용 공간에 복사되어 같은 Apple ID 의 다른 기기와 공유됩니다. 이 데이터는 Apple 이 보관하며 개발자는 볼 수 없습니다. 동기화 파일에는 저장한 기기를 구분하려고 기기 이름이 함께 들어가고, 이 이름은 이용자 본인의 기기 화면에만 표시됩니다. 웹 게임의 로그인 정보는 iCloud 로 보내지 않습니다. 동기화는 설정에서 언제든 끌 수 있습니다.</p>
+  </section>
+
+  <section>
+    <h2>4. 외부 사이트와 내려받기</h2>
+    <ul>
+      <li>이용자가 주소로 추가한 웹 게임은 앱 안 브라우저로 그 사이트를 엽니다. 그 사이트가 수집하는 정보는 각 사이트의 운영자와 개인정보 처리방침을 따릅니다.</li>
+      <li>"주소로 zip 내려받기"는 이용자가 직접 입력한 https 주소에서만 파일을 받습니다. 빙수는 주소를 추천하거나 앱에 넣어 두지 않습니다.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>5. 기기 권한</h2>
+    <dl class="rows">
+      <div class="row"><dt>사진</dt><dd>게임 표지 이미지를 고를 때만, 이용자가 고른 사진 한 장을 읽습니다.</dd></div>
+      <div class="row"><dt>게임 컨트롤러</dt><dd>연결된 컨트롤러의 버튼 입력과 진동만 사용합니다.</dd></div>
+      <div class="row"><dt>로컬 네트워크</dt><dd>같은 네트워크의 PC 서버에 접속하는 게임을 위해 예약된 권한입니다. 쓰게 되면 그 전에 시스템이 이용자에게 묻습니다.</dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>6. 어린이의 개인정보</h2>
+    <p>빙수는 누구의 개인정보도 수집하지 않으므로 어린이의 개인정보도 수집하지 않습니다.</p>
+  </section>
+
+  <section>
+    <h2>7. 문의와 변경</h2>
+    <p>베타 기간의 문의는 TestFlight 앱에서 빙수를 고른 뒤 "베타 피드백 보내기"로 보내 주세요. 이 방침이 바뀌면 이 페이지에 바뀐 내용과 시행일을 먼저 알립니다.</p>
+  </section>
+
+  <footer>빙수는 비영리 개인 프로젝트입니다.</footer>
+</div>

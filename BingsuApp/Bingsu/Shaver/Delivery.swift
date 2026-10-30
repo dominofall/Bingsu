@@ -1,0 +1,445 @@
+import Foundation
+import Combine
+
+/// 게임 가져오기 파이프라인.
+/// zip/폴더 → 임시 폴더에 압축 해제 → (app.asar 풀기) → 게임 확인 → Application Support/Games/<id>/ 등록.
+/// 같은 게임(게임 이름·dataPathApp 일치)이 이미 있으면 덮어쓰기 전에 멈추고 업데이트 확인 화면을 띄운다 (7.5).
+/// 기존 게임 폴더는 사용자가 고른 뒤 이름 바꾸기 한 번으로 교체하므로, 중간에 취소해도 망가지지 않는다.
+@MainActor
+final class Delivery: ObservableObject {
+    enum Stage: Equatable {
+        case idle
+        case copying            // 선택한 파일을 앱 안으로 복사
+        case unzipping(Double)  // 압축 해제
+        case unpacking(Double)  // asar 풀기
+        case checking           // 게임 확인
+        case confirmUpdate(Pending) // 이미 있는 게임: 업데이트 / 따로 추가 / 취소
+        case installing         // 게임 파일 바꾸는 중
+        case done(Result)
+        case failed(String)
+
+        var title: String {
+            switch self {
+            case .idle: return ""
+            case .copying: return "파일 복사 중"
+            case .unzipping: return "압축 해제 중"
+            case .unpacking: return "게임 파일 꺼내는 중"
+            case .checking: return "게임 확인 중"
+            case .confirmUpdate: return "이미 있는 게임이에요"
+            case .installing: return "게임 파일 바꾸는 중"
+            case .done: return "준비됐어요"
+            case .failed: return "가져오지 못했어요"
+            }
+        }
+        var fraction: Double? {
+            switch self {
+            case .unzipping(let f): return f * 0.6
+            case .unpacking(let f): return 0.6 + f * 0.35
+            case .checking: return 0.97
+            case .installing: return 0.99
+            case .done: return 1
+            default: return nil
+            }
+        }
+        var isBusy: Bool {
+            switch self {
+            case .idle, .done, .failed: return false
+            default: return true
+            }
+        }
+    }
+
+    /// 임시 폴더에 풀어 둔, 아직 등록하지 않은 게임
+    struct Staged: Sendable {
+        let work: URL       // Games/.import-<uuid>/ (끝나면 지움)
+        let root: URL       // 게임 루트 (work 안)
+        let recipe: Dish.Recipe
+        let title: String
+        let dataPathApp: String
+        let version: String?
+        let sourceName: String
+    }
+
+    /// 업데이트 확인을 기다리는 가져오기
+    struct Pending: Equatable {
+        let staged: Staged
+        let existing: Dish
+        let oldVersion: String?
+        static func == (a: Pending, b: Pending) -> Bool { a.staged.work == b.staged.work }
+    }
+
+    enum InstallMode: Sendable {
+        case new
+        case update(Dish, backup: Bool, keepOld: Bool)
+        case copy
+    }
+
+    struct Result: Equatable {
+        let dish: Dish
+        let version: String?
+        let bytes: UInt64
+        let updatedExisting: Bool
+        var previousVersion: String? = nil
+        var backedUp = false
+        var keptOld = false
+    }
+
+    @Published private(set) var stage: Stage = .idle
+    /// 백그라운드 파이프라인에서 읽는 취소 플래그 (스레드 안전). 가져오기마다 새로 만들어, 취소된 작업의 늦은 보고가 다음 가져오기를 덮지 않게 한다.
+    private var cancelFlag = CancelFlag()
+
+    /// 게임 폴더에 남기는 메타데이터 파일
+    static let manifestName = "bingsu.json"
+    /// 업데이트 때 "예전 버전 파일 삭제"를 끄면 예전 폴더를 Games/<id>.old 로 남긴다 (게임 목록에는 안 보임)
+    static let oldSuffix = ".old"
+
+    /// 취소: 확인 화면이면 풀어 둔 임시 폴더만 지운다. 기존 게임은 그대로.
+    func cancel() {
+        cancelFlag.set(true)
+        if case .confirmUpdate(let p) = stage { Self.discard(p.staged) }
+        if case .installing = stage { return } // 이름 바꾸기 몇 번이라 금방 끝난다. 끝까지 둔다.
+        stage = .idle
+    }
+
+    /// `preferring`: 게임칩 "새 버전으로 업데이트"로 연 경우 그 게임을 먼저 비교한다.
+    func start(from source: URL, preferring targetID: String? = nil, removeWindowsBinaries: Bool = true) {
+        guard !stage.isBusy else { NSLog("[Delivery] busy — ignored new import"); return }
+        let flag = CancelFlag()
+        cancelFlag = flag
+        stage = .copying
+        let scoped = source.startAccessingSecurityScopedResource()
+        Task.detached(priority: .userInitiated) { [weak self] in
+            defer {
+                if scoped { source.stopAccessingSecurityScopedResource() }
+                Self.removeInboxCopy(source)
+            }
+            do {
+                Self.sweepStaleWork()
+                let staged = try await Self.prepare(source: source, removeWindowsBinaries: removeWindowsBinaries) { stage in
+                    Task { @MainActor in if !flag.value { self?.stage = stage } }
+                } isCancelled: { flag.value }
+                if flag.value { Self.discard(staged); return }
+                if let existing = Self.findExisting(title: staged.title, dataPathApp: staged.dataPathApp, preferring: targetID) {
+                    let old = Self.manifestVersion(existing.location)
+                    NSLog("[Delivery] existing game \(existing.id): \(old ?? "?") → \(staged.version ?? "?") — waiting for choice")
+                    await MainActor.run {
+                        if flag.value { Self.discard(staged) } else { self?.stage = .confirmUpdate(Pending(staged: staged, existing: existing, oldVersion: old)) }
+                    }
+                } else {
+                    await self?.install(staged, mode: .new)
+                }
+            } catch {
+                NSLog("[Delivery] failed: \(error.localizedDescription)")
+                await MainActor.run { if !flag.value { self?.stage = .failed(error.localizedDescription) } }
+            }
+        }
+    }
+
+    /// 확인 화면에서 고른 것 실행
+    func confirm(_ mode: InstallMode) {
+        guard case .confirmUpdate(let p) = stage else { return }
+        Task { await install(p.staged, mode: mode, previousVersion: p.oldVersion) }
+    }
+
+    private func install(_ staged: Staged, mode: InstallMode, previousVersion: String? = nil) async {
+        stage = .installing
+        do {
+            var result = try await Task.detached(priority: .userInitiated) { try Self.install(staged, mode: mode) }.value
+            result.previousVersion = previousVersion
+            NSLog("[Delivery] installed \(result.dish.id) update=\(result.updatedExisting) backup=\(result.backedUp) keptOld=\(result.keptOld)")
+            stage = .done(result)
+        } catch {
+            Self.discard(staged)
+            NSLog("[Delivery] install failed: \(error.localizedDescription)")
+            stage = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - 파이프라인 (백그라운드)
+
+    /// 1~4단계: 임시 폴더에 풀고 게임을 확인한다. 기존 게임은 건드리지 않는다.
+    nonisolated static func prepare(source: URL, removeWindowsBinaries: Bool,
+                                    report: @escaping (Stage) -> Void, isCancelled: @escaping () -> Bool) async throws -> Staged {
+        let fm = FileManager.default
+        let gamesDir = MenuBoardStore.gamesDir
+        let work = gamesDir.appendingPathComponent(".import-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: work, withIntermediateDirectories: true)
+        var ok = false
+        defer { if !ok { try? fm.removeItem(at: work) } }
+
+        // 1) 복사 또는 압축 해제
+        let staged = work.appendingPathComponent("staged", isDirectory: true)
+        var isDir: ObjCBool = false
+        // iCloud Drive·다른 파일 제공자의 파일은 아직 기기에 내려오지 않았을 수 있다(iPad 에서 흔함).
+        // NSFileCoordinator 로 읽기를 조정하면 내려받기가 끝날 때까지 기다린 뒤 실제 파일 경로를 준다.
+        report(.copying)
+        let local = try coordinatedLocalCopy(of: source, into: work, isCancelled: isCancelled)
+        fm.fileExists(atPath: local.path, isDirectory: &isDir)
+        if isDir.boolValue {
+            if local != staged { try fm.moveItem(at: local, to: staged) }
+        } else {
+            report(.unzipping(0))
+            try SafeUnzip.unzip(local, to: staged, progress: { report(.unzipping($0)) }, isCancelled: isCancelled)
+            try? fm.removeItem(at: local)
+        }
+
+        // 2) 게임 루트 찾기: 최상위에 폴더 하나뿐이면 그 안으로
+        var root = staged
+        while true {
+            let items = visibleItems(root)
+            if items.count == 1, (try? items[0].resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { root = items[0] } else { break }
+        }
+
+        // 3) asar 풀기 (Electron)
+        let asar = root.appendingPathComponent("resources/app.asar")
+        if fm.fileExists(atPath: asar.path) {
+            report(.unpacking(0))
+            let archive = try AsarArchive(url: asar)
+            let need = archive.totalBytes
+            let free = SafeUnzip.freeSpace(at: gamesDir)
+            if free > 0, need + 200 * 1024 * 1024 > free { throw SafeUnzip.UnzipError.notEnoughSpace(needed: need, free: free) }
+            let unpacked = work.appendingPathComponent("unpacked", isDirectory: true)
+            try archive.extract(to: unpacked, progress: { report(.unpacking($0)) }, isCancelled: isCancelled)
+            // 원본 안내문·크레딧은 보존
+            for name in ["먼저 읽어주세요.txt", "패치노트.txt", "CREDITS.txt", "LICENSE"] {
+                let f = root.appendingPathComponent(name)
+                if fm.fileExists(atPath: f.path) { try? fm.copyItem(at: f, to: unpacked.appendingPathComponent(name)) }
+            }
+            try fm.removeItem(at: root)
+            root = unpacked
+        }
+
+        // 4) 게임 확인
+        report(.checking)
+        let recipe = RecipeDetector.detect(folder: root)
+        guard recipe != .unknown else {
+            throw DeliveryError.unsupported(found: visibleItems(root).map(\.lastPathComponent).sorted())
+        }
+        let desc = RecipeDetector.describe(folder: root, recipe: recipe)
+        let version = Self.readVersion(folder: root, recipe: recipe)
+        if removeWindowsBinaries { Self.pruneWindowsBinaries(in: root, recipe: recipe) }
+        ok = true
+        return Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
+                      version: version, sourceName: source.lastPathComponent)
+    }
+
+    /// 5단계: 등록. 업데이트는 기존 폴더를 옆으로 옮긴 뒤 새 폴더를 그 자리로 옮긴다 (같은 볼륨이라 이름 바꾸기 = 원자적).
+    nonisolated static func install(_ s: Staged, mode: InstallMode) throws -> Result {
+        let fm = FileManager.default
+        let gamesDir = MenuBoardStore.gamesDir
+        defer { try? fm.removeItem(at: s.work) }
+
+        var title = s.title
+        let id: String
+        switch mode {
+        case .new:
+            id = uniqueID(slug(s.dataPathApp.isEmpty ? s.title : s.dataPathApp))
+        case .copy:
+            id = uniqueID(slug(s.dataPathApp.isEmpty ? s.title : s.dataPathApp), forceSuffix: true)
+            if let n = id.split(separator: "-").last.flatMap({ Int($0) }) { title = "\(s.title) (\(n))" }
+        case .update(let dish, _, _):
+            id = dish.id
+        }
+
+        let manifest: [String: Any] = ["title": title, "dataPathApp": s.dataPathApp, "recipe": s.recipe.rawValue,
+                                       "version": s.version ?? "", "importedAt": ISO8601DateFormatter().string(from: Date()),
+                                       "sourceName": s.sourceName]
+        try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
+            .write(to: s.root.appendingPathComponent(manifestName))
+
+        let final = gamesDir.appendingPathComponent(id, isDirectory: true)
+        var backedUp = false, keptOld = false
+        if case .update(let dish, let backup, let keepOld) = mode {
+            // 게임 폴더 밖은 절대 건드리지 않는다
+            guard dish.location.standardizedFileURL.deletingLastPathComponent() == gamesDir.standardizedFileURL else {
+                throw DeliveryError.cannotReplace
+            }
+            if backup { backedUp = Freezer(dish: dish).freeze() != nil }
+            let aside = gamesDir.appendingPathComponent(".replacing-\(id)-\(UUID().uuidString)", isDirectory: true)
+            try fm.moveItem(at: final, to: aside)
+            do {
+                try fm.moveItem(at: s.root, to: final)
+            } catch {
+                try? fm.moveItem(at: aside, to: final) // 되돌리기
+                throw error
+            }
+            if keepOld {
+                let old = gamesDir.appendingPathComponent(id + oldSuffix, isDirectory: true)
+                try? fm.removeItem(at: old)
+                keptOld = (try? fm.moveItem(at: aside, to: old)) != nil
+            }
+            if !keptOld { try? fm.removeItem(at: aside) }
+        } else {
+            try fm.moveItem(at: s.root, to: final)
+        }
+
+        let dish = Dish(id: id, title: title, recipe: s.recipe, location: final, dataPathApp: s.dataPathApp)
+        var result = Result(dish: dish, version: s.version, bytes: folderSize(final), updatedExisting: { if case .update = mode { return true }; return false }())
+        result.backedUp = backedUp
+        result.keptOld = keptOld
+        return result
+    }
+
+    /// 같은 게임 찾기: 저장 폴더 이름(dataPathApp)이 같거나, 그게 없으면 제목이 같은 것.
+    nonisolated static func findExisting(title: String, dataPathApp: String, preferring targetID: String?) -> Dish? {
+        let fm = FileManager.default
+        let folders = ((try? fm.contentsOfDirectory(at: MenuBoardStore.gamesDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? [])
+            .filter { !$0.lastPathComponent.hasPrefix(".") && !$0.lastPathComponent.hasSuffix(oldSuffix) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let dishes = folders.compactMap { MenuBoardStore.dish(forFolder: $0, id: $0.lastPathComponent) }
+        let matches = dishes.filter { d in
+            !dataPathApp.isEmpty ? d.dataPathApp == dataPathApp : d.title == title
+        }
+        if let targetID, let d = matches.first(where: { $0.id == targetID }) { return d }
+        let base = slug(dataPathApp.isEmpty ? title : dataPathApp)
+        return matches.first(where: { $0.id == base }) ?? matches.first
+    }
+
+    nonisolated static func manifestVersion(_ folder: URL) -> String? {
+        guard let data = try? Data(contentsOf: folder.appendingPathComponent(manifestName)),
+              let m = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let v = m["version"] as? String, !v.isEmpty else { return nil }
+        return v
+    }
+
+    /// 이미 쓰는 id 면 -2, -3 … (forceSuffix 면 처음부터 -2)
+    nonisolated static func uniqueID(_ base: String, forceSuffix: Bool = false) -> String {
+        let fm = FileManager.default
+        func taken(_ id: String) -> Bool {
+            fm.fileExists(atPath: MenuBoardStore.gamesDir.appendingPathComponent(id).path)
+                || MenuBoardStore.deliveryDishes.contains { $0.id == id }
+        }
+        if !forceSuffix, !taken(base) { return base }
+        var n = 2
+        while taken("\(base)-\(n)") { n += 1 }
+        return "\(base)-\(n)"
+    }
+
+    nonisolated static func discard(_ s: Staged) {
+        try? FileManager.default.removeItem(at: s.work)
+    }
+
+    /// 앱이 가져오기 중에 꺼졌으면 임시 폴더가 남는다. 다음 가져오기 때 치운다.
+    nonisolated static func sweepStaleWork() {
+        let fm = FileManager.default
+        for f in (try? fm.contentsOfDirectory(at: MenuBoardStore.gamesDir, includingPropertiesForKeys: nil)) ?? [] {
+            let n = f.lastPathComponent
+            if n.hasPrefix(".import-") || n.hasPrefix(".replacing-") { try? fm.removeItem(at: f) }
+        }
+    }
+
+    /// 다른 앱이 공유 시트로 보낸 파일은 Documents/Inbox 에 복사돼 온다. 가져온 뒤 지워 용량을 돌려준다.
+    nonisolated static func removeInboxCopy(_ source: URL) {
+        if isOwnCopy(source) { try? FileManager.default.removeItem(at: source) }
+    }
+
+    /// 다른 앱이 넘겨준 Documents/Inbox 사본이나 파일 선택기가 앱 임시 폴더(tmp/…-Inbox)에 만든 복사본인가.
+    /// 우리 것이니 다시 복사하지 않고 옮기고, 끝나면 지운다
+    nonisolated static func isOwnCopy(_ url: URL) -> Bool {
+        let fm = FileManager.default
+        let path = url.resolvingSymlinksInPath().standardizedFileURL.path
+        let roots = [fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Inbox", isDirectory: true),
+                     fm.temporaryDirectory]
+        return roots.contains { path.hasPrefix($0.resolvingSymlinksInPath().standardizedFileURL.path + "/") }
+    }
+
+    /// 선택한 파일·폴더를 앱 임시 폴더로 가져온다. iCloud 등 아직 내려받지 않은 항목은 조정 읽기가 내려받기를 끝낼 때까지 기다린다.
+    /// 폴더는 `staged` 로, 파일은 `source.<확장자>` 로 복사한다. 복사 실패(내려받기 실패 등)는 그대로 던진다.
+    nonisolated static func coordinatedLocalCopy(of source: URL, into work: URL, isCancelled: @escaping () -> Bool) throws -> URL {
+        let fm = FileManager.default
+        if (try? source.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true {
+            try? fm.startDownloadingUbiquitousItem(at: source)
+        }
+        var isDir: ObjCBool = false
+        var copyError: Error?
+        var coordError: NSError?
+        var dest = work.appendingPathComponent("staged", isDirectory: true)
+        NSFileCoordinator().coordinate(readingItemAt: source, options: [.withoutChanges], error: &coordError) { real in
+            do {
+                fm.fileExists(atPath: real.path, isDirectory: &isDir)
+                if !isDir.boolValue {
+                    dest = work.appendingPathComponent("source." + (real.pathExtension.isEmpty ? "zip" : real.pathExtension))
+                }
+                if isCancelled() { throw CancellationError() }
+                // 앱 내 다운로드로 받은 파일은 복사하지 않고 옮긴다 (큰 zip 이 두 벌 생기지 않게, 끝나면 남지 않게)
+                // 선택기가 만든 복사본도 마찬가지로 옮긴다
+                if Courier.isDownloadedFile(real) || Self.isOwnCopy(real) { try fm.moveItem(at: real, to: dest) } else { try fm.copyItem(at: real, to: dest) }
+            } catch { copyError = error }
+        }
+        if let coordError { throw DeliveryError.cannotRead(coordError.localizedDescription) }
+        if let copyError { throw DeliveryError.cannotRead(copyError.localizedDescription) }
+        return dest
+    }
+
+    nonisolated static func visibleItems(_ folder: URL) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey])) ?? [])
+            .filter { !$0.lastPathComponent.hasPrefix(".") }
+    }
+
+    final class CancelFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var flag = false
+        var value: Bool { lock.lock(); defer { lock.unlock() }; return flag }
+        func set(_ v: Bool) { lock.lock(); flag = v; lock.unlock() }
+    }
+
+    enum DeliveryError: LocalizedError {
+        case unsupported(found: [String])
+        case cannotReplace
+        case cannotRead(String)
+        var errorDescription: String? {
+            switch self {
+            case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
+            case .unsupported(let found):
+                guard !found.isEmpty else { return "지원하지 않는 게임이에요 · 압축 안에 파일이 없어요" }
+                let shown = found.prefix(6).joined(separator: ", ")
+                return "지원하지 않는 게임이에요 · 발견한 파일: \(shown)\(found.count > 6 ? " 외 \(found.count - 6)개" : "")"
+            case .cannotReplace: return "기존 게임 폴더를 바꿀 수 없어요."
+            }
+        }
+    }
+
+    nonisolated static func readVersion(folder: URL, recipe: Dish.Recipe) -> String? {
+        if recipe == .electron,
+           let data = try? Data(contentsOf: folder.appendingPathComponent("package.json")),
+           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            return obj["version"] as? String
+        }
+        return nil
+    }
+
+    nonisolated static func slug(_ s: String) -> String {
+        let lowered = s.lowercased()
+        var out = ""
+        for ch in lowered {
+            if ch.isLetter || ch.isNumber { out.append(ch) } else if !out.hasSuffix("-") { out.append("-") }
+        }
+        let trimmed = out.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        return trimmed.isEmpty ? "game-\(Int(Date().timeIntervalSince1970))" : trimmed
+    }
+
+    /// Windows 실행 파일·런타임은 iOS에서 쓸 일이 없으니 지워 용량을 아낀다. 게임 데이터는 건드리지 않는다.
+    nonisolated static func pruneWindowsBinaries(in folder: URL, recipe: Dish.Recipe) {
+        let fm = FileManager.default
+        let exts: Set<String> = ["exe", "dll", "pak", "bin", "dat"]
+        let electronJunk: Set<String> = ["icudtl.dat", "snapshot_blob.bin", "v8_context_snapshot.bin", "resources.pak",
+                                         "chrome_100_percent.pak", "chrome_200_percent.pak", "vk_swiftshader_icd.json", "LICENSES.chromium.html"]
+        guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return }
+        for f in items {
+            let name = f.lastPathComponent
+            let ext = f.pathExtension.lowercased()
+            if ext == "exe" || ext == "dll" { try? fm.removeItem(at: f); continue }
+            if recipe == .electron, (electronJunk.contains(name) || name == "locales" || (exts.contains(ext) && name != "soundfont.sf2")) {
+                try? fm.removeItem(at: f)
+            }
+        }
+    }
+
+    nonisolated static func folderSize(_ url: URL) -> UInt64 {
+        var total: UInt64 = 0
+        if let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let f as URL in e { total += UInt64((try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        }
+        return total
+    }
+}

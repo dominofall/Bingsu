@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>진동 실험실</title>
+<style>
+  /* 빙수는 로컬 게임을 16:9 상자에 띄운다 → 상자 너비의 1/64 를 기준 크기로 잡아 어느 화면에서도 꽉 차게 (64 × 36 rem) */
+  :root { --bg: #10141f; --card: #1b2233; --line: #2d3750; --text: #e8ecf5; --dim: #8b95ad; --accent: #7cc4ff; font-size: min(calc(100vw / 64), calc(100vh / 36)); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; overflow: hidden; }
+  main { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto 1fr auto; gap: 1rem; padding: 1rem 1.4rem; width: 64rem; height: 36rem; margin: 0 auto; }
+  header { grid-column: 1 / -1; display: flex; gap: 1.4rem; align-items: baseline; }
+  h1 { font-size: 1.9rem; margin: 0; }
+  .status { color: var(--dim); font-size: 1.2rem; }
+  .status b { color: var(--text); font-weight: 600; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem; display: flex; flex-direction: column; gap: 0.7rem; }
+  h2 { font-size: 1.4rem; margin: 0; color: var(--accent); }
+  p { margin: 0; color: var(--dim); font-size: 1.05rem; line-height: 1.35; }
+  code { font-size: 0.95em; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 0.7rem; flex: 1; }
+  button { background: #252e45; color: var(--text); border: 0.2rem solid transparent; border-radius: 0.8rem; padding: 0.4rem; font: inherit; font-size: 1.35rem; line-height: 1.2; }
+  button small { display: block; color: var(--dim); font-size: 1rem; margin-top: 0.2rem; }
+  button.focus { border-color: var(--accent); }
+  button.flash { background: #3a4a70; }
+  #log { grid-column: 1 / -1; color: var(--dim); font: 1rem/1.3 ui-monospace, Menlo, monospace; white-space: pre; overflow: hidden; height: 2.6rem; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>진동 실험실</h1>
+    <span class="status">패드 <b id="pad">없음</b> · 진동 기능 <b id="act">?</b> · 소리 <b id="snd">꺼짐</b></span>
+  </header>
+
+  <section>
+    <h2>① 게임이 직접 요청</h2>
+    <p>표준 Gamepad API <code>playEffect("dual-rumble")</code> — 크롬에서도 똑같이 울려요</p>
+    <div class="grid" id="direct"></div>
+  </section>
+
+  <section>
+    <h2>② 효과음에 맞춘 진동</h2>
+    <p>게임은 소리만 내요. 빙수가 파일 이름을 보고 진동표대로 울려요</p>
+    <div class="grid" id="sfx"></div>
+  </section>
+
+  <div id="log">십자키로 고르고 A 로 누르세요. 화면을 눌러도 돼요.</div>
+</main>
+<script>
+"use strict";
+// ① 직접 요청: [이름, 설명, 큰 모터, 작은 모터, 길이(ms), 반복, 간격(ms)]
+const DIRECT = [
+  // 첫 줄: 길이는 0.3초로 같고 세기만 다름 → 패드가 세기 값을 받는지 가린다.
+  // 빙수는 컨트롤러 세기를 0.4~1 로 다시 맞추므로 (설정 세기 100% 기준) 실제로 나가는 값은 0.43 · 0.70 · 1.00
+  ["같은 길이 ①", "보냄 0.43 · 0.3초", 0.05, 0.035, 300],
+  ["같은 길이 ②", "보냄 0.70 · 0.3초", 0.5, 0.35, 300],
+  ["같은 길이 ③", "보냄 1.00 · 0.3초", 1.0, 0.7, 300],
+  ["큰 모터만", "묵직하게", 1.0, 0, 300],
+  ["작은 모터만", "가볍게", 0, 1.0, 300],
+  ["기준 진동", "100% · 1초 (패드 단계 비교용)", 1.0, 1.0, 1000],
+  ["연타", "0.1초 × 5", 0.8, 0.5, 100, 5, 150],
+  ["심장박동", "두 번씩 × 3", 0.7, 0.2, 90, 6, 0],
+  ["멈춤", "reset()", -1],
+];
+// ② 효과음: [이름, 설명, 파일]
+const SFX = [
+  ["피격", "lab_hit.wav", "lab_hit.wav"],
+  ["강한 피격", "lab_strong.wav", "lab_strong.wav"],
+  ["기절", "lab_faint.wav", "lab_faint.wav"],
+  ["볼 흔들림", "lab_shake.wav ×3", "lab_shake.wav", 3],
+  ["삑 (표에 없음)", "진동 없어야 정상", "lab_beep.wav"],
+  ["날카로움 0", "100% · 0.6초 · 묵직", "lab_sharp0.wav"],
+  ["날카로움 0.5", "100% · 0.6초", "lab_sharp50.wav"],
+  ["날카로움 1", "100% · 0.6초 · 가볍게", "lab_sharp100.wav"],
+];
+
+const $ = (id) => document.getElementById(id);
+const lines = [];
+function log(m) { lines.unshift(new Date().toLocaleTimeString("ko-KR", { hour12: false }) + "  " + m); lines.length = Math.min(lines.length, 2); $("log").textContent = lines.join("\n"); }
+
+function pad() { const l = navigator.getGamepads ? navigator.getGamepads() : []; for (const p of l) if (p) return p; return null; }
+
+function rumble(strong, weak, ms) {
+  const a = pad()?.vibrationActuator;
+  if (!a) { log("패드가 아직 안 잡혔어요: 컨트롤러 버튼을 한 번 누른 뒤 다시 해 보세요"); return; }
+  if (strong < 0) { a.reset?.(); log("멈춤"); return; }
+  a.playEffect("dual-rumble", { duration: ms, strongMagnitude: strong, weakMagnitude: weak })?.catch?.(() => {});
+}
+
+// 효과음: fetch → decodeAudioData → AudioBufferSourceNode.start (빙수가 이 경로에서 파일 이름을 본다)
+let ctx = null;
+const buffers = {};
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state !== "running") ctx.resume?.().catch(() => {});
+  $("snd").textContent = ctx.state === "running" ? "켜짐" : ctx.state;
+  return ctx;
+}
+async function load(file) {
+  if (!buffers[file]) {
+    const data = await (await fetch("assets/" + file)).arrayBuffer();
+    buffers[file] = await audio().decodeAudioData(data);
+  }
+  return buffers[file];
+}
+async function play(file, times = 1) {
+  const c = audio(), b = await load(file);
+  // 반복은 미리 예약(start(나중 시각))하지 않고 그때그때 재생한다: 빙수는 start() 를 부른 순간 진동을 보내기 때문
+  for (let i = 0; i < times; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 450));
+    const s = c.createBufferSource(); s.buffer = b; s.connect(c.destination);
+    s.start();
+  }
+}
+
+// 버튼 만들기
+const all = [];
+function add(parent, title, sub, action) {
+  const b = document.createElement("button");
+  b.innerHTML = title + "<small>" + sub + "</small>";
+  b.addEventListener("click", () => { focus(all.indexOf(b)); press(); });
+  b.action = action; parent.appendChild(b); all.push(b);
+}
+for (const [t, s, st, wk, ms, n = 1, gap = 0] of DIRECT) {
+  add($("direct"), t, s, async () => {
+    for (let i = 0; i < n; i++) {
+      rumble(st, wk, ms);
+      if (i < n - 1) await new Promise((r) => setTimeout(r, ms + (gap || (i % 2 ? 450 : 60))));
+    }
+    if (st >= 0) log(`직접 요청: ${t} (큰 ${st}, 작은 ${wk}, ${ms}ms${n > 1 ? " × " + n : ""})`);
+  });
+}
+for (const [t, s, file, n = 1] of SFX) add($("sfx"), t, s, () => { play(file, n).catch((e) => log("소리 오류: " + e)); log("효과음: " + file + (n > 1 ? " × " + n : "")); });
+
+let cur = 0;
+function focus(i) { all[cur]?.classList.remove("focus"); cur = (i + all.length) % all.length; all[cur].classList.add("focus"); }
+function press() { const b = all[cur]; b.classList.add("flash"); setTimeout(() => b.classList.remove("flash"), 150); b.action(); }
+focus(0);
+
+// 십자키 이동: 같은 묶음 안 3열 격자, 좌우 끝에서 옆 묶음으로
+function move(dx, dy) {
+  const groups = [[...$("direct").children], [...$("sfx").children]];
+  const b = all[cur], g = groups.findIndex((x) => x.includes(b)), i = groups[g].indexOf(b);
+  let ng = g, ni = i;
+  if (dy) ni = Math.min(Math.max(i + dy * 3, 0), groups[g].length - 1);
+  if (dx) {
+    const col = i % 3;
+    if (col + dx < 0 || col + dx > 2 || i + dx >= groups[g].length) { ng = (g + (dx > 0 ? 1 : groups.length - 1)) % groups.length; ni = Math.min(Math.floor(i / 3) * 3 + (dx > 0 ? 0 : 2), groups[ng].length - 1); }
+    else ni = i + dx;
+  }
+  focus(all.indexOf(groups[ng][ni]));
+}
+
+// 패드 읽기: 눌린 순간만
+let prev = [];
+function tick() {
+  const p = pad();
+  $("pad").textContent = p ? (p.id || "연결됨").slice(0, 30) : "없음 — 컨트롤러 버튼을 한 번 누르세요";
+  $("act").textContent = p ? (p.vibrationActuator ? "있음 (" + p.vibrationActuator.type + ")" : "없음") : "?";
+  if (p) {
+    const now = p.buttons.map((b) => b.pressed);
+    const hit = (i) => now[i] && !prev[i];
+    if (hit(12)) move(0, -1); if (hit(13)) move(0, 1); if (hit(14)) move(-1, 0); if (hit(15)) move(1, 0);
+    if (hit(0)) { audio(); press(); }
+    prev = now;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+addEventListener("keydown", (e) => {
+  const k = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+  if (k) { move(...k); e.preventDefault(); } else if (e.key === "Enter" || e.key === " ") { audio(); press(); e.preventDefault(); }
+});
+// 효과음은 미리 받아 둔다 (첫 재생 지연 줄이기)
+for (const [, , f] of SFX) fetch("assets/" + f).catch(() => {});
+</script>
+</body>
+</html>

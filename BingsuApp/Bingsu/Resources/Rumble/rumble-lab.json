@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "game": "진동 실험실 (빙수 시험용, tools/rumble-lab)",
+  "source": "tools/rumble-lab/game/assets/*.wav",
+  "detect": {"localNames": ["bingsu-rumble-lab"]},
+  "rules": [
+    {"sound": "lab_strong.wav", "match": "exact", "strong": 1.0, "weak": 0.6, "duration": 0.28},
+    {"sound": "lab_hit.", "match": "prefix", "strong": 0.6, "weak": 0.4, "duration": 0.16},
+    {"sound": "lab_faint.", "match": "prefix", "strong": 0.8, "weak": 0.2, "duration": 0.45},
+    {"sound": "lab_shake.", "match": "prefix", "strong": 0.45, "weak": 0.2, "duration": 0.12, "note": "볼 흔들림처럼 0.45초 간격으로 세 번 난다"},
+    {"sound": "lab_sharp0.wav", "match": "exact", "strong": 1.0, "weak": 1.0, "duration": 0.6, "sharpness": 0.0, "note": "날카로움 비교: 세기·길이는 같고 날카로움만 다름"},
+    {"sound": "lab_sharp50.wav", "match": "exact", "strong": 1.0, "weak": 1.0, "duration": 0.6, "sharpness": 0.5},
+    {"sound": "lab_sharp100.wav", "match": "exact", "strong": 1.0, "weak": 1.0, "duration": 0.6, "sharpness": 1.0}
+  ]
+}

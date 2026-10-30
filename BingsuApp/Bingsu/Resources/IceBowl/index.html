@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<!-- 빙수 가져오기 진행 그림. 기본 게임 Bingsu 와 같은 방식(Phaser, 픽셀 하나씩 찍은 그림)으로,
+     앱 아이콘의 파란 유리 굽잔에 위에서 얼음 가루가 떨어져 진행률만큼 서서히 쌓인다.
+     85% 에서 파란 시럽이 꼭대기에 얹히고, 다 되면 꼭대기에 딸기 하나가 올라간다.
+     앱은 window.setProgress(진행률 0~1, 모름 여부)만 부른다. 외부 요청 없음.
+     cup.png 는 drawCup() 으로 그린 빈 굽잔 (64×64). 웹 뷰·Phaser 가 뜨는 동안 앱이 먼저 보여 주고,
+     첫 화면을 그리면 bowlReady 로 알려 넘겨받는다. drawCup 을 고치면 cup.png 도 다시 뽑는다. -->
+<title>IceBowl</title>
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; image-rendering: pixelated; }
+</style>
+<script src="../SampleGame/dist/phaser.min.js"></script>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+"use strict";
+// 앱이 장면보다 먼저 부를 수 있어 값만 받아 둔다
+const state = { target: 0, indeterminate: true };
+window.setProgress = (f, indeterminate) => {
+  state.target = Math.max(0, Math.min(1, Number(f) || 0));
+  state.indeterminate = !!indeterminate;
+};
+
+// 64×64 칸 그림. 카메라를 정수 배율로 키워 픽셀이 또렷하게
+const N = 64, CX = 32, TOP_Y = 13, RIM_Y = 40, HW = 19;
+const hex = (s) => parseInt(s.slice(1), 16);
+const P = {
+  w: 0xffffff, i: hex("#e2f2f6"), a: hex("#7cc4e0"), line: hex("#b4d0d7"),
+  g1: hex("#1f418f"), g2: hex("#2a55bd"), g3: hex("#4677d8"), g4: hex("#6e9df2"),   // 유리 굽잔 (아이콘 파랑)
+  sy: hex("#3a6fe0"), sy2: hex("#9cc0ff"), sy3: hex("#2449a8"), e2: hex("#f79a86"),   // 파란 시럽: 몸·광택·그늘
+};
+// 글자 하나 = 픽셀 하나 ('.' 은 투명). 기본 게임과 같은 방식
+const PAL = { w: "#ffffff", a: "#7cc4e0", e: "#ee6a50", f: "#ffb4a0", r: "#c4432f", y: "#ffe6a8", g: "#2f9e6a", h: "#5cc48a" };
+const BERRY = [
+  "..hgg..",
+  ".gg.gg.",
+  ".efeee.",
+  "effeyer",
+  "eyeeeer",
+  "eeeeyer",
+  ".eyeer.",
+  "..eer..",
+  "...r...",
+];
+const SPARK = [
+  [".....", "..a..", ".aaa.", "..a..", "....."],
+  ["..a..", "..a..", "aaaaa", "..a..", "..a.."],
+  [".....", ".....", "..a..", ".....", "....."],
+];
+
+function sheet(scene, key, frames) {
+  const fh = frames[0].length, fw = frames[0][0].length;
+  const tex = scene.textures.createCanvas(key, fw * frames.length, fh), c = tex.getContext();
+  frames.forEach((rows, fi) => rows.forEach((row, y) => [...row].forEach((ch, x) => {
+    if (!PAL[ch]) return;
+    c.fillStyle = PAL[ch]; c.fillRect(fi * fw + x, y, 1, 1);
+  })));
+  tex.refresh();
+  frames.forEach((_, fi) => tex.add(fi, 0, fi * fw, 0, fw, fh));
+}
+
+class Bowl extends Phaser.Scene {
+  create() {
+    sheet(this, "dot", [["w"]]);
+    sheet(this, "berry", [BERRY]);
+    sheet(this, "spark", SPARK);
+    this.anims.create({ key: "twinkle", frames: [0, 1, 0, 2].map((f) => ({ key: "spark", frame: f })), frameRate: 10 });
+
+    this.back = this.add.graphics().setDepth(0);     // 굽잔 안쪽(뒤)
+    this.ice = this.add.graphics().setDepth(2);
+    this.berry = this.add.image(CX, 0, "berry").setOrigin(0.5, 1).setDepth(3).setVisible(false);
+    this.front = this.add.graphics().setDepth(4);    // 굽잔 앞면
+    this.flakes = this.add.graphics().setDepth(5);
+    this.drawCup();
+
+    // 입자: 얼음이 내려앉을 때 튀는 가루, 다 됐을 때 터지는 가루·반짝이
+    this.puff = this.add.particles(0, 0, "dot", {
+      emitting: false, lifespan: 380, speed: { min: 8, max: 24 }, angle: { min: 200, max: 340 }, gravityY: 90,
+      alpha: { start: 1, end: 0 }, tint: [P.w, P.i, P.a],
+    }).setDepth(6);
+    this.burst = this.add.particles(0, 0, "dot", {
+      emitting: false, lifespan: { min: 450, max: 900 }, speed: { min: 25, max: 60 }, angle: { min: 200, max: 340 },
+      gravityY: 110, alpha: { start: 1, end: 0 }, tint: [P.w, P.a, P.i, P.e2],
+    }).setDepth(6);
+    this.sparkle = this.add.particles(0, 0, "spark", {
+      emitting: false, frame: [0, 1], lifespan: 600, speed: { min: 15, max: 40 }, angle: { min: 0, max: 360 },
+      alpha: { start: 1, end: 0 },
+    }).setDepth(6);
+
+    this.level = 0;          // 그림에 보이는 얼음 양 (진행률을 서서히 따라감)
+    this.drops = [];         // 떨어지는 얼음 가루
+    this.dropAt = 0; this.twinkleAt = 0;
+    this.syrup = 0;          // 시럽이 퍼진 정도 0~1
+    this.toppings = 0; this.done = false;
+    this.scale.on("resize", () => this.fit());
+    this.fit();
+    // 첫 화면을 그렸으면 앱이 먼저 보여 준 빈 굽잔(cup.png)을 치운다
+    this.game.events.once("postrender", () => window.webkit?.messageHandlers?.bowlReady?.postMessage(1));
+  }
+
+  fit() {
+    const w = this.scale.width, h = this.scale.height;
+    this.cameras.main.setZoom(Math.max(1, Math.floor(Math.min(w, h) / N))).centerOn(N / 2, N / 2);
+  }
+
+  // 유리 굽잔: 둥근 몸통 · 다리 · 받침. 왼쪽은 빛을 받아 밝고 오른쪽 아래로 진해진다
+  drawCup() {
+    const b = this.back, f = this.front;
+    b.fillStyle(P.g1); b.fillRect(CX - HW - 2, RIM_Y - 1, (HW + 2) * 2 + 1, 3);
+    b.fillStyle(P.i); b.fillRect(CX - HW, RIM_Y, HW * 2 + 1, 1);
+    const bodyH = 13;
+    for (let y = 0; y < bodyH; y++) {
+      const t = y / (bodyH - 1), hw = Math.round((HW + 2) * Math.sqrt(1 - t * 0.78)), yy = RIM_Y + 1 + y;
+      f.fillStyle(P.g1); f.fillRect(CX - hw, yy, hw * 2 + 1, 1);
+      f.fillStyle(t > 0.65 ? P.g2 : P.g3); f.fillRect(CX - hw + 1, yy, hw * 2 - 1, 1);
+      f.fillStyle(P.g4); f.fillRect(CX - hw + 1, yy, Math.max(1, Math.round(hw * 0.55)), 1);
+      if (y >= 2 && y <= 6) { f.fillStyle(P.w); f.fillRect(CX - hw + 3, yy, 1, 1); }   // 광택
+    }
+    f.fillStyle(P.g4); f.fillRect(CX - HW - 2, RIM_Y + 1, (HW + 2) * 2 + 1, 1);       // 테 앞쪽
+    const stemY = RIM_Y + 1 + bodyH;
+    f.fillStyle(P.g1); f.fillRect(CX - 2, stemY, 5, 4);
+    f.fillStyle(P.g3); f.fillRect(CX - 1, stemY, 3, 4);
+    for (let y = 0; y < 3; y++) {
+      const hw = [8, 11, 10][y], yy = stemY + 4 + y;
+      f.fillStyle(P.g1); f.fillRect(CX - hw, yy, hw * 2 + 1, 1);
+      f.fillStyle(y === 2 ? P.g2 : P.g3); f.fillRect(CX - hw + 1, yy, hw * 2 - 1, 1);
+      if (y === 0) { f.fillStyle(P.g4); f.fillRect(CX - hw + 1, yy, hw, 1); }
+    }
+    b.fillStyle(P.g4, 0.3); b.fillRect(CX - 13, stemY + 7, 27, 1);                     // 바닥 빛
+  }
+
+  surf(u, apex) { return Math.round(RIM_Y + (1 - u * u) * (apex - RIM_Y)); }
+
+  drawIce(apex) {
+    const g = this.ice; g.clear();
+    if (this.level <= 0.01) return;
+    for (let x = -HW; x <= HW; x++) {
+      const u = x / HW, top = this.surf(u, apex);
+      if (top >= RIM_Y) continue;
+      g.fillStyle(u > 0.45 ? P.i : P.w); g.fillRect(CX + x, top, 1, RIM_Y - top);
+      g.fillStyle(P.line); g.fillRect(CX + x, top - 1, 1, 1);
+    }
+    if (this.syrup > 0) this.drawSyrup(g, apex);
+  }
+
+  // 파란 시럽: 흘러내리지 않고 꼭대기에만 소복이 얹힌다. 가운데가 두툼하고 아랫단은 부드러운 물결
+  drawSyrup(g, apex) {
+    const span = Math.round(HW * 0.5 * this.syrup);
+    if (span < 1) return;
+    const WAVE = [0, 1, 1, 0, -1];
+    for (let x = -span; x <= span; x++) {
+      const e = 1 - Math.abs(x) / (span + 1);                              // 가운데 1 → 가장자리 0
+      const top = this.surf(x / HW, apex) - 1;
+      const bot = top + 1 + Math.round(e * 3) + (e > 0.2 ? WAVE[(x + 40) % 5] : 0);
+      g.fillStyle(P.sy); g.fillRect(CX + x, top, 1, bot - top);
+      g.fillStyle(P.sy3); g.fillRect(CX + x, bot, 1, 1);                    // 아랫단 그늘
+    }
+    // 광택: 왼쪽 위에 짧은 빛줄 + 점 하나
+    g.fillStyle(P.sy2);
+    for (let x = -Math.round(span * 0.6); x < -Math.round(span * 0.15); x++) g.fillRect(CX + x, this.surf(x / HW, apex), 1, 1);
+    if (span > 4) g.fillRect(CX - Math.round(span * 0.35), this.surf(-0.35 * span / HW, apex) + 2, 1, 1);
+  }
+
+  update(time, delta) {
+    const dt = Math.min(0.1, delta / 1000);
+    // 진행률을 모를 때(파일 복사 중 등)는 얼음을 미리 채우지 않고 지금 높이 그대로, 가루만 계속 떨어진다.
+    // 그래서 0% 는 늘 빈 그릇에서 시작한다
+    const target = state.indeterminate ? this.level : state.target;
+    // 기본 게임처럼 갈린 얼음이 한 번에 솟지 않고 서서히 쌓인다
+    const gap = target - this.level;
+    this.level += Math.sign(gap) * Math.min(Math.abs(gap), dt * 0.4 + Math.abs(gap) * dt * 1.5);
+    if (!state.indeterminate && target >= 1 && 1 - this.level < 0.003) this.level = 1;
+    const apex = RIM_Y - Math.min(this.level, 1) * (RIM_Y - TOP_Y);
+
+    // 얼음 가루: 쌓이는 동안 위에서 떨어지고, 얼음 윗면에 닿으면 튀며 사라진다
+    const filling = !this.done && (state.indeterminate || this.level < 0.999);
+    if (filling && time > this.dropAt) {
+      this.dropAt = time + 55;
+      this.drops.push({ x: CX + (Math.random() - 0.5) * 6, y: 0, vx: (Math.random() - 0.5) * 8, vy: 30 + Math.random() * 25 });
+    }
+    const fg = this.flakes; fg.clear();
+    this.drops = this.drops.filter((d) => {
+      d.vy += 60 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+      const u = Phaser.Math.Clamp((d.x - CX) / HW, -1, 1), floor = this.level > 0.01 ? this.surf(u, apex) - 1 : RIM_Y - 1;
+      if (d.y >= floor) { if (Math.random() < 0.3) this.puff.explode(1, Math.round(d.x), floor); return false; }
+      fg.fillStyle(d.vx > 0 ? P.w : P.a); fg.fillRect(Math.round(d.x), Math.round(d.y), 1, 1);
+      return true;
+    });
+
+    // 토핑이 차례로 올라온다
+    // 85% 에서 시럽이 꼭대기에 얹히고, 다 되면 꼭대기에 딸기 하나
+    const want = this.level >= 1 ? 2 : this.level >= 0.85 ? 1 : 0;
+    if (want > this.toppings) {
+      if (want >= 1 && this.toppings < 1) {
+        this.puff.setParticleTint(P.sy); this.puff.explode(8, CX, apex - 1); this.puff.setParticleTint(P.w);
+        this.tweens.add({ targets: this, syrup: 1, duration: 1400, ease: "Sine.easeOut" });
+      }
+      if (want >= 2) {
+        this.berry.setVisible(true).setScale(0);
+        this.tweens.add({ targets: this.berry, scale: 1, duration: 320, delay: 250, ease: "Back.easeOut" });
+      }
+      this.toppings = want;
+    }
+    this.drawIce(apex);
+    this.berry.y = apex + 2;
+
+    if (this.level >= 1 && !this.done) {
+      this.done = true;
+      this.burst.explode(22, CX, apex);
+      this.sparkle.explode(10, CX, apex);
+    }
+    // 얼음이 반짝인다 (기본 게임과 같은 반짝이)
+    if (time > this.twinkleAt && this.level > 0.15) {
+      this.twinkleAt = time + 350 + Math.random() * 400;
+      const u = Math.random() * 1.4 - 0.7, top = this.surf(u, apex);
+      const s = this.add.sprite(CX + Math.round(u * HW), top + 2 + Math.round(Math.random() * (RIM_Y - top) * 0.6), "spark", 0).setDepth(3.5);
+      s.play("twinkle"); s.once("animationcomplete", () => s.destroy());
+    }
+  }
+}
+
+const game = new Phaser.Game({
+  type: Phaser.AUTO, parent: "stage", transparent: true, pixelArt: true, roundPixels: true,
+  // 웹 뷰가 크기 0 으로 먼저 뜰 수 있어 부모(#stage, 화면 전체) 크기를 계속 따라간다
+  scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
+  banner: false, audio: { noAudio: true },
+  scene: Bowl,
+});
+window.addEventListener("resize", () => game.scale.refresh());
+</script>
+</body>
+</html>

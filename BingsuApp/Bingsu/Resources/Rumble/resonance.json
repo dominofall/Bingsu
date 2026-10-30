@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "game": "포켓몬 레조넌스",
+  "source": "assets/Battle/audio/sfx/*.wav, assets/Audio/SE/Battle *.ogg",
+  "detect": {"localNames": ["resonance"]},
+  "rules": [
+    {"sound": "hit_strong.", "match": "prefix", "strong": 1.0, "weak": 0.6, "duration": 0.28},
+    {"sound": "hit_weak.", "match": "prefix", "strong": 0.25, "weak": 0.3, "duration": 0.1},
+    {"sound": "hit.", "match": "prefix", "strong": 0.6, "weak": 0.4, "duration": 0.16},
+    {"sound": "faint.", "match": "prefix", "strong": 0.8, "weak": 0.2, "duration": 0.45},
+    {"sound": "battle ball shake.", "match": "prefix", "strong": 0.45, "weak": 0.2, "duration": 0.12},
+    {"sound": "battle ball hit.", "match": "prefix", "strong": 0.5, "weak": 0.3, "duration": 0.08},
+    {"sound": "battle ball drop.", "match": "prefix", "strong": 0.3, "weak": 0.3, "duration": 0.08},
+    {"sound": "battle throw.", "match": "prefix", "strong": 0.2, "weak": 0.5, "duration": 0.1},
+    {"sound": "battle catch click.", "match": "prefix", "strong": 0.7, "weak": 0.5, "duration": 0.3},
+    {"sound": "battle recall.", "match": "prefix", "strong": 0.2, "weak": 0.4, "duration": 0.1}
+  ]
+}

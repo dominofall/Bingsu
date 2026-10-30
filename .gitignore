@@ -1,0 +1,38 @@
+# 게임 파일은 절대 커밋하지 않음 (권리·용량). 저장소 루트에 둔 개별 게임 폴더 이름은 .git/info/exclude 에
+Games/
+*.asar
+*.exe
+*.dll
+# 게임 데이터·저장 파일·받은 zip (RPG Maker XP/VX 등)
+*.rxdata
+*.rvdata
+*.rvdata2
+*.rgssad
+*.rgss2a
+*.rgss3a
+*.zip
+# Xcode
+BingsuApp/BingsuApp.xcodeproj/xcuserdata/
+BingsuApp/BingsuApp.xcodeproj/project.xcworkspace/xcuserdata/
+DerivedData/
+.DS_Store
+# 비밀값·개인 데이터
+Secrets.xcconfig
+*.p12
+*.p8
+AuthKey_*
+*.mobileprovision
+*.cer
+board_server_address.txt
+board_log_*.txt
+.shots/
+Saves/
+BingsuApp/build/
+
+# 참고용 외부 소스 (커밋 금지)
+pokerogue-beta/
+# API 키·서명 파일 두는 곳 (통째로 커밋 금지)
+Keys/
+
+# 진동 실험실 zip (tools/rumble-lab/README.md 로 만듦)
+tools/rumble-lab/*.zip
