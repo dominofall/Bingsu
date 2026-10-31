@@ -41,6 +41,11 @@ struct GlassBowl: UIViewRepresentable {
         let ucc = config.userContentController
         let prefix = freezer.keyPrefix
         let freezerEnabled = !dish.isRemote
+        if dish.knownWeb == .pokerogue {
+            // 배경음악을 낮은 표본율로 풀어 메모리 쌓임을 줄인다 (BowlScripts.musicDiet, 다른 소리 스크립트보다 먼저)
+            let rate = (DishPrefsStore.shared.prefs(for: dish.id).musicRate ?? .default).rawValue
+            ucc.addUserScript(WKUserScript(source: BowlScripts.musicDiet(rate: rate), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         // Ogg Vorbis 디코더 + 폴리필 (게임 모듈보다 먼저)
         if let url = Bundle.main.url(forResource: "ogg-vorbis-decoder.min", withExtension: "js"),
            let lib = try? String(contentsOf: url, encoding: .utf8) {
@@ -70,6 +75,14 @@ struct GlassBowl: UIViewRepresentable {
             ucc.addUserScript(WKUserScript(source: BowlScripts.pokerogueBridge, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
         for name in ["freezer", "thermometer", "bowl", "rumble", "sfx"] { ucc.add(context.coordinator, name: name) }
+        #if DEBUG
+        // 디버그 빌드: 포켓로그 멈춤·다시 불러옴 측정 (Documents/Diag)
+        if dish.knownWeb == .pokerogue, let log = DiagLog(dishID: dish.id) {
+            ucc.addUserScript(WKUserScript(source: BowlScripts.diag, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            ucc.add(context.coordinator, name: "diag")
+            context.coordinator.startDiag(log)
+        }
+        #endif
 
         let wv = WKWebView(frame: .zero, configuration: config)
         if dish.isRemote { wv.customUserAgent = Self.safariUserAgent }
@@ -99,6 +112,9 @@ struct GlassBowl: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: WKWebView, context: Context) {
+        #if DEBUG
+        if context.coordinator.paused != paused { context.coordinator.diag?.write(paused ? "paused" : "resumed") }
+        #endif
         context.coordinator.paused = paused
         context.coordinator.onRestart = onRestart
     }
@@ -204,6 +220,23 @@ struct GlassBowl: UIViewRepresentable {
 
         deinit { observers.forEach(NotificationCenter.default.removeObserver) }
 
+        #if DEBUG
+        var diag: DiagLog?
+        func startDiag(_ log: DiagLog) {
+            diag = log
+            let nc = NotificationCenter.default
+            observers.append(nc.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.diag?.write("MEMORY WARNING")
+            })
+            observers.append(nc.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.diag?.write("thermal \(ProcessInfo.processInfo.thermalState.rawValue)")
+            })
+            for (n, label) in [(UIApplication.didEnterBackgroundNotification, "background"), (UIApplication.willEnterForegroundNotification, "foreground")] {
+                observers.append(nc.addObserver(forName: n, object: nil, queue: .main) { [weak self] _ in self?.diag?.write(label) })
+            }
+        }
+        #endif
+
         private func kickAudio() {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
                 self?.webView?.evaluateJavaScript("window.__bingsu && __bingsu.kickAudio && __bingsu.kickAudio()", completionHandler: nil)
@@ -286,6 +319,10 @@ struct GlassBowl: UIViewRepresentable {
                         message.webView?.evaluateJavaScript(probe) { r, _ in NSLog("[Bowl] selftest \(r ?? "nil")") }
                     }
                 }
+            #if DEBUG
+            case "diag":
+                if let s = message.body as? String { diag?.write(String(s.prefix(600))) }
+            #endif
             default: break
             }
         }
@@ -296,7 +333,12 @@ struct GlassBowl: UIViewRepresentable {
             // 게임이 스스로 새로고침 (location.reload): 기록만 하고 그대로 둔다
             if action.navigationType == .reload, action.targetFrame?.isMainFrame ?? true {
                 if crashReloadPending { crashReloadPending = false }
-                else { NSLog("[Bowl] game reloaded itself"); onRestart?(.gameReload); repauseOnFinish = paused }
+                else {
+                    NSLog("[Bowl] game reloaded itself"); onRestart?(.gameReload); repauseOnFinish = paused
+                    #if DEBUG
+                    diag?.write("GAME RELOADED ITSELF")
+                    #endif
+                }
             }
             if dish.recipe == .electron {
                 return decisionHandler(url.scheme == PokemonSchemeHandler.scheme ? .allow : .cancel)
@@ -322,6 +364,9 @@ struct GlassBowl: UIViewRepresentable {
         /// 앱에서 막을 수는 없고, 기록을 남기고 안내한 뒤 다시 불러온다. 죽은 뒤라 마지막 저장 이후(로컬 게임은 최대 5초)는 잃는다.
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
             NSLog("[Bowl] web content process terminated (memory?) — reloading")
+            #if DEBUG
+            diag?.write("WEB PROCESS KILLED (reload)")
+            #endif
             onRestart?(.crash)
             crashReloadPending = true
             repauseOnFinish = paused
@@ -329,6 +374,9 @@ struct GlassBowl: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            #if DEBUG
+            diag?.write("page loaded")
+            #endif
             crashReloadPending = false
             guard repauseOnFinish else { return }
             repauseOnFinish = false

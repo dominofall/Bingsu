@@ -395,6 +395,65 @@ enum BowlScripts {
         """
     }
 
+    /// 포켓로그 음악 메모리 줄이기 (빌드 23). 큰 소리 파일(배경음악)만 24kHz 로 풀어 메모리를 절반 아래로 줄인다.
+    /// 2026-11-01 아이패드 측정: 다 들은 배경음악이 메모리에서 거의 안 풀려 곡마다 40~80MB 씩 쌓였다(약 4시간에 1.25GB).
+    /// 효과음은 작아서 그대로 둔다. 풀린 소리는 재생할 때 WebKit 이 기기 표본율로 바꿔 준다.
+    /// 같은 곡을 다시 틀면 게임은 파일을 다시 받아 또 푸는데, 예전 것도 메모리에 남아 같은 곡이 여러 벌 쌓였다(2026-11-01 측정:
+    /// town·metropolis 각 3벌). 그래서 아직 메모리에 있는 같은 주소의 곡은 새로 풀지 않고 그것을 다시 준다.
+    /// AudioBuffer 는 재생 노드 여러 개가 함께 써도 되는 읽기 전용 데이터라 안전하다.
+    /// 다른 소리 스크립트보다 먼저 넣어 가장 안쪽에서 돈다(Ogg 폴리필·효과음 이름 붙이기는 이 결과를 받는다)
+    static func musicDiet(rate: Int) -> String {
+        """
+    (() => {
+      let RATE = \(rate); const MIN_BYTES = 512 * 1024;
+      const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!OAC || !OAC.prototype.decodeAudioData) return;
+      const offDecode = OAC.prototype.decodeAudioData;
+      const isWav = (buf) => { const u = new Uint8Array(buf, 0, 4); return u[0] === 0x52 && u[1] === 0x49 && u[2] === 0x46 && u[3] === 0x46; };
+      // 받은 파일 → 주소. 게임의 onload(곧바로 디코딩)보다 먼저 돌도록 open 때 readystatechange 에 건다
+      const urlOf = new WeakMap(), decoded = new Map();   // 주소 → WeakRef(AudioBuffer)
+      const xo = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (m, url) {
+        this.__dietUrl = String(url);
+        if (!this.__dietRS) { this.__dietRS = true; this.addEventListener("readystatechange", () => {
+          try { if (this.readyState === 4 && this.responseType === "arraybuffer" && this.response) urlOf.set(this.response, this.__dietUrl.split("?")[0]); } catch (e) {}
+        }); }
+        return xo.apply(this, arguments);
+      };
+      try { const ra = Response.prototype.arrayBuffer; Response.prototype.arrayBuffer = function () { const u = String(this.url).split("?")[0]; return ra.call(this).then((b) => { try { urlOf.set(b, u); } catch (e) {} return b; }); }; } catch (e) {}
+      const canReuse = typeof WeakRef === "function";
+      let off = null;
+      const lowRate = (buf) => new Promise((ok, err) => {
+        if (!off) off = new OAC(2, 1, RATE);
+        const r = offDecode.call(off, buf, ok, err);
+        if (r && typeof r.then === "function") r.then(ok, err);
+      });
+      for (const name of ["AudioContext", "webkitAudioContext"]) {
+        const C = window[name]; if (!C || !C.prototype.decodeAudioData) continue;
+        const orig = C.prototype.decodeAudioData;
+        C.prototype.decodeAudioData = function (buf, ok, err) {
+          // 효과음(WAV, "RIFF")은 길이가 길어도 그대로 둔다: 포켓로그 배경음악은 mp3
+          if (!(buf instanceof ArrayBuffer) || buf.byteLength < MIN_BYTES || isWav(buf)) return orig.call(this, buf, ok, err);
+          const url = urlOf.get(buf);
+          const prev = canReuse && url && decoded.get(url) && decoded.get(url).deref();
+          let p;
+          if (prev) { p = Promise.resolve(prev); }
+          else {
+            const copy = buf.slice(0);   // 낮은 표본율로 못 풀면 원래대로 다시 푼다 (디코딩이 buf 를 분리하므로 미리 복사)
+            // 원음(기기 표본율 이상)이면 낮추지 않고 그대로 푼다. 같은 곡 다시 쓰기는 똑같이 한다
+            p = this.sampleRate > RATE ? lowRate(buf).catch(() => orig.call(this, copy)) : orig.call(this, buf);
+            if (canReuse && url) p.then((ab) => { if (ab) decoded.set(url, new WeakRef(ab)); }, () => {});
+          }
+          if (ok || err) p.then(ok || (() => {}), err || (() => {}));
+          return p;
+        };
+      }
+      // 일시정지 화면에서 음질을 바꾸면: 새로 푸는 곡부터 적용. 예전 표본율로 풀어 둔 곡은 다시 쓰지 않는다
+      window.__bingsuMusicRate = (n) => { const v = Number(n); if (v >= 8000 && v <= 96000) { RATE = v; off = null; decoded.clear(); } };
+    })();
+    """
+    }
+
     /// 무음 모드에서도 소리 재생. WebKit 은 Web Audio 만 쓰는 페이지를 "ambient"(무음 스위치를 따름)로 다룬다.
     /// 1) Audio Session API 로 분류를 playback 으로, 2) 그것만으로 안 되는 기기(iPad 포켓로그, 2026-10-31)를 위해
     /// 아무 소리 없는 <audio> 를 반복 재생해 WebKit 이 페이지를 미디어 재생으로 보게 한다. 끄면 둘 다 되돌린다.
@@ -553,6 +612,182 @@ enum BowlScripts {
       install(); document.addEventListener("DOMContentLoaded", install);
     })();
     """
+
+    #if DEBUG
+    /// 디버그 빌드 전용 측정 (DiagLog 로 감). 멈춤마다 그 사이 받은 파일·메인 스레드 막힘·디코딩을, 15초마다 메모리 짐작 수치를 보낸다.
+    /// 주소는 경로만(쿼리 없음) 보낸다: 로그인 토큰이 기록에 남지 않게
+    static let diag = """
+    (() => {
+      const post = (m) => { try { window.webkit.messageHandlers.diag.postMessage(String(m).slice(0, 600)); } catch (e) {} };
+      const path = (u) => { try { const x = new URL(u, location.href); return (x.host === location.host ? "" : x.host) + x.pathname.slice(-70); } catch (e) { return "?"; } };
+      // 그림 종류: 이미지는 주소의 폴더 두 단계(images/pokemon 등), 캔버스는 글자·그림을 그린 것
+      const dirOf = (u) => { try { const parts = new URL(u, location.href).pathname.split("/").filter(Boolean); return parts.slice(0, Math.min(3, parts.length - 1)).join("/") || "root"; } catch (e) { return "?"; } };
+      // 게임이 XHR 로 받은 그림을 blob: 주소로 바꿔 쓰므로, blob 주소 → 원래 주소를 기억해 둔다
+      const blobFrom = new WeakMap(), blobSrc = new Map();
+      const cou = URL.createObjectURL;
+      URL.createObjectURL = function (o) { const u = cou.call(URL, o); const from = o && blobFrom.get(o); if (from) { blobSrc.set(u, from); if (blobSrc.size > 5000) blobSrc.clear(); } return u; };
+      try { const ra = Response.prototype.arrayBuffer; Response.prototype.arrayBuffer = function () { const u = this.url; return ra.call(this).then((b) => { try { abFrom.set(b, path(u)); } catch (e) {} return b; }); }; } catch (e) {}
+      try { const rb = Response.prototype.blob; Response.prototype.blob = function () { const u = this.url; return rb.call(this).then((b) => { try { blobFrom.set(b, u); } catch (e) {} return b; }); }; } catch (e) {}
+      const kindOf = (s) => {
+        if (!s) return "raw";
+        if (s instanceof HTMLCanvasElement) return "canvas";
+        if (s instanceof HTMLVideoElement) return "video";
+        const src = s.currentSrc || s.src;
+        if (!src) return s.constructor ? s.constructor.name : "?";
+        if (src.startsWith("data:")) return "data-url";
+        if (src.startsWith("blob:")) { const o = blobSrc.get(src); return o ? dirOf(o) : "blob"; }
+        return dirOf(src);
+      };
+      // WebGL 텍스처: 만든 것·지운 것·올린 크기 (게임이 그림을 안 지우고 쌓는지)
+      const tex = new Map(); let texBytes = 0, texMade = 0, texGone = 0; const bound = new WeakMap(), unitOf = new WeakMap();
+      for (const C of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+        if (!C) continue; const p = C.prototype;
+        const cT = p.createTexture, dT = p.deleteTexture, bT = p.bindTexture, tI = p.texImage2D, aT = p.activeTexture;
+        // 텍스처 유닛마다 따로 묶이므로 유닛별로 기억한다 (마지막 것만 보면 다른 유닛의 업로드를 엉뚱한 텍스처에 셈)
+        p.activeTexture = function (u) { unitOf.set(this, u); return aT.call(this, u); };
+        p.createTexture = function () { const t = cT.call(this); if (t) { tex.set(t, { b: 0, k: "empty" }); texMade++; } return t; };
+        p.deleteTexture = function (t) { if (t && tex.has(t)) { texBytes -= tex.get(t).b; tex.delete(t); texGone++; } return dT.call(this, t); };
+        p.bindTexture = function (target, t) {
+          if (target === this.TEXTURE_2D) { let m = bound.get(this); if (!m) { m = new Map(); bound.set(this, m); } m.set(unitOf.get(this) || this.TEXTURE0, t); }
+          return bT.call(this, target, t);
+        };
+        p.texImage2D = function (...a) {
+          try {
+            const m = bound.get(this), t = m && m.get(unitOf.get(this) || this.TEXTURE0);
+            if (a[0] === this.TEXTURE_2D && a[1] === 0 && t && tex.has(t)) {
+              let w = 0, h = 0, k = "raw";
+              if (a.length >= 8) { w = a[3]; h = a[4]; k = "raw:" + w + "x" + h; } else {
+                const s = a[5]; w = (s && (s.naturalWidth || s.videoWidth || s.width)) || 0; h = (s && (s.naturalHeight || s.videoHeight || s.height)) || 0;
+                k = kindOf(s);
+              }
+              const b = w * h * 4; texBytes += b - tex.get(t).b; tex.set(t, { b, k });
+            }
+          } catch (e) {}
+          return tI.apply(this, a);
+        };
+      }
+      // 오디오 디코딩: 횟수·디코딩된 크기(누적)·최근 디코딩 시간
+      let decN = 0, decBytes = 0, liveN = 0, liveBytes = 0; const decLog = [];
+      // 아직 버려지지 않은(가비지 컬렉션 안 된) 디코딩 결과
+      // 곡별: 아직 살아 있는 디코딩 결과의 이름·크기·표본율 (받은 ArrayBuffer → 주소로 이름을 찾는다)
+      const abFrom = new WeakMap(), live = new Map(); let liveId = 0;
+      const gone = typeof FinalizationRegistry === "function" ? new FinalizationRegistry((id) => { const x = live.get(id); if (x) { liveN--; liveBytes -= x.b; live.delete(id); } }) : null;
+      for (const name of ["AudioContext", "webkitAudioContext"]) {
+        const C = window[name]; if (!C || !C.prototype.decodeAudioData) continue;
+        const orig = C.prototype.decodeAudioData;
+        C.prototype.decodeAudioData = function (buf, ok, err) {
+          const t0 = performance.now(), size = buf && buf.byteLength || 0;
+          let src = "?"; try { src = (buf && abFrom.get(buf)) || "?"; } catch (e) {}
+          const done = (ab) => { if (!ab || ab.__diag) return; ab.__diag = 1; const b = ab.length * ab.numberOfChannels * 4; decN++; decBytes += b;
+                                 if (gone) { const id = ++liveId; live.set(id, { n: src, b, r: ab.sampleRate, at: performance.now() }); liveN++; liveBytes += b; gone.register(ab, id); }
+                                 decLog.push({ at: performance.now(), ms: performance.now() - t0, kb: size >> 10 }); if (decLog.length > 50) decLog.shift(); };
+          const r = orig.call(this, buf, ok ? (ab) => { done(ab); ok(ab); } : undefined, err);
+          if (r && typeof r.then === "function") r.then(done, () => {});
+          return r;
+        };
+      }
+      // 받은 파일 (최근 것만 보관)
+      const res = []; let resN = 0, resBytes = 0;
+      try { performance.setResourceTimingBufferSize(500); } catch (e) {}
+      try {
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) {
+            resN++; resBytes += e.transferSize || 0;
+            res.push({ s: e.startTime, e: e.responseEnd, p: path(e.name), kb: (e.transferSize || 0) >> 10, k: e.initiatorType });
+            // 처음 불러오기(30초)는 빼고 오래 걸린 파일만
+            if (e.duration > 1500 && performance.now() > 30000) post("slow " + e.duration.toFixed(0) + "ms " + e.initiatorType + " " + path(e.name) + " " + ((e.transferSize || 0) >> 10) + "KB");
+          }
+          if (res.length > 300) res.splice(0, res.length - 300);
+          try { performance.clearResourceTimings(); } catch (e) {}
+        }).observe({ type: "resource", buffered: true });
+      } catch (e) { post("no resource observer " + e); }
+      // 아직 안 끝난 요청 (끝난 것만 남는 resource 기록으로는 "응답이 안 와서 계속 로딩" 이 안 보인다)
+      const pending = new Map(); let reqId = 0, reqFail = 0;
+      const reqStart = (method, url) => { const id = ++reqId; pending.set(id, { m: method, p: path(url), t: performance.now() }); return id; };
+      const reqEnd = (id, how) => {
+        const r = pending.get(id); if (!r) return; pending.delete(id);
+        const ms = performance.now() - r.t;
+        if (how !== "ok") reqFail++;
+        if (how !== "ok" || ms > 3000) post("req " + how + " " + ms.toFixed(0) + "ms " + r.m + " " + r.p);
+      };
+      const fetchOrig = window.fetch;
+      if (fetchOrig) window.fetch = function (input, init) {
+        const url = typeof input === "string" ? input : (input && input.url) || String(input);
+        const method = (init && init.method) || (input && input.method) || "GET";
+        const id = reqStart(method, url);
+        return fetchOrig.apply(this, arguments).then((r) => { reqEnd(id, r.ok ? "ok" : "http" + r.status); return r; },
+                                                     (e) => { reqEnd(id, "fail:" + ((e && e.name) || e)); throw e; });
+      };
+      const xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (method, url) {
+        this.__diagReq = [method, url];
+        // 소리 이름: 게임의 onload(곧바로 디코딩)보다 먼저 돌도록 open 때 readystatechange 에 건다 (loadend 는 onload 뒤라 늦다)
+        if (!this.__diagRS) { this.__diagRS = true; this.addEventListener("readystatechange", () => {
+          try { if (this.readyState === 4 && this.responseType === "arraybuffer" && this.response) abFrom.set(this.response, path(this.__diagReq[1])); } catch (e) {}
+        }); }
+        return xo.apply(this, arguments);
+      };
+      XMLHttpRequest.prototype.send = function () {
+        const [method, url] = this.__diagReq || ["?", "?"]; const id = reqStart("xhr " + method, url);
+        this.addEventListener("loadend", () => {
+          reqEnd(id, this.status >= 200 && this.status < 400 ? "ok" : "xhr" + this.status);
+          try { if (this.responseType === "blob" && this.response) blobFrom.set(this.response, url); } catch (e) {}
+        });
+        return xs.apply(this, arguments);
+      };
+      setInterval(() => {
+        const now = performance.now();
+        const old = Array.from(pending.values()).filter((r) => now - r.t > 5000);
+        if (old.length) post("WAITING " + old.length + " [" + old.slice(0, 6).map((r) => r.m + " " + r.p + " " + ((now - r.t) / 1000).toFixed(0) + "s").join(", ") + "]");
+      }, 5000);
+      // 메인 스레드 막힘: 100ms 타이머가 늦게 온 만큼
+      const blocks = []; let hbLast = performance.now();
+      setInterval(() => { const now = performance.now(), gap = now - hbLast; hbLast = now;
+        if (gap > 350 && !document.hidden) { blocks.push({ at: now, ms: gap - 100 }); if (blocks.length > 50) blocks.shift(); } }, 100);
+      // 화면 멈춤: 0.3초 넘게 프레임이 안 온 때, 그 사이에 있었던 일
+      let last = performance.now(), frames = 0, stalls = 0, hiddenAt = 0;
+      document.addEventListener("visibilitychange", () => { hiddenAt = performance.now(); post("visible " + !document.hidden); });
+      const tick = (t) => {
+        const d = t - last; last = t; frames++;
+        if (d > 300 && !document.hidden && t - hiddenAt > 1000) {
+          stalls++;
+          const from = t - d - 200;
+          const r = res.filter((x) => x.e >= from || x.s >= from);
+          const b = blocks.filter((x) => x.at >= from).reduce((a, x) => a + x.ms, 0);
+          const dc = decLog.filter((x) => x.at >= from);
+          post("STALL " + d.toFixed(0) + "ms block=" + b.toFixed(0) + "ms files=" + r.length + " [" + r.slice(-6).map((x) => x.p + ":" + x.kb + "KB/" + (x.e - x.s).toFixed(0) + "ms").join(", ") + "]"
+               + " dec=" + dc.length + (dc.length ? "(" + dc.map((x) => x.kb + "KB/" + x.ms.toFixed(0)).slice(-4).join(",") + ")" : ""));
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+      let lastStat = performance.now(), statN = 0;
+      setInterval(() => {
+        const now = performance.now(), fps = frames * 1000 / (now - lastStat); frames = 0; lastStat = now;
+        let nodes = -1; try { nodes = document.getElementsByTagName("*").length; } catch (e) {}
+        post("stat fps=" + fps.toFixed(1) + " stalls=" + stalls + " tex=" + tex.size + "(" + (texBytes / 1048576).toFixed(0) + "MB +" + texMade + "/-" + texGone + ")"
+             + " dec=" + decN + "(" + (decBytes / 1048576).toFixed(0) + "MB) audioLive=" + liveN + "(" + (liveBytes / 1048576).toFixed(0) + "MB)" + " files=" + resN + "(" + (resBytes / 1048576).toFixed(1) + "MB)"
+             + " dom=" + nodes + " canvas=" + document.getElementsByTagName("canvas").length + " audio=" + document.getElementsByTagName("audio").length
+             + " pending=" + pending.size + " reqFail=" + reqFail + (navigator.onLine ? "" : " OFFLINE"));
+        stalls = 0;
+        if (++statN % 4 === 1) {
+          const mix = new Map();
+          for (const v of tex.values()) { const m = mix.get(v.k) || { n: 0, b: 0 }; m.n++; m.b += v.b; mix.set(v.k, m); }
+          const byDir = new Map();
+          for (const x of live.values()) { const d = x.n.split("/").slice(0, 3).join("/"); const m = byDir.get(d) || { n: 0, b: 0 }; m.n++; m.b += x.b; byDir.set(d, m); }
+          post("audiomix " + Array.from(byDir.entries()).sort((a, b) => b[1].b - a[1].b).slice(0, 8).map(([k, m]) => k + "=" + m.n + "/" + (m.b / 1048576).toFixed(0) + "MB").join(" "));
+          post("audiotop " + Array.from(live.values()).sort((a, b) => b.b - a.b).slice(0, 12)
+               .map((x) => x.n.split("/").pop() + ":" + (x.b / 1048576).toFixed(0) + "MB@" + (x.r / 1000).toFixed(0) + "k/" + ((performance.now() - x.at) / 60000).toFixed(0) + "m").join(" "));
+          post("texmix " + Array.from(mix.entries()).sort((a, b) => b[1].b - a[1].b).slice(0, 12)
+               .map(([k, m]) => k + "=" + m.n + "/" + (m.b / 1048576).toFixed(1) + "MB").join(" "));
+        }
+      }, 15000);
+      window.addEventListener("error", (e) => post("error " + e.message + " @" + path(e.filename || "") + ":" + e.lineno));
+      window.addEventListener("unhandledrejection", (e) => post("rejection " + String(e.reason && (e.reason.message || e.reason)).slice(0, 200)));
+      post("diag ready dpr=" + devicePixelRatio + " " + innerWidth + "x" + innerHeight);
+    })();
+    """
+    #endif
 
     /// 전체화면·터치 보정 CSS (웹 게임용)
     static let fullscreenCSS = """

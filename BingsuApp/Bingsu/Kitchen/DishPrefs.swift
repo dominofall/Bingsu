@@ -48,6 +48,7 @@ struct DishPrefs: Codable, Equatable {
     var recommendedQuality: Quality?   // 첫 실행 벤치마크가 정한 권장 화질
     var fpsLimit: FpsLimit?       // 사용자가 고른 프레임 제한. nil = 자동(게임 기본값 + 뜨거워지면 30)
     var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 게임 중의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
+    var musicRate: MusicRate?     // 포켓로그 배경음악 음질. nil = 절약(24kHz) (빌드 23 에서 더함, 예전 파일엔 없음 → nil)
     var allowOnline: Bool?        // RPG Maker 게임의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
 
     /// 실제로 쓸 화질: 직접 고른 값 → 벤치마크 권장 → 높음
@@ -61,6 +62,16 @@ struct DishPrefs: Codable, Equatable {
         case nil: return FpsLimit.autoCap(for: dish)
         }
     }
+}
+
+/// 포켓로그 배경음악을 푸는 표본율 (BowlScripts.musicDiet). 풀어 둔 음악이 메모리에 쌓이므로 낮을수록 오래 해도 덜 다시 불러온다.
+/// 2026-11-01 사용자 결정: 일시정지 화면에서 고르게, 기본은 절약.
+enum MusicRate: Int, Codable, CaseIterable {
+    case save = 24000, normal = 32000, full = 48000
+    var label: String {
+        switch self { case .save: return "절약"; case .normal: return "보통"; case .full: return "원음" }
+    }
+    static let `default` = MusicRate.save
 }
 
 /// 프레임 제한. 게임이 매 프레임 화면 전체를 다시 그리므로(포켓로그는 1920×1080 을 멈춰 있을 때도),

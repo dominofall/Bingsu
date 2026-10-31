@@ -267,6 +267,7 @@ struct BowlContainerView: View {
             controllerNames: LongSpoon.connectedNames(),
             fpsLimit: Binding(get: { prefsStore.prefs(for: dish.id).fpsLimit }, set: setFpsLimit),
             quality: Binding(get: { prefsStore.prefs(for: dish.id).quality }, set: { q in prefsStore.update(dish.id) { $0.quality = q } }),
+            musicRate: dish.knownWeb == .pokerogue ? Binding(get: { prefsStore.prefs(for: dish.id).musicRate }, set: setMusicRate) : nil,
             runningQuality: quality, showHUD: $showHUD, lastBackup: lastBackup,
             onResume: { closePause() },
             onHome: { closePause(resume: false); flush(); spoon.releaseAll(); onHome(); Igloo.shared.afterPlay(dish, stillRunning: true) },
@@ -304,6 +305,12 @@ struct BowlContainerView: View {
         gFloating = p.floatingStick; gLabels = p.showLabels; gHaptics = p.haptics
         prefsStore.update(dish.id) { $0.pad = nil }
         showToast("모든 게임에 적용했어요")
+    }
+
+    /// 배경음악 음질: 저장하고 지금 페이지에도 알린다 (새로 푸는 곡부터)
+    private func setMusicRate(_ v: MusicRate?) {
+        prefsStore.update(dish.id) { $0.musicRate = v }
+        webView?.evaluateJavaScript("window.__bingsuMusicRate && __bingsuMusicRate(\((v ?? .default).rawValue))", completionHandler: nil)
     }
 
     private func setFpsLimit(_ v: FpsLimit?) {
@@ -346,6 +353,10 @@ struct BowlContainerView: View {
                 let opts: [FpsLimit?] = [nil, .fps30, .fps60]
                 let i = opts.firstIndex(of: prefsStore.prefs(for: dish.id).fpsLimit) ?? 0
                 setFpsLimit(opts[min(opts.count - 1, max(0, i + Int(d)))])
+            case .musicRate:
+                let all = MusicRate.allCases, cur = prefsStore.prefs(for: dish.id).musicRate ?? .default
+                let i = all.firstIndex(of: cur) ?? 0
+                setMusicRate(all[min(all.count - 1, max(0, i + Int(d)))])
             case .quality:
                 let opts: [Quality?] = [nil, .high, .medium, .low]
                 let i = opts.firstIndex(of: prefsStore.prefs(for: dish.id).quality) ?? 0
@@ -383,7 +394,7 @@ struct BowlContainerView: View {
         var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.kind.hasStick { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
-        out += [.volume, .rumble]
+        out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
         out += [.fps, .quality, .hud]
         if !dish.isRemote { out.append(.backup) }

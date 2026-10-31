@@ -19,6 +19,8 @@ struct PauseBoard: View {
     /// 웹 게임만: 초당 프레임·화질 (nil 이면 그 줄을 숨긴다. RPG Maker XP 는 엔진이 정함)
     var fpsLimit: Binding<FpsLimit?>?
     var quality: Binding<Quality?>?
+    /// 포켓로그만: 배경음악 음질 (nil 이면 그 줄을 숨긴다)
+    var musicRate: Binding<MusicRate?>? = nil
     /// 이번 실행의 화질 (웹뷰를 만들 때 정해짐)
     let runningQuality: Quality
     @Binding var showHUD: Bool
@@ -143,6 +145,11 @@ struct PauseBoard: View {
 
             group("소리·진동", wide: wide) {
                 slider("소리 크기", value: gameVolume, in: 0...1, item: .volume) { BingsuApp.setGameVolume($0) }
+                if let musicRate {
+                    segmented("배경음악 음질", item: .musicRate, options: MusicRate.allCases.map { ($0, $0.label) },
+                              selection: Binding(get: { musicRate.wrappedValue ?? .default }, set: { musicRate.wrappedValue = $0 }))
+                    note("낮출수록 오래 해도 게임이 덜 다시 불러와져요. 새로 나오는 곡부터 바뀌어요.")
+                }
                 toggle("진동", isOn: $rumble, item: .rumble)
                 if rumble {
                     slider("세기", value: rumbleStrength, in: 0.1...1, item: .rumbleStrength) { rumbleStrength = $0 }
@@ -256,7 +263,7 @@ struct PauseBoard: View {
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
     case resume, home, close, kind(PadKind), leftHand, size, opacity, hidePad, labels, floating, applyAll
-    case volume, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
+    case volume, musicRate, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 
 /// 패드 종류 고르기 칸 (이름만)
