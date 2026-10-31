@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("spoon.floatingStick") private var floatingStick = true
     @AppStorage("spoon.showLabels") private var showLabels = false
     @AppStorage("spoon.haptics") private var haptics = true
+    @AppStorage("spoon.leftHanded") private var leftHanded = false
     @AppStorage("bingsu.showPerformance") private var showPerformance = false
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
@@ -31,9 +32,10 @@ struct SettingsView: View {
     private var globalPad: Binding<PadPrefs> {
         Binding(
             get: { PadPrefs(kind: PadKind(rawValue: kindRaw) ?? .simple, scale: scale, opacity: opacity,
-                            floatingStick: floatingStick, showLabels: showLabels, haptics: haptics) },
+                            floatingStick: floatingStick, showLabels: showLabels, haptics: haptics, leftHanded: leftHanded) },
             set: { p in kindRaw = p.kind.rawValue; scale = p.scale; opacity = p.opacity
-                   floatingStick = p.floatingStick; showLabels = p.showLabels; haptics = p.haptics })
+                   floatingStick = p.floatingStick; showLabels = p.showLabels; haptics = p.haptics
+                   leftHanded = p.leftHanded })
     }
 
     var body: some View {
@@ -142,7 +144,8 @@ struct PadPrefsControls: View {
     @Binding var prefs: PadPrefs
 
     var body: some View {
-        SpoonPreview(kind: prefs.kind, scale: prefs.scale, opacity: prefs.opacity, floatingStick: prefs.floatingStick)
+        SpoonPreview(kind: prefs.kind, scale: prefs.scale, opacity: prefs.opacity, floatingStick: prefs.floatingStick,
+                     leftHanded: prefs.leftHanded)
             .frame(maxWidth: 360)
             .frame(maxWidth: .infinity)
             .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
@@ -152,6 +155,11 @@ struct PadPrefsControls: View {
         if prefs.kind == .oneHand {
             Text("세로로 들었을 때 엄지 하나로 쓰는 배치예요. 가로로 돌리면 기본 배치로 바뀌어요.")
                 .font(.footnote).foregroundStyle(.secondary)
+            Picker("쓰는 손", selection: $prefs.leftHanded) {
+                Text("오른손").tag(false)
+                Text("왼손").tag(true)
+            }
+            .pickerStyle(.segmented)
         }
         sliderRow("크기", value: $prefs.scale, in: 0.8...1.3)
         sliderRow("불투명도", value: $prefs.opacity, in: 0.25...0.9)
@@ -183,6 +191,7 @@ struct SpoonPreview: View {
     let scale: Double
     let opacity: Double
     let floatingStick: Bool
+    var leftHanded = false
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     /// 기준 화면(pt)과 안전 영역
@@ -197,7 +206,7 @@ struct SpoonPreview: View {
 
     var body: some View {
         let screen = screen
-        let l = SpoonLayout.make(size: screen, safe: safe, kind: kind, scale: scale, floatingStick: floatingStick)
+        let l = SpoonLayout.make(size: screen, safe: safe, kind: kind, scale: scale, floatingStick: floatingStick, leftHanded: leftHanded)
         GeometryReader { geo in
             let k = geo.size.width / screen.width
             SpoonFace(layout: l, opacity: opacity, scale: scale, showZone: true)

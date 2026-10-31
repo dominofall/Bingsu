@@ -12,7 +12,7 @@ struct SpoonOverlay: View {
             let full = CGSize(width: geo.size.width + insets.leading + insets.trailing,
                               height: geo.size.height + insets.top + insets.bottom)
             let l = SpoonLayout.make(size: full, safe: (insets.top, insets.leading, insets.bottom, insets.trailing),
-                                     kind: prefs.kind, scale: prefs.scale, floatingStick: prefs.floatingStick)
+                                     kind: prefs.kind, scale: prefs.scale, floatingStick: prefs.floatingStick, leftHanded: prefs.leftHanded)
             ZStack(alignment: .topLeading) {
                 SpoonFace(layout: l, opacity: prefs.opacity, scale: prefs.scale, pressed: controller.pressed,
                           leftStick: controller.leftStick, rightStick: controller.rightStick,

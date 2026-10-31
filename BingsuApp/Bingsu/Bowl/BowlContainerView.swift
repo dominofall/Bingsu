@@ -57,6 +57,7 @@ struct BowlContainerView: View {
     @AppStorage("spoon.floatingStick") private var gFloating = true
     @AppStorage("spoon.showLabels") private var gLabels = false
     @AppStorage("spoon.haptics") private var gHaptics = true
+    @AppStorage("spoon.leftHanded") private var gLeftHanded = false
     private var padPrefs: PadPrefs {
         var p = prefsStore.effectivePad(for: dish.id)
         // 기본·레트로·한손 배치에는 LT/RT 가 없다: 트리거를 쓰는 게임은 게임별로 따로 고르지 않았으면 스틱 배치로 연다
@@ -397,7 +398,7 @@ struct BowlContainerView: View {
                 let ins = geo.safeAreaInsets
                 let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
                 let l = SpoonLayout.make(size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing),
-                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick)
+                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
                 if padShown, let c = l.betweenViewMenu {
                     // 화면 아래로 벗어나지 않게
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
@@ -420,9 +421,9 @@ struct BowlContainerView: View {
             let gameW = W - Self.margin * 2, gameH = gameW * 9 / 16
             let padTop = padLayout(full: geo.size, ins: ins)?.topEdge.map { $0 - 12 } ?? H
             let top = ins.top
-            // 남는 세로 공간이 크면(iPad) 게임을 위쪽에 붙이고, 작으면(iPhone) 가운데
+            // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간의 가운데
             let slack = max(0, padTop - top - Self.chrome - gameH)
-            let y = top + Self.chrome + (slack > 160 ? 24 : slack / 2)
+            let y = top + Self.chrome + slack / 2
             return CGRect(x: Self.margin, y: y, width: gameW, height: gameH)
         } else {
             let innerH = H - Self.margin * 2
@@ -445,7 +446,7 @@ struct BowlContainerView: View {
     private func padLayout(full: CGSize, ins: UIEdgeInsets) -> SpoonLayout? {
         guard padShown else { return nil }
         return SpoonLayout.make(size: full, safe: (ins.top, ins.left, ins.bottom, ins.right),
-                                kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick)
+                                kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
     }
 
     /// 이번 실행에서 웹 프로세스가 죽어 다시 불러온 횟수

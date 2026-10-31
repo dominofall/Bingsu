@@ -39,6 +39,7 @@ struct BrassBowlContainerView: View {
     @AppStorage("spoon.floatingStick") private var gFloating = true
     @AppStorage("spoon.showLabels") private var gLabels = false
     @AppStorage("spoon.haptics") private var gHaptics = true
+    @AppStorage("spoon.leftHanded") private var gLeftHanded = false
     @Environment(\.scenePhase) private var scenePhase
 
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
@@ -404,7 +405,7 @@ struct BrassBowlContainerView: View {
 
     // MARK: 화면 배치
 
-    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 4:3 가운데. 세로: 위쪽에 폭을 채운 4:3, 아래는 패드
+    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 4:3 가운데. 세로: 폭을 채운 4:3 을 눈송이 줄 아래 ~ 패드 윗줄 사이 가운데
     private func gameRect(_ size: CGSize) -> CGRect {
         let W = size.width, H = size.height
         guard W > 0, H > 0 else { return .zero }
@@ -414,7 +415,7 @@ struct BrassBowlContainerView: View {
             let top = ins.top + BowlContainerView.chrome
             let padTop = padShown ? padLayout(size, ins: ins)?.topEdge.map { $0 - 12 } ?? H : H
             let slack = max(0, padTop - top - gameH)
-            return CGRect(x: 0, y: top + (slack > 160 ? 24 : slack / 2), width: gameW, height: gameH)
+            return CGRect(x: 0, y: top + slack / 2, width: gameW, height: gameH)
         }
         let gameH = H, gameW = min(W, H * Self.aspect)
         return CGRect(x: (W - gameW) / 2, y: 0, width: gameW, height: gameH)
@@ -432,7 +433,7 @@ struct BrassBowlContainerView: View {
 
     private func padLayout(_ full: CGSize, ins: UIEdgeInsets) -> SpoonLayout? {
         SpoonLayout.make(size: full, safe: (ins.top, ins.left, ins.bottom, ins.right),
-                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick)
+                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
     }
 
     @ViewBuilder private var menuButton: some View {
@@ -451,7 +452,7 @@ struct BrassBowlContainerView: View {
                 let ins = geo.safeAreaInsets
                 let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
                 let l = SpoonLayout.make(size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing),
-                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick)
+                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
                 if padShown, isPlaying, let c = l.betweenViewMenu {
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
                 } else {

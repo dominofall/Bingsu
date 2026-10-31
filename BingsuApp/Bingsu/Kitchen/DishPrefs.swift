@@ -9,6 +9,7 @@ struct PadPrefs: Codable, Equatable {
     var floatingStick = true
     var showLabels = false
     var haptics = true
+    var leftHanded = false   // 한손 배치를 왼손 엄지 쪽으로
 
     /// 전역 설정(@AppStorage 키)에서 읽는다
     static func global(_ d: UserDefaults = .standard) -> PadPrefs {
@@ -19,7 +20,23 @@ struct PadPrefs: Codable, Equatable {
         if d.object(forKey: "spoon.floatingStick") != nil { p.floatingStick = d.bool(forKey: "spoon.floatingStick") }
         if d.object(forKey: "spoon.showLabels") != nil { p.showLabels = d.bool(forKey: "spoon.showLabels") }
         if d.object(forKey: "spoon.haptics") != nil { p.haptics = d.bool(forKey: "spoon.haptics") }
+        p.leftHanded = d.bool(forKey: "spoon.leftHanded")
         return p
+    }
+}
+
+extension PadPrefs {
+    /// 나중에 더한 항목(leftHanded)이 없는 예전 게임별 설정도 읽히게, 빠진 키는 기본값
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = PadPrefs()
+        kind = try c.decodeIfPresent(PadKind.self, forKey: .kind) ?? d.kind
+        scale = try c.decodeIfPresent(Double.self, forKey: .scale) ?? d.scale
+        opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? d.opacity
+        floatingStick = try c.decodeIfPresent(Bool.self, forKey: .floatingStick) ?? d.floatingStick
+        showLabels = try c.decodeIfPresent(Bool.self, forKey: .showLabels) ?? d.showLabels
+        haptics = try c.decodeIfPresent(Bool.self, forKey: .haptics) ?? d.haptics
+        leftHanded = try c.decodeIfPresent(Bool.self, forKey: .leftHanded) ?? d.leftHanded
     }
 }
 
