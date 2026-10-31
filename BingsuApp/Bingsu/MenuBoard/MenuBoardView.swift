@@ -429,7 +429,7 @@ struct ChipPressStyle: ButtonStyle {
     }
 }
 
-/// 게임칩 표지: 사용자가 고른 이미지, 기본 게임의 번들 표지, 또는 기본 그라데이션 + 아이콘. 위에 얼음 광택.
+/// 게임칩 표지: 사용자가 고른 이미지, 기본 게임의 번들 표지, RPG Maker 게임의 타이틀·아이콘, 또는 기본 그라데이션 + 아이콘. 위에 얼음 광택.
 struct GameChipCover: View {
     let dish: Dish
     let coverURL: URL?
@@ -442,6 +442,9 @@ struct GameChipCover: View {
                       let ui = UIImage(contentsOfFile: dish.location.appendingPathComponent("cover.png").path) {
                 // 기본 게임은 번들에 든 픽셀 표지(SampleGame/cover.png)를 기본 표지로. 픽셀이 번지지 않게 보간 없이 키운다
                 Color.clear.overlay(Image(uiImage: ui).resizable().interpolation(.none).scaledToFill())
+            } else if let ui = AutoCover.image(for: dish) {
+                // RPG Maker 게임: 타이틀 이미지, 없으면 Game.exe 아이콘 (AutoCover)
+                Color.clear.overlay(Image(uiImage: ui).resizable().scaledToFill())
             } else {
                 LinearGradient(colors: [Palette.sky, Palette.card, Palette.sky.opacity(0.7)],
                                startPoint: .topLeading, endPoint: .bottomTrailing)

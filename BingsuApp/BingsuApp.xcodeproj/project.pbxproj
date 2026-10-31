@@ -19,6 +19,7 @@
 		35B8B8BC3B7AA9D6BF34D6A9 /* Rumble.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC288489930339F81A0B372 /* Rumble.swift */; };
 		3B53B501F15EC7F4D16A9060 /* MenuButtonPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */; };
 		3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */ = {isa = PBXBuildFile; fileRef = B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */; };
+		3F9C8B08153A870F7027FB42 /* AutoCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1232002CDDA6ED63239D5416 /* AutoCover.swift */; };
 		410C7737C27BE2F7DF30857F /* SpoonModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4513AC995966A91F9C712E4 /* SpoonModel.swift */; };
 		41B1145CE02AA00C20DFD31D /* AddWebGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E01E8A6B889DBD7F8F47948 /* AddWebGameView.swift */; };
 		4D166909B14201F76C0EE963 /* BowlScripts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06835BD01F64601441316486 /* BowlScripts.swift */; };
@@ -71,6 +72,7 @@
 		06835BD01F64601441316486 /* BowlScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlScripts.swift; sourceTree = "<group>"; };
 		09F035B0C3E611B20D88C77C /* GamePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePicker.swift; sourceTree = "<group>"; };
 		0A7A0B09C564E1653D5C9CD7 /* SafeUnzip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeUnzip.swift; sourceTree = "<group>"; };
+		1232002CDDA6ED63239D5416 /* AutoCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCover.swift; sourceTree = "<group>"; };
 		14F7C6254E82FAB6E79DBEF2 /* Bingsu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Bingsu.entitlements; sourceTree = "<group>"; };
 		1F5139AB857871D3CC678B92 /* DownloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadView.swift; sourceTree = "<group>"; };
 		23F360FC8FB7EEB8C30A452D /* SpoonOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonOverlay.swift; sourceTree = "<group>"; };
@@ -222,6 +224,7 @@
 		BB0BC8618CFEABA2841541B6 /* MenuBoard */ = {
 			isa = PBXGroup;
 			children = (
+				1232002CDDA6ED63239D5416 /* AutoCover.swift */,
 				93A4FDE53502C75F063E7580 /* Dish.swift */,
 				E645865C8AC6975E8AB7712A /* MenuBoardStore.swift */,
 				05EF5CD301B2AA261E35A61F /* MenuBoardView.swift */,
@@ -416,6 +419,7 @@
 				41B1145CE02AA00C20DFD31D /* AddWebGameView.swift in Sources */,
 				8B0E2D54E457192F3314B996 /* AsarArchive.swift in Sources */,
 				960FEFB105501E8D62B8DD14 /* AuthPopupView.swift in Sources */,
+				3F9C8B08153A870F7027FB42 /* AutoCover.swift in Sources */,
 				21ABF4514382A8BC12365874 /* BingsuApp.swift in Sources */,
 				C13D0F2FACFAB5F2F2DAF7BB /* BowlContainerView.swift in Sources */,
 				4D166909B14201F76C0EE963 /* BowlScripts.swift in Sources */,
@@ -522,7 +526,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -584,7 +588,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 22;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

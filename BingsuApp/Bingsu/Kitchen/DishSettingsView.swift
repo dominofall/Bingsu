@@ -90,6 +90,17 @@ struct DishSettingsView: View {
                     Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 게임 중에서 모든 게임에 같이 정해요.")
                 }
 
+                if dish.recipe == .mkxp {
+                    Section {
+                        Toggle("온라인 접속 허용", isOn: Binding(get: { prefs.allowOnline != false },
+                                                             set: { on in store.update(dish.id) { $0.allowOnline = on ? nil : false } }))
+                    } header: {
+                        Text("온라인")
+                    } footer: {
+                        Text("켜 두면 게임이 인터넷 서버에 접속해 온라인 멀티를 할 수 있어요. 믿을 수 있는 서버에만 접속하세요. 끄면 인터넷이 없는 것처럼 실행돼요. 바꾼 값은 게임을 처음 켤 때 적용돼요. 이미 한 번 켰다면 빙수를 완전히 닫았다 다시 열어 주세요.")
+                    }
+                }
+
                 Section {
                     LabeledContent("지금 쓰는 표", value: rumbleSummary)
                     Button { showRumblePicker = true } label: { Label("JSON 가져오기", systemImage: "square.and.arrow.down") }

@@ -130,8 +130,9 @@ final class BrassBowlEngine: ObservableObject {
         call("mkxp_resetSessionState")
         setSetting("rubyVersion", profile.ruby)
         setSetting("syntaxTransform", profile.syntax)
-        // 온라인 기능은 아직 열지 않는다(파티! 는 Phase 3b). 끄면 게임은 오프라인 PC 와 같은 길로 간다
-        setSetting("networkEnabled", "0")
+        // 온라인은 기본으로 켠다(이 게임 설정에서 끌 수 있음). 끄면 게임은 인터넷이 없는 PC 와 같은 길로 간다.
+        // 엔진이 부팅할 때 한 번 읽으므로 바꾸면 빙수를 다시 열어야 적용된다
+        setSetting("networkEnabled", DishPrefsStore.shared.prefs(for: launch.dish.id).allowOnline != false ? "1" : "0")
         setSetting("postloadScripts", "1")
         sym("mkxp_setLauncherIdentity", StrFn.self)?("bingsu")
         try? FileManager.default.createDirectory(at: launch.savesDir, withIntermediateDirectories: true)
@@ -175,6 +176,161 @@ final class BrassBowlEngine: ObservableObject {
     /// (mkxp-z 는 같은 곡이면 처음부터 다시 틀지 않고 크기만 바꾼다)
     private static let volumeFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-volume.txt")
     private static let volumeScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-volume.rb")
+    private static let offlineScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-offline.rb")
+
+    private static let hostScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-host.rb")
+
+    /// 같은 와이파이 방장 (2026-10-31 사용자 요청: 같은 와이파이면 게임 가능하게까지).
+    /// 포켓몬 파티! 의 "온라인 방 만들기" 는 PC 에서 따로 켠 서버(127.0.0.1)를 쓰는데, iOS 에는 그 서버가 없다.
+    /// 게임에 든 VMS 내장 서버를 이 기기에서 켜서 방장이 되게 한다. 내장 서버는 방이 0번 하나뿐이고 큰 자료 조각을 못 붙여서
+    /// 그 두 가지만 채운다(방 번호는 접속 자료의 cluster_id, 조각은 게임의 BoardUdpFrag 규칙 그대로).
+    /// 친구는 "온라인 방 찾기" 에 이 기기 와이파이 주소를 넣는다. 그 함수들이 없는 게임은 건드리지 않는다.
+    /// Ruby 1.8 게임에도 같이 읽히므로 문법은 1.8 안에서만 쓴다(새 문법 기능은 실행 중 조건 안에서만 부른다)
+    private static let hostScript = """
+    # 빙수: 이 기기에서 온라인 방 열기 (BrassBowlEngine.hostScript)
+    module BingsuHost
+      @done = false
+      def self.port
+        (defined?(Board::DEFAULT_SERVER_PORT) && Board::DEFAULT_SERVER_PORT) || 12345
+      end
+      def self.tick
+        return if @done
+        return unless defined?(Board) && Board.respond_to?(:net_user_create) && Board.respond_to?(:net_create_cluster)
+        return unless defined?(VMS::IntegratedServer::Server) && defined?(BoardUdpFrag) && defined?(UDPSocket)
+        @done = true
+        VMS::IntegratedServer::Server.send(:prepend, BingsuHostServer)
+        class << Board
+          alias_method :bingsu_net_user_create, :net_user_create
+          def net_user_create
+            cmds = [_INTL("이 기기에서 방 열기 (같은 와이파이)"), _INTL("PC 서버에 만들기"), _INTL("그만두기")]
+            case board_choice(_INTL("어디에 방을 만들까요?"), cmds)
+            when 0 then BingsuHost.open_here
+            when 1 then bingsu_net_user_create
+            end
+          end
+        end
+      rescue StandardError
+        @done = true
+      end
+
+      def self.open_here
+        unless VMS::IntegratedServer.running
+          VMS::IntegratedServer.start
+          30.times { Graphics.update }   # 서버 스레드가 포트를 열 때까지
+        end
+        unless VMS::IntegratedServer.running
+          pbMessage(_INTL("이 기기에서 방을 열지 못했습니다."))
+          return
+        end
+        Board.set_server_address("127.0.0.1", port)
+        Board.net_create_cluster
+        if Board.net_available?
+          ip = local_ip
+          where = ip ? ip : _INTL("이 기기의 와이파이 IP")
+          pbMessage(_INTL("같은 와이파이의 친구는 \\"온라인 방 찾기\\"에서\\n{1} 을 입력하면 돼요.", where))
+          pbMessage(_INTL("방장이 빙수를 닫거나 다른 앱으로 가면\\n방이 멈춰요."))
+        else
+          VMS::IntegratedServer.stop
+        end
+      end
+
+      # 와이파이(en*) 의 IPv4 주소. 없으면 사설 주소 하나
+      def self.local_ip
+        if Socket.respond_to?(:getifaddrs)
+          Socket.getifaddrs.each do |i|
+            a = i.addr
+            next unless i.name.to_s.start_with?("en") && a && a.ipv4? && !a.ipv4_loopback?
+            return a.ip_address
+          end
+        end
+        a = Socket.ip_address_list.find { |x| x.ipv4_private? }
+        a ? a.ip_address : nil
+      rescue StandardError
+        nil
+      end
+    end
+
+    module BingsuHostServer
+      # 친구가 IP 만 넣어도 되게 게임의 기본 포트(12345)로 연다
+      def initialize
+        super
+        if @socket.is_a?(UDPSocket)
+          @socket.close rescue nil
+          @port = BingsuHost.port
+          @socket = UDPSocket.new
+          @socket.bind("0.0.0.0", @port)
+        end
+      end
+
+      # 1000바이트 조각을 보낸 사람별로 모아 붙인 뒤 넘긴다
+      def handle_packet(data, address, port, socket = nil)
+        @bingsu_frag ||= {}
+        whole = BoardUdpFrag.feed(@bingsu_frag, [address, port], data)
+        return if whole.nil?
+        super(whole, address, port, socket)
+      end
+
+      # 방 만들기에서 정한 방 번호로 들어가게 (원래는 늘 0번)
+      def connect(address, port, data, socket = nil)
+        cid = (data[VMS::PACKET_KEYS[:cluster_id]] rescue nil)
+        return super unless cid.is_a?(Integer) && cid > 0
+        if VMS::CHECK_GAME_AND_VERSION
+          if data[VMS::PACKET_KEYS[:game_name]] != System.game_title
+            send(:disconnect_wrong_game, address, port, socket)
+            return
+          end
+          if data[VMS::PACKET_KEYS[:game_version]] != Settings::GAME_VERSION
+            send(:disconnect_wrong_version, address, port, socket)
+            return
+          end
+        end
+        cluster = @clusters[cid]
+        cluster = @clusters[cid] = VMS::IntegratedServer::Cluster.new(cid, self) if cluster.nil?
+        max_players = (VMS::MAX_PLAYERS rescue 4)
+        if cluster.player_count < max_players
+          player = VMS::IntegratedServer::Player.new(data[VMS::PACKET_KEYS[:id]], address, port)
+          player.socket = socket
+          cluster.add_player(player)
+          player.update(data)
+        else
+          send(:disconnect_full, address, port, socket)
+        end
+      end
+    end
+
+    class << Graphics
+      alias_method :bingsu_host_update, :update
+      def update(*a)
+        BingsuHost.tick
+        bingsu_host_update(*a)
+      end
+    end
+    """
+
+    /// 온라인을 끈 게임: 엔진은 비행기 모드처럼 접속을 ENETDOWN 으로 실패시키는데, 포켓몬 파티! 는 그 오류를 못 받아 멈춘다
+    /// (2026-10-31 시뮬레이터). 이 게임은 소켓이 없는 기기용 길(Board.socket_available? 가 거짓 → "이 기기에서는 온라인 멀티를
+    /// 쓸 수 없습니다")을 스스로 갖고 있으니, 플러그인이 다 올라온 뒤 그 길로 보낸다. 그 함수가 없는 게임은 건드리지 않는다
+    private static let offlineScript = """
+    # 빙수: 온라인을 끈 게임 (BrassBowlEngine.offlineScript)
+    module BingsuOffline
+      @done = false
+      def self.tick
+        return if @done
+        return unless defined?(Board) && Board.respond_to?(:socket_available?)
+        @done = true
+        def Board.socket_available?; false; end
+      rescue StandardError
+        @done = true
+      end
+    end
+    class << Graphics
+      alias_method :bingsu_offline_update, :update
+      def update(*a)
+        BingsuOffline.tick
+        bingsu_offline_update(*a)
+      end
+    end
+    """
     private var volumeObserver: NSObjectProtocol?
 
     private func installVolumeScript(for dish: Dish) {
@@ -194,6 +350,11 @@ final class BrassBowlEngine: ObservableObject {
             scripts = own
         }
         scripts.append(Self.volumeScriptFile.path)
+        let online = DishPrefsStore.shared.prefs(for: dish.id).allowOnline != false
+        let extra = online ? (Self.hostScript, Self.hostScriptFile) : (Self.offlineScript, Self.offlineScriptFile)
+        if (try? extra.0.write(to: extra.1, atomically: true, encoding: .utf8)) != nil {
+            scripts.append(extra.1.path)
+        }
         if let data = try? JSONSerialization.data(withJSONObject: ["preloadScript": scripts]), let json = String(data: data, encoding: .utf8) {
             sym("mkxp_setConfigOverlayJSON", StrFn.self)?(json)
         }

@@ -427,7 +427,8 @@ struct BrassBowlContainerView: View {
             let padTop = padShown ? padLayout(size, ins: ins)?.topEdge.map { $0 - 12 } ?? H : H
             let slack = max(0, padTop - top - gameH)
             // 남는 공간에서 패드 쪽으로 치우치게 (위 3 : 아래 1)
-            return CGRect(x: 0, y: top + slack * 0.75, width: gameW, height: gameH)
+            // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다
+            return CGRect(x: 0, y: top + slack * (padShown ? 0.75 : 0), width: gameW, height: gameH)
         }
         let gameH = H, gameW = min(W, H * Self.aspect)
         return CGRect(x: (W - gameW) / 2, y: 0, width: gameW, height: gameH)
@@ -456,9 +457,9 @@ struct BrassBowlContainerView: View {
         }
         switch menuButtonPlace {
         case .topRight:
-            VStack { HStack { Spacer(); btn }; Spacer() }.ignoresSafeArea()
+            VStack { HStack { Spacer(); btn }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
         case .topLeft:
-            VStack { HStack { btn; Spacer() }; Spacer() }.ignoresSafeArea()
+            VStack { HStack { btn; Spacer() }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
         case .pad:
             GeometryReader { geo in
                 let ins = geo.safeAreaInsets
@@ -468,7 +469,7 @@ struct BrassBowlContainerView: View {
                 if padShown, isPlaying, let c = l.betweenViewMenu {
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
                 } else {
-                    VStack { HStack { Spacer(); btn }; Spacer() }.ignoresSafeArea()
+                    VStack { HStack { Spacer(); btn }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
                 }
             }
         }

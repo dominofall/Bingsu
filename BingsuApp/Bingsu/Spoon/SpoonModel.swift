@@ -429,7 +429,7 @@ struct CutlerySet {
     /// 기본 게임 "Bingsu": A(Z)로 얼음 갈기, 십자키(방향키)로 토핑
     static let sampleGame = CutlerySet(
         transport: .keyboard,
-        labels: [.field: [.a: "갈기", .up: "팥", .right: "딸기", .down: "연유", .left: "인절미"]],
+        labels: [.field: [.a: "갈기", .b: "갈기", .up: "팥", .right: "딸기", .down: "연유", .left: "인절미"]],
         keys: keyboardDefault.keys, stickKeys: keyboardDefault.stickKeys)
 
     static func forDish(_ dish: Dish) -> CutlerySet {

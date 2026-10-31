@@ -189,6 +189,17 @@ button:focus-visible { outline: 3px solid var(--zone); outline-offset: 2px; }
 /* 빙수 앱 안: 빙수가 게임을 16:9 상자에 넣고 가상 패드를 그 밖(세로)이나 양옆(가로)에 두므로, 자체 버튼은 빼고 가게를 넓게 */
 .in-bingsu .pad { display: none; }
 .in-bingsu #app { grid-template-columns: 1fr; grid-template-rows: auto 1fr; grid-template-areas: "hud" "stage"; max-width: none; }
+/* 낮은 화면(빙수 안 16:9 상자 등): 안내 카드를 넓고 촘촘하게, 그래도 넘치면 카드 안에서 스크롤 */
+@media (max-height: 460px) {
+  .overlay { position: fixed; inset: 0; z-index: 5; padding: 8px; grid-template-rows: minmax(0, 1fr); }
+  .card { max-width: 560px; max-height: 100%; overflow-y: auto; padding: 12px 18px; gap: 6px; }
+  .card h1 { font-size: 26px; }
+  .card h2 { font-size: 22px; }
+  .card p { font-size: 13px; line-height: 1.45; }
+  .keys { font-size: 13px; gap: 2px; }
+  .card .small { font-size: 12px; }
+  .go { font-size: 16px; padding: 7px 12px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .tp.down-on, .tp:active, .abtn.down-on, .abtn:active { transform: none; }
 }
@@ -217,9 +228,9 @@ button:focus-visible { outline: 3px solid var(--zone); outline-offset: 2px; }
     <div class="overlay" id="overlay">
       <div class="card" id="intro">
         <h1>Bingsu</h1>
-        <p>A 를 연타해 얼음을 갈아 목표선까지 채우고, 주문서 순서대로 토핑을 올리세요. 얼음은 계속 녹아요. 한 그릇 낼 때마다 시간이 조금 늘고, 실수 없이 빠르게 이어 내면 콤보로 점수가 커져요. 단계가 오를수록 주문이 길어지고 늘어나는 시간은 줄어요.</p>
+        <p>A 나 B 를 연타해 얼음을 갈아 목표선까지 채우고, 주문서 순서대로 토핑을 올리세요. 얼음은 계속 녹아요. 한 그릇 낼 때마다 시간이 조금 늘고, 실수 없이 빠르게 이어 내면 콤보로 점수가 커져요. 단계가 오를수록 주문이 길어지고 늘어나는 시간은 줄어요.</p>
         <ul class="keys">
-          <li><kbd>A</kbd> 얼음 갈기 (가게 그림을 눌러도 돼요)</li>
+          <li><kbd>A</kbd> <kbd>B</kbd> 얼음 갈기 (가게 그림을 눌러도 돼요)</li>
           <li><kbd>↑</kbd> 팥 <kbd>→</kbd> 딸기 <kbd>↓</kbd> 연유 <kbd>←</kbd> 인절미</li>
         </ul>
         <p class="small" id="how">화면 버튼, 키보드(Z·스페이스·방향키), 게임패드 모두 돼요.</p>
@@ -255,7 +266,7 @@ button:focus-visible { outline: 3px solid var(--zone); outline-offset: 2px; }
   const C = Object.fromEntries(["sky", "paper", "ink", "line", "glass", "steel", "steel-dark", "brass", "brass-light", "brass-dark",
     "red", "pat", "berry", "milk", "inj", "zone", "good", "counter", "frost", "drop", "cheek"].map((k) => [k, css.getPropertyValue("--" + k).trim()]));
   const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  // 빙수 앱이 넣는 다리(window.__bingsu)가 있으면 빙수 가상 패드(A = Z 키, 십자키 = 방향키)로 조작한다
+  // 빙수 앱이 넣는 다리(window.__bingsu)가 있으면 빙수 가상 패드(A = Z 키, B = X 키, 십자키 = 방향키)로 조작한다
   if (window.__bingsu) {
     document.documentElement.classList.add("in-bingsu");
     $("#how").textContent = "빙수 가상 패드나 컨트롤러로 조작해요.";
@@ -528,15 +539,15 @@ button:focus-visible { outline: 3px solid var(--zone); outline-offset: 2px; }
       b.classList.add("down-on"); setTimeout(() => b.classList.remove("down-on"), 90);
     }
   }
-  const KEYS = { KeyZ: "a", Space: "a", Enter: "a", ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+  const KEYS = { KeyZ: "a", KeyX: "a", Space: "a", Enter: "a", ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
   addEventListener("keydown", (e) => {
     const act = KEYS[e.code];
     if (!act) return;
     e.preventDefault();
     if (!e.repeat) press(act);
   });
-  // 게임패드: A(0)·Start(9) 갈기, 십자키 12~15 토핑
-  const PAD = { 0: "a", 9: "a", 12: "up", 13: "down", 14: "left", 15: "right" };
+  // 게임패드: A(0)·B(1)·Start(9) 갈기, 십자키 12~15 토핑
+  const PAD = { 0: "a", 1: "a", 9: "a", 12: "up", 13: "down", 14: "left", 15: "right" };
   const padPrev = {};
   function pollPads() {
     // 빙수 안에서는 컨트롤러 입력이 빙수를 거쳐 키로 들어오므로 직접 읽지 않는다(두 번 눌림 방지)

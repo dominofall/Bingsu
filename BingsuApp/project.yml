@@ -8,7 +8,7 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "21"
+    CURRENT_PROJECT_VERSION: "22"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
@@ -86,7 +86,7 @@ targets:
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # 표준 HTTPS 외 암호화 없음 → App Store Connect 업로드 때 수출 규정 질문 생략
         ITSAppUsesNonExemptEncryption: false
-        NSLocalNetworkUsageDescription: "같은 네트워크의 방장 PC 서버로 온라인 방에 참가할 때 필요합니다."
+        NSLocalNetworkUsageDescription: "같은 와이파이에서 게임의 온라인 방을 열거나 참가할 때 필요해요."
         CFBundleDocumentTypes:
           - CFBundleTypeName: "게임 압축 파일"
             LSHandlerRank: Alternate

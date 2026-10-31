@@ -91,10 +91,14 @@ struct BowlContainerView: View {
             GeometryReader { geo in
                 // 게임 웹뷰는 항상 하나만 두고(회전해도 다시 만들지 않음) 자리와 크기만 바꾼다.
                 let r = gameRect(geo)
+                // 페이지에 보여 줄 크기. 보통은 자리 크기 그대로, 기본 게임 세로는 가로 화면의 게임 크기로 그린 뒤 줄인다
+                let page = pageSize(geo.size, rect: r)
+                let k = page.width > 0 ? r.width / page.width : 1
                 GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
                           paused: !visible, onRestart: restarted)
-                    .frame(width: r.width, height: r.height - refitNudge)
-                    .clipShape(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
+                    .frame(width: page.width, height: page.height - refitNudge)
+                    .clipShape(RoundedRectangle(cornerRadius: Self.corner / k, style: .continuous))
+                    .scaleEffect(k)
                     .position(x: r.midX, y: r.midY)
             }
             .ignoresSafeArea()
@@ -401,9 +405,9 @@ struct BowlContainerView: View {
         .accessibilityLabel("일시정지")
         switch menuButtonPlace {
         case .topRight:
-            VStack { HStack { Spacer(); btn }; Spacer() }.ignoresSafeArea()
+            VStack { HStack { Spacer(); btn }; Spacer() }.padding(Self.cornerInset()).ignoresSafeArea()
         case .topLeft:
-            VStack { HStack { btn; Spacer() }; Spacer() }.ignoresSafeArea()
+            VStack { HStack { btn; Spacer() }; Spacer() }.padding(Self.cornerInset()).ignoresSafeArea()
         case .pad:
             GeometryReader { geo in
                 let ins = geo.safeAreaInsets
@@ -414,7 +418,7 @@ struct BowlContainerView: View {
                     // 화면 아래로 벗어나지 않게
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
                 } else {
-                    VStack { HStack { Spacer(); btn }; Spacer() }.ignoresSafeArea()
+                    VStack { HStack { Spacer(); btn }; Spacer() }.padding(Self.cornerInset()).ignoresSafeArea()
                 }
             }
         }
@@ -432,27 +436,35 @@ struct BowlContainerView: View {
             let gameW = W - Self.margin * 2
             let padTop = padLayout(full: geo.size, ins: ins)?.topEdge.map { $0 - 12 } ?? H
             let top = ins.top
-            // 기본 게임(Bingsu)은 페이지가 스스로 세로 배치를 하므로 16:9 상자에 가두지 않고 눈송이 줄 ~ 패드 윗줄을 다 준다
-            // (16:9 로 두면 iPhone 세로에서 안내 카드·무대가 잘림, 2026-10-31)
-            if MenuBoardStore.isBuiltIn(dish) {
-                let y = top + (menuButtonPlace == .pad && padShown ? 8 : Self.chrome)
-                return CGRect(x: Self.margin, y: y, width: gameW, height: max(200, min(H - ins.bottom, padTop) - y))
-            }
             let gameH = gameW * 9 / 16
             // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
             let band = menuButtonPlace == .pad && padShown ? 8 : Self.chrome
             let slack = max(0, padTop - top - band - gameH)
-            let y = top + band + slack * 0.75
+            // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다. 아래로 치우치면 화면 가운데 아래에 떠 보인다
+            let y = top + band + slack * (padShown ? 0.75 : 0)
             return CGRect(x: Self.margin, y: y, width: gameW, height: gameH)
         } else {
-            let innerH = H - Self.margin * 2
-            let fullW = min(W - Self.margin * 2, innerH * 16 / 9)
-            let sideBand = (W - fullW) / 2
-            let gameH = sideBand >= Self.chrome ? fullW * 9 / 16 : min(innerH - Self.chrome, (W - Self.margin * 2) * 9 / 16)
-            let gameW = gameH * 16 / 9
-            let cy = sideBand >= Self.chrome ? H / 2 : Self.chrome + (H - Self.chrome) / 2
-            return CGRect(x: (W - gameW) / 2, y: cy - gameH / 2, width: gameW, height: gameH)
+            return Self.landscapeRect(W: W, H: H)
         }
+    }
+
+    /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다
+    private static func landscapeRect(W: CGFloat, H: CGFloat) -> CGRect {
+        let innerH = H - margin * 2
+        let fullW = min(W - margin * 2, innerH * 16 / 9)
+        let sideBand = (W - fullW) / 2
+        let gameH = sideBand >= chrome ? fullW * 9 / 16 : min(innerH - chrome, (W - margin * 2) * 9 / 16)
+        let gameW = gameH * 16 / 9
+        let cy = sideBand >= chrome ? H / 2 : chrome + (H - chrome) / 2
+        return CGRect(x: (W - gameW) / 2, y: cy - gameH / 2, width: gameW, height: gameH)
+    }
+
+    /// 웹뷰가 페이지에 알릴 크기. 기본 게임(Bingsu)은 세로에서도 가로 화면과 같은 크기로 그려 똑같은 모습을 16:9 자리에 맞게 줄인다
+    /// (2026-10-31 사용자 요청: 세로도 가로와 똑같이). 그 밖의 게임은 자리 크기 그대로
+    private func pageSize(_ size: CGSize, rect r: CGRect) -> CGSize {
+        guard MenuBoardStore.isBuiltIn(dish), size.height > size.width else { return r.size }
+        let land = Self.landscapeRect(W: size.height, H: size.width).size
+        return land.width > r.width ? land : r.size
     }
 
     /// 게임 소리(AudioContext)와 무음 모드용 무음 <audio> 를 함께 멈추거나 다시 켠다
@@ -471,6 +483,10 @@ struct BowlContainerView: View {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { refitNudge = 0 }
         }
     }
+
+    /// 구석 눈송이를 화면 모서리에서 띄우는 거리. 둥근 화면(홈 버튼 없는 기기)은 모서리 곡선에 눈송이 일부가 잘려서
+    /// 곡선 안쪽까지 들여 놓는다 (2026-10-31 아이폰 실기기, 컨트롤러 연결 시 오른쪽 위)
+    static func cornerInset() -> CGFloat { windowInsets().bottom > 0 ? 10 : 0 }
 
     /// 창의 실제 안전 영역 (ignoresSafeArea 한 GeometryReader 에서는 0 으로 나오므로 창에서 읽는다)
     private static func windowInsets() -> UIEdgeInsets {

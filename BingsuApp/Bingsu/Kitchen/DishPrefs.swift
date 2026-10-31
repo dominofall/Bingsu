@@ -48,6 +48,7 @@ struct DishPrefs: Codable, Equatable {
     var recommendedQuality: Quality?   // 첫 실행 벤치마크가 정한 권장 화질
     var fpsLimit: FpsLimit?       // 사용자가 고른 프레임 제한. nil = 자동(게임 기본값 + 뜨거워지면 30)
     var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 게임 중의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
+    var allowOnline: Bool?        // RPG Maker 게임의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
 
     /// 실제로 쓸 화질: 직접 고른 값 → 벤치마크 권장 → 높음
     var effectiveQuality: Quality { quality ?? recommendedQuality ?? .high }
@@ -78,6 +79,7 @@ enum FpsLimit: String, Codable, CaseIterable {
 @MainActor
 final class DishPrefsStore: ObservableObject {
     static let shared = DishPrefsStore()
+    /// 키는 파일 이름과 같은 safeName(id). 게임 id 그대로 쓰면 띄어쓰기·느낌표가 든 id 는 다시 켰을 때 파일과 짝이 안 맞아 설정이 사라졌다
     @Published private(set) var all: [String: DishPrefs] = [:]
 
     nonisolated private static let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -88,27 +90,27 @@ final class DishPrefsStore: ObservableObject {
 
     private init() { load() }
 
-    func prefs(for id: String) -> DishPrefs { all[id] ?? DishPrefs() }
+    func prefs(for id: String) -> DishPrefs { all[Self.safeName(id)] ?? DishPrefs() }
 
     /// 실제로 쓸 패드 설정: 게임별 값이 있으면 그것, 없으면 전역
-    func effectivePad(for id: String) -> PadPrefs { all[id]?.pad ?? PadPrefs.global() }
+    func effectivePad(for id: String) -> PadPrefs { all[Self.safeName(id)]?.pad ?? PadPrefs.global() }
 
     func coverURL(for id: String) -> URL? {
-        guard let f = all[id]?.coverFile else { return nil }
+        guard let f = all[Self.safeName(id)]?.coverFile else { return nil }
         let u = coversDir.appendingPathComponent(f)
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
 
     func update(_ id: String, _ change: (inout DishPrefs) -> Void) {
         var p = prefs(for: id); change(&p)
-        all[id] = p
+        all[Self.safeName(id)] = p
         save(id, p)
     }
 
     /// 표지 이미지 저장 (JPEG, 긴 변 1024 이하로 줄임)
     func setCover(_ image: UIImage?, for id: String) {
         try? FileManager.default.createDirectory(at: coversDir, withIntermediateDirectories: true)
-        if let old = all[id]?.coverFile { try? FileManager.default.removeItem(at: coversDir.appendingPathComponent(old)) }
+        if let old = all[Self.safeName(id)]?.coverFile { try? FileManager.default.removeItem(at: coversDir.appendingPathComponent(old)) }
         guard let image, let data = Self.downscaled(image).jpegData(compressionQuality: 0.88) else {
             update(id) { $0.coverFile = nil }; return
         }
@@ -120,7 +122,7 @@ final class DishPrefsStore: ObservableObject {
     func remove(_ id: String) {
         setCover(nil, for: id)
         RumbleShelf.removeUserFile(for: id)
-        all[id] = nil
+        all[Self.safeName(id)] = nil
         try? FileManager.default.removeItem(at: prefsDir.appendingPathComponent(Self.safeName(id) + ".json"))
     }
 

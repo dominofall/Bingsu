@@ -38,7 +38,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>같은 네트워크의 방장 PC 서버로 온라인 방에 참가할 때 필요합니다.</string>
+	<string>같은 와이파이에서 게임의 온라인 방을 열거나 참가할 때 필요해요.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
