@@ -6,18 +6,22 @@ import UniformTypeIdentifiers
 /// UIDocumentPickerViewController 를 창에서 직접 present 한다. 고른 zip 은 앱 임시 폴더의 복사본이라 Delivery 가 옮겨 쓰고 지운다.
 struct GamePicker: UIViewControllerRepresentable {
     @Binding var isPresented: Bool
+    /// 고를 수 있는 형식 (게임은 zip, 스킨 목록은 .bingsuskin·zip)
+    var types: [UTType] = [.zip]
     var onPick: (URL?) -> Void
 
-    func makeUIViewController(context: Context) -> Host { Host() }
+    func makeUIViewController(context: Context) -> Host { let h = Host(); h.types = types; return h }
 
     func updateUIViewController(_ host: Host, context: Context) {
         host.onPick = { url in isPresented = false; onPick(url) }
+        host.types = types
         if isPresented { host.presentIfNeeded() } else { host.dismissIfNeeded() }
     }
 
     /// 보이지 않는 호스트 뷰 컨트롤러. 여기서 선택기를 present 한다.
     final class Host: UIViewController, UIDocumentPickerDelegate {
         var onPick: ((URL?) -> Void)?
+        var types: [UTType] = [.zip]
         private weak var picker: UIDocumentPickerViewController?
 
         private var waits = 0
@@ -43,7 +47,7 @@ struct GamePicker: UIViewControllerRepresentable {
             waits = 0
             // zip 만, 복사본으로 받는다: iOS 가 앱 임시 폴더로 복사해 건네줘 원본 접근 권한·조정 절차가 없다 (다른 앱들처럼 창이 빨리 뜬다).
             // 폴더 가져오기는 뺐다 (2026-10-30 사용자 결정, zip 만)
-            let vc = UIDocumentPickerViewController(forOpeningContentTypes: [.zip], asCopy: true)
+            let vc = UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: true)
             vc.allowsMultipleSelection = false
             vc.shouldShowFileExtensions = true
             vc.delegate = self

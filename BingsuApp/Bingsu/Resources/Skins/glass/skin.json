@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "glass",
+  "name": "어두운 유리",
+  "license": "CC0-1.0",
+  "note": "아래로 짙어지는 어두운 유리. 밝은 게임 화면에서 잘 보여요.",
+  "colors": {
+    "ink": "#FFFFFF",
+    "fillTop": 0.1,
+    "shadeBottom": 0.55,
+    "shade": "#000000",
+    "rim": 0.6,
+    "lineWidth": 1,
+    "press": "#6EC2E8"
+  }
+}

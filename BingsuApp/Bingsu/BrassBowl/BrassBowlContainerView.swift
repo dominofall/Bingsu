@@ -23,6 +23,8 @@ struct BrassBowlContainerView: View {
     @State private var pauseFocus: PauseItem?
     @State private var lastBackup: Date?
     @State private var showSettings = false
+    /// 배치 편집 (일시정지 화면 › 배치 편집). 엔진은 멈춘 채 그 위에 편집기를 띄운다
+    @State private var showEditor = false
     @State private var confirmQuit = false
     @State private var textEntry = ""
     @State private var fpsTimer: Timer?
@@ -40,6 +42,8 @@ struct BrassBowlContainerView: View {
     @AppStorage("spoon.showLabels") private var gLabels = false
     @AppStorage("spoon.haptics") private var gHaptics = true
     @AppStorage("spoon.leftHanded") private var gLeftHanded = false
+    @AppStorage(PadPrefs.skinKey) private var gSkin: String?
+    @AppStorage(PadPrefs.layoutsKey) private var gLayouts: Data?
     @Environment(\.scenePhase) private var scenePhase
 
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
@@ -81,7 +85,7 @@ struct BrassBowlContainerView: View {
             }
             .ignoresSafeArea()
 
-            if padShown && isPlaying { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            if padShown && isPlaying && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
 
             if showHUD {
                 VStack {
@@ -100,8 +104,14 @@ struct BrassBowlContainerView: View {
                 .transition(.opacity)
             }
             if case .ended(let id, let clean) = engine.phase, id == dish.id { endedCover(clean: clean) }
-            if !showMenu { menuButton }
+            if !showMenu && !showEditor { menuButton }
             if showMenu { pauseBoard.zIndex(2) }
+            if showEditor {
+                SpoonLayoutEditor(prefs: padPrefs, backdrop: .game, target: dish.title,
+                                  save: { k, a in setPadHere(padPrefs.withLayout(k, a)) },
+                                  onClose: { showEditor = false; openPause() })
+                    .zIndex(3)
+            }
         }
         .persistentSystemOverlays(visible ? .hidden : .automatic)
         .statusBarHidden(visible)
@@ -135,7 +145,7 @@ struct BrassBowlContainerView: View {
             if phase == .background {
                 engine.pause()
                 afterPlay(stillRunning: true)
-            } else if phase == .active && visible {
+            } else if phase == .active && visible && !showEditor {
                 engine.resume()
             }
             recorder.setActive(phase == .active && visible)
@@ -201,7 +211,7 @@ struct BrassBowlContainerView: View {
         }
         if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }
         longSpoon?.enabled = visible
-        longSpoon?.onHomeButton = { if visible && !showMenu { openPause() } }
+        longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
         thermometer.fpsTarget = 60
         thermometer.onSample = { [weak recorder] t in
             recorder?.ingest(fps: t.fps, p95: t.frameP95ms, stutters: t.lastStutters, memoryMB: t.memoryMB, thermal: t.thermal)
@@ -308,6 +318,7 @@ struct BrassBowlContainerView: View {
             onHome: { closePause(resume: false); goHome() },
             onClose: { confirmQuit = true },
             onBackup: backup, onMoreSettings: { showSettings = true },
+            onEditLayout: editLayout,
             focus: $pauseFocus)
     }
 
@@ -323,6 +334,13 @@ struct BrassBowlContainerView: View {
         withAnimation(.easeOut(duration: 0.22)) { showMenu = true }
     }
 
+    /// 일시정지 화면을 닫고(엔진은 멈춘 채) 배치 편집기를 연다. 닫으면 일시정지 화면으로 돌아온다
+    private func editLayout() {
+        closePause(resume: false)
+        spoon.releaseAll()
+        showEditor = true
+    }
+
     private func closePause(resume: Bool = true) {
         longSpoon?.menuInput = nil
         withAnimation(.easeOut(duration: 0.18)) { showMenu = false }
@@ -336,9 +354,7 @@ struct BrassBowlContainerView: View {
 
     /// "모든 게임에 적용": 지금 값을 전역 설정으로 쓰고 이 게임은 전역을 따르게 한다
     private func applyPadToAll() {
-        let p = padPrefs
-        gKind = p.kind.rawValue; gScale = p.scale; gOpacity = p.opacity
-        gFloating = p.floatingStick; gLabels = p.showLabels; gHaptics = p.haptics
+        PadPrefs.setGlobal(padPrefs)
         prefsStore.update(dish.id) { $0.pad = nil }
         showToast("모든 게임에 적용했어요")
     }
@@ -378,6 +394,7 @@ struct BrassBowlContainerView: View {
             case .home?: closePause(resume: false); goHome()
             case .close?: confirmQuit = true
             case .kind(let k)?: p.kind = k; setPadHere(p)
+            case .editLayout?: editLayout()
             case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = controllerConnected }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
@@ -398,8 +415,8 @@ struct BrassBowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건, 소리 다시 켜기·초당 프레임·화질 없음)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
-        if p.kind.hasStick { out.append(.floating) }
+        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
+        if p.providesStick() { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out += [.volume, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
@@ -445,8 +462,7 @@ struct BrassBowlContainerView: View {
     }
 
     private func padLayout(_ full: CGSize, ins: UIEdgeInsets) -> SpoonLayout? {
-        SpoonLayout.make(size: full, safe: (ins.top, ins.left, ins.bottom, ins.right),
-                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
+        SpoonLayout.make(prefs: padPrefs, size: full, safe: (ins.top, ins.left, ins.bottom, ins.right))
     }
 
     @ViewBuilder private var menuButton: some View {
@@ -464,8 +480,7 @@ struct BrassBowlContainerView: View {
             GeometryReader { geo in
                 let ins = geo.safeAreaInsets
                 let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
-                let l = SpoonLayout.make(size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing),
-                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
+                let l = SpoonLayout.make(prefs: padPrefs, size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing))
                 if padShown, isPlaying, let c = l.betweenViewMenu {
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
                 } else {

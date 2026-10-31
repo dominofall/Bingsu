@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "neon",
+  "name": "네온",
+  "license": "CC0-1.0",
+  "note": "네온 빨강 버튼과 네온 파랑 십자키·스틱.",
+  "colors": {
+    "ink": "#FFFFFF",
+    "fillTop": 0.15,
+    "shadeBottom": 0.3,
+    "rim": 1.1,
+    "dpad": "#0AB9E6",
+    "stick": "#0AB9E6"
+  },
+  "buttonColors": { "a": "#FF3C28", "b": "#FF3C28", "x": "#FF3C28", "y": "#FF3C28" }
+}

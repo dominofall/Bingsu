@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "retro-gray",
+  "name": "레트로 회색",
+  "license": "CC0-1.0",
+  "note": "휴대용 게임기 몸체색. 레트로 배치와 어울려요.",
+  "colors": {
+    "ink": "#6B6760",
+    "text": "#3A3835",
+    "fill": "#C8C4BC",
+    "fillTop": 0.25,
+    "shadeBottom": 0.2,
+    "shade": "#000000",
+    "rim": 1.0,
+    "lineWidth": 1.5,
+    "press": "#D94A7A",
+    "dpad": "#3B3B3B",
+    "stick": "#3B3B3B"
+  },
+  "shape": { "kind": "circle" },
+  "labels": { "style": "retro", "font": "rounded", "overrides": { "x": "X", "y": "Y" } },
+  "buttonColors": { "a": "#8C2F5A", "b": "#8C2F5A" }
+}

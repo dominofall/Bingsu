@@ -15,6 +15,16 @@ enum PadButton: Int, CaseIterable, Hashable {
         }
     }
     var isDpad: Bool { self == .up || self == .down || self == .left || self == .right }
+    /// 가상 패드에 하나씩 놓을 수 있는 버튼 (방향은 십자키가, 홈은 컨트롤러만)
+    var onPad: Bool { !isDpad && self != .home }
+
+    /// 배치·스킨 JSON 의 버튼 이름 ("a","lb",…). 저장 형식이라 바꾸지 않는다
+    var name: String { Self.names[rawValue] }
+    init?(name: String) {
+        guard let i = Self.names.firstIndex(of: name.lowercased()) else { return nil }
+        self.init(rawValue: i)
+    }
+    private static let names = ["a", "b", "x", "y", "lb", "rb", "lt", "rt", "view", "menu", "l3", "r3", "up", "down", "left", "right", "home"]
 }
 
 /// 패드 종류 (7.4, 9.1 다섯 가지). 처음 기본값은 기본(2026-10-30 사용자 결정). 고르기 목록은 이 순서대로 보인다.
@@ -32,6 +42,8 @@ enum PadKind: String, CaseIterable, Codable {
         case .retro: return "레트로"; case .oneHand: return "한손 (세로)"
         }
     }
+    /// 방향이 함께 적히는 곳(배치 이름 "세로 · 한손")에 쓰는 짧은 이름
+    var shortLabel: String { self == .oneHand ? "한손" : label }
     /// LT/RT 가 있는 배치 (없으면 트리거가 꼭 필요한 게임은 스틱 배치로 연다)
     var hasTriggers: Bool { self == .standard || self == .full }
     /// 왼쪽 스틱이 있는 배치 (움직이는 스틱 설정이 의미 있음)
@@ -113,15 +125,36 @@ struct SpoonLayout {
         return ys.min()
     }
 
+    /// LT·RT 가 둘 다 놓였는지 (사용자가 기본 배치에 더했을 수도 있으니 종류가 아니라 계산된 배치로 본다)
+    var hasTriggers: Bool { buttons.contains { $0.button == .lt } && buttons.contains { $0.button == .rt } }
+    var hasStick: Bool { leftStick != nil }
+
+    typealias Insets = (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat)
+
     /// iPad 는 화면이 커서 같은 배율이면 버튼이 작게 느껴진다. 설정 배율에 기기 배수를 곱한다 (2026-10-29 iPad 점검).
-    static var deviceFactor: CGFloat { UIDevice.current.userInterfaceIdiom == .pad ? 1.4 : 1 }
+    static var deviceFactor: CGFloat { deviceFactor(UIDevice.current.userInterfaceIdiom) }
+    static func deviceFactor(_ idiom: UIUserInterfaceIdiom) -> CGFloat { idiom == .pad ? 1.4 : 1 }
+
+    /// 패드 설정 한 벌로 배치를 정하는 입구. 이 기기·방향·종류의 사용자 배치(`prefs.layouts`)가 있으면 그것을 풀고,
+    /// 없으면 빙수가 계산한 기본 배치. 오버레이·눈송이 자리·게임 자리·미리보기가 모두 이것을 쓴다.
+    static func make(prefs: PadPrefs, size: CGSize, safe: Insets,
+                     idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> SpoonLayout {
+        let landscape = size.width >= size.height
+        if let a = prefs.arrangement(idiom: idiom, landscape: landscape) {
+            return resolve(a, size: size, safe: safe, k: CGFloat(prefs.scale) * deviceFactor(idiom),
+                           leftHanded: !landscape && prefs.kind == .oneHand && prefs.leftHanded, floatingStick: prefs.floatingStick)
+        }
+        return make(size: size, safe: safe, kind: prefs.kind, scale: prefs.scale, floatingStick: prefs.floatingStick,
+                    leftHanded: prefs.leftHanded, idiom: idiom)
+    }
 
     /// `shoulderArc`: L·R 을 엄지 원호 위에 둔다 (기본은 iPad 에서만, 2026-10-30 사용자 선택 4-A)
-    static func make(size: CGSize, safe: (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat),
+    static func make(size: CGSize, safe: Insets,
                      kind: PadKind, scale requested: CGFloat, floatingStick: Bool, leftHanded: Bool = false,
-                     shoulderArc: Bool = UIDevice.current.userInterfaceIdiom == .pad) -> SpoonLayout {
+                     idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> SpoonLayout {
         let W = size.width, H = size.height
-        let requested = requested * deviceFactor
+        let shoulderArc = idiom == .pad
+        let requested = requested * deviceFactor(idiom)
         if H > W {
             if kind == .oneHand { return makeOneHand(size: size, safe: safe, scale: requested, leftHanded: leftHanded) }
             return makePortrait(size: size, safe: safe, kind: kind, scale: requested, floatingStick: floatingStick)
@@ -234,7 +267,7 @@ struct SpoonLayout {
     /// 휴대용 게임기 모양. L·R 은 십자키 위, −·+ 는 가운데 아래. 눈송이는 손과 상관없이 패드 구역 오른쪽 위. 포켓로그(A 확인·B 취소·+ 메뉴)를 기준으로 맞췄다.
     /// 402pt 폭 화면 기준 좌표를 손잡이 쪽 가장자리에 붙여 놓고, 넓은 화면(iPad)에서도 같은 손 모양으로 둔다.
     /// `leftHanded` 면 좌우를 뒤집되 L·− 은 늘 왼쪽.
-    static func makeOneHand(size: CGSize, safe: (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat),
+    static func makeOneHand(size: CGSize, safe: Insets,
                             scale requested: CGFloat, leftHanded: Bool) -> SpoonLayout {
         let W = size.width, H = size.height
         // 작은 배율은 한손에서 누르기 어려우므로 0.95 아래로는 내리지 않고, 폭이 모자랄 때만 줄인다
@@ -265,7 +298,7 @@ struct SpoonLayout {
 
     /// 세로 화면: 폭이 좁으므로 두 묶음(왼쪽 스틱/십자키, 오른쪽 ABXY)을 아래에 나란히 두고,
     /// 보기/메뉴·숄더 버튼은 그 위 줄에 놓는다. 폭에 안 들어가면 크기를 자동으로 줄인다.
-    static func makePortrait(size: CGSize, safe: (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat),
+    static func makePortrait(size: CGSize, safe: Insets,
                              kind: PadKind, scale requested: CGFloat, floatingStick: Bool) -> SpoonLayout {
         let W = size.width, H = size.height
         let margin = max(safe.left, safe.right, 16) + 12
@@ -346,6 +379,90 @@ struct SpoonLayout {
             PadButtonSlot(button: .x, center: CGPoint(x: cx - gap, y: cy), radius: r, pill: false),
             PadButtonSlot(button: .y, center: CGPoint(x: cx, y: cy - gap), radius: r, pill: false),
         ]
+    }
+
+    // MARK: 사용자 배치 ↔ 화면 배치
+
+    /// 사용자 배치를 화면 좌표로 푼다. `k` = 크기 슬라이더 × iPad 배율. 화면 밖으로 나간 요소는 반지름만큼 안쪽으로 당긴다.
+    /// `leftHanded`(한손 왼손)면 거울로 그린다 (저장은 오른손 기준).
+    static func resolve(_ arrangement: PadArrangement, size: CGSize, safe: Insets, k: CGFloat,
+                        leftHanded: Bool = false, floatingStick: Bool = true) -> SpoonLayout {
+        let a = leftHanded ? arrangement.mirrored() : arrangement
+        let W = size.width, H = size.height, landscape = W >= H
+        var l = SpoonLayout()
+        func place(_ e: PadArrangement.Element, halfW: CGFloat, halfH: CGFloat) -> CGPoint {
+            let o = e.anchor.point(size: size, safe: safe)
+            let c = CGPoint(x: o.x + CGFloat(e.x) * k, y: o.y + CGFloat(e.y) * k)
+            return CGPoint(x: min(max(c.x, halfW), max(halfW, W - halfW)), y: min(max(c.y, halfH), max(halfH, H - halfH)))
+        }
+        for e in a.elements {
+            let r = CGFloat(e.radius) * k
+            switch e.type {
+            case .button:
+                guard let b = e.button else { continue }
+                let pill = e.pill ?? false
+                let stretch = CGFloat(e.stretch ?? 1.3)
+                let c = place(e, halfW: pill ? r * stretch : r, halfH: r)
+                l.buttons.append(PadButtonSlot(button: b, center: c, radius: r, pill: pill, label: e.label, stretch: stretch))
+            case .dpad:
+                l.dpadCenter = place(e, halfW: r, halfH: r); l.dpadRadius = r
+            case .orb:
+                l.orbCenter = place(e, halfW: r, halfH: r)
+            case .stick:
+                let right = e.isRightStick
+                let c = place(e, halfW: r, halfH: r)
+                let floating = e.floating ?? (right ? false : floatingStick)
+                let zone: CGRect
+                if floating {
+                    // 그 쪽 화면 절반 가까이(기본 배치와 같은 폭) × 스틱 위쪽부터 화면 아래까지. 스틱이 가운데로 옮겨졌으면 그 자리도 넣는다
+                    let frac: CGFloat = landscape ? 0.4 : 0.45
+                    let x0: CGFloat = right ? W * (1 - frac) : 0, x1: CGFloat = right ? W : W * frac
+                    let top = max(0, landscape ? min(c.y - 3 * r, H * 0.15) : c.y - 2.5 * r)
+                    zone = CGRect(x: x0, y: top, width: x1 - x0, height: H - top)
+                        .union(CGRect(x: c.x - 1.5 * r, y: c.y - 1.5 * r, width: 3 * r, height: 3 * r))
+                } else {
+                    zone = CGRect(x: c.x - 1.5 * r, y: c.y - 1.5 * r, width: 3 * r, height: 3 * r)
+                }
+                let slot = StickSlot(zone: zone, restCenter: c, baseRadius: r, knobRadius: r * 0.46, travel: r * 0.7,
+                                     floating: floating, isRight: right)
+                if right { l.rightStick = slot } else { l.leftStick = slot }
+            }
+        }
+        return l
+    }
+
+    /// 화면 배치(보통 기본 배치)를 사용자 배치로 바꾼다. 편집기 "기본에서 시작"·"기본 배치로"가 쓴다.
+    /// 다시 `resolve` 하면 요소마다 1pt 안에서 같은 자리가 된다(자가 테스트 `SpoonSelfTest`).
+    /// `orbCenter`: 눈송이 버튼 자리(패드 안일 때). 움직이는 스틱 여부는 패드 설정을 따르도록 비워 둔다
+    static func arrangement(from layout: SpoonLayout, size: CGSize, safe: Insets, k: CGFloat,
+                            orbCenter: CGPoint? = nil) -> PadArrangement {
+        func el(_ type: PadArrangement.Element.Kind, center c: CGPoint, radius r: CGFloat) -> PadArrangement.Element {
+            let anchor = PadArrangement.Anchor.nearest(to: c, size: size)
+            let o = anchor.point(size: size, safe: safe)
+            return PadArrangement.Element(type: type, anchor: anchor, x: Double((c.x - o.x) / k), y: Double((c.y - o.y) / k),
+                                          radius: Double(r / k))
+        }
+        var out: [PadArrangement.Element] = []
+        if let c = layout.dpadCenter { out.append(el(.dpad, center: c, radius: layout.dpadRadius)) }
+        for s in [layout.leftStick, layout.rightStick].compactMap({ $0 }) {
+            var e = el(.stick, center: s.restCenter, radius: s.baseRadius)
+            e.side = s.isRight ? "right" : "left"
+            if s.isRight { e.floating = s.floating }
+            out.append(e)
+        }
+        for b in layout.buttons {
+            var e = el(.button, center: b.center, radius: b.radius)
+            e.button = b.button
+            if b.pill { e.pill = true; e.stretch = Double(b.stretch) }
+            e.label = b.label
+            out.append(e)
+        }
+        if let c = orbCenter {
+            var e = el(.orb, center: c, radius: 16)
+            e.radius = 16
+            out.append(e)
+        }
+        return PadArrangement(elements: out)
     }
 
     /// 십자키 방향 판정 (중심 기준 각도, 4방향)

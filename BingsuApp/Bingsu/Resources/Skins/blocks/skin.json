@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "id": "blocks",
+  "name": "블록",
+  "license": "CC0-1.0",
+  "note": "납작한 색 블록 그림 스킨. 그림 스킨을 만들 때 본보기로 쓰세요.",
+  "colors": {
+    "ink": "#FFFFFF",
+    "text": "#FFFFFF",
+    "fill": "#2F62C8",
+    "press": "#6EC2E8",
+    "rim": 0.6
+  },
+  "labels": {
+    "style": "xbox",
+    "font": "rounded"
+  },
+  "images": {
+    "button.round": {
+      "normal": "round.png",
+      "pressed": "round-on.png"
+    },
+    "button.pill": {
+      "normal": "pill.png",
+      "pressed": "pill-on.png",
+      "capInsets": {
+        "top": 0,
+        "left": 48,
+        "bottom": 0,
+        "right": 48
+      }
+    },
+    "dpad": {
+      "normal": "dpad.png",
+      "pressedArm": "dpad-up-on.png"
+    },
+    "stick.base": {
+      "normal": "stick-base.png"
+    },
+    "stick.knob": {
+      "normal": "stick-knob.png",
+      "pressed": "stick-knob-on.png"
+    },
+    "orb": {
+      "normal": "pause.png"
+    }
+  }
+}

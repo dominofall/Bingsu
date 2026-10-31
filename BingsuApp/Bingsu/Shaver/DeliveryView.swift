@@ -34,12 +34,23 @@ struct DeliveryView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if case .skinDone(let r) = delivery.stage {
+                    // 스킨 zip: 넣은 스킨을 보여 주고 쓸지 묻는다. 고르면 전역 패드 설정(설정 › 가상 패드)에 반영
+                    SkinImportCard(result: r) { useSkin, useLayouts in
+                        var g = PadPrefs.global()
+                        if useSkin, r.installed { g.skin = r.id == SpoonSkin.defaultID ? nil : r.id }
+                        if useLayouts, let l = r.layouts { g.layouts = (g.layouts ?? [:]).merging(l) { _, new in new } }
+                        if useSkin || useLayouts { PadPrefs.setGlobal(g) }
+                        NSLog("[Delivery] 스킨 \(useSkin ? "씀" : "안 씀") · 배치 \(useLayouts ? g.layouts?.count ?? 0 : 0)개")
+                        onDone(nil)
+                    }
                 } else {
                     VStack(spacing: 24) {
                         Spacer()
                         switch delivery.stage {
                         case .done(let r): resultCard(r)
                         case .failed(let msg): failure(msg)
+                        case .skinFailed(let msg): failure(msg, skin: true)
                         default: progress
                         }
                         Spacer()
@@ -49,18 +60,25 @@ struct DeliveryView: View {
             .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Palette.background)
-            .navigationTitle("게임 가져오기")
+            .navigationTitle(isSkin ? "스킨 가져오기" : "게임 가져오기")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if case .done = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else {
+                    if case .done = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if isSkin {} else {
                         Button("취소") { delivery.cancel(); onDone(nil) }
                     }
                 }
             }
         }
         .interactiveDismissDisabled()
-        .background(GamePicker(isPresented: $picking) { url in if let url { delivery.start(from: url) } }.frame(width: 0, height: 0))
+        .background(GamePicker(isPresented: $picking, types: [.zip, .bingsuSkin]) { url in if let url { delivery.start(from: url) } }.frame(width: 0, height: 0))
+    }
+
+    private var isSkin: Bool {
+        switch delivery.stage {
+        case .skinDone, .skinFailed: return true
+        default: return false
+        }
     }
 
     private var progress: some View {
@@ -150,26 +168,36 @@ struct DeliveryView: View {
         }
     }
 
-    private func failure(_ msg: String) -> some View {
+    private func failure(_ msg: String, skin: Bool = false) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 44)).foregroundStyle(.orange)
             Text("가져오지 못했어요").font(.title3.bold())
             Text(msg).multilineTextAlignment(.center).foregroundStyle(.secondary)
-            // 끊긴 내려받기의 이어받기 데이터가 있으면 처음부터 받기보다 이어받기를 먼저 권한다
-            if courier.canResume {
-                Button { courier.resume(); onRedownload() } label: { Text("이어받기").frame(maxWidth: .infinity) }
+            if skin {
+                Button { picking = true } label: { Text("다른 파일 고르기").frame(maxWidth: .infinity) }
                     .buttonStyle(.borderedProminent).tint(Palette.accent)
+                Button("닫기") { onDone(nil) }
+            } else {
+                gameFailureButtons
             }
-            Button {
-                if !courier.state.isActive { courier.cancel() } // 실패 상태·남은 데이터를 치우고 주소 입력부터
-                onRedownload()
-            } label: { Text("주소로 다시 받기").frame(maxWidth: .infinity) }
-                .buttonStyle(.borderedProminent).tint(courier.canResume ? Palette.accent.opacity(0.75) : Palette.accent)
-            Button { picking = true } label: { Text("다른 파일 고르기").frame(maxWidth: .infinity) }
-                .buttonStyle(.bordered)
-            Button("닫기") { onDone(nil) }
         }
         .frame(maxWidth: 420)
+    }
+
+    @ViewBuilder private var gameFailureButtons: some View {
+        // 끊긴 내려받기의 이어받기 데이터가 있으면 처음부터 받기보다 이어받기를 먼저 권한다
+        if courier.canResume {
+            Button { courier.resume(); onRedownload() } label: { Text("이어받기").frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent).tint(Palette.accent)
+        }
+        Button {
+            if !courier.state.isActive { courier.cancel() } // 실패 상태·남은 데이터를 치우고 주소 입력부터
+            onRedownload()
+        } label: { Text("주소로 다시 받기").frame(maxWidth: .infinity) }
+            .buttonStyle(.borderedProminent).tint(courier.canResume ? Palette.accent.opacity(0.75) : Palette.accent)
+        Button { picking = true } label: { Text("다른 파일 고르기").frame(maxWidth: .infinity) }
+            .buttonStyle(.bordered)
+        Button("닫기") { onDone(nil) }
     }
 
     private func row(_ k: String, _ v: String) -> some View {

@@ -30,6 +30,8 @@ struct PauseBoard: View {
     let onClose: () -> Void
     let onBackup: () -> Void
     let onMoreSettings: () -> Void
+    /// "배치 편집" (이 게임에 저장). nil 이면 숨김
+    var onEditLayout: (() -> Void)? = nil
     /// 컨트롤러 초점 (BowlContainerView 가 버튼 입력을 넘겨 준다)
     @Binding var focus: PauseItem?
 
@@ -114,6 +116,16 @@ struct PauseBoard: View {
                             .accessibilityAddTraits(pad.kind == k ? .isSelected : [])
                     }
                 }
+                SkinPicker(prefs: Binding(get: { pad }, set: { setPad($0) }), showsManage: false, compact: true)
+                    .accessibilityLabel("스킨")
+                if let onEditLayout {
+                    Button(action: onEditLayout) {
+                        HStack { Label("배치 편집", systemImage: "hand.draw"); Spacer(); Image(systemName: "chevron.right").font(.footnote) }
+                            .font(.subheadline)
+                    }
+                    .tint(Palette.accent)
+                    .focusRing(focus == .editLayout).id(PauseItem.editLayout)
+                }
                 if pad.kind == .oneHand {
                     if landscape { note("한손은 세로로 들었을 때 쓰여요. 가로에서는 기본 배치로 보여요.") }
                     toggle("왼손으로 쓰기", sub: "버튼을 왼쪽 엄지 쪽으로 옮겨요", isOn: Binding(get: { pad.leftHanded }, set: { v in setPad(with { $0.leftHanded = v }) }), item: .leftHand)
@@ -123,7 +135,7 @@ struct PauseBoard: View {
                 Divider()
                 toggle("가상 패드 숨기기", isOn: Binding(get: { !padShown }, set: { padShown = !$0 }), item: .hidePad)
                 toggle("버튼 설명 보기", sub: "이 게임에서 각 버튼이 하는 일", isOn: Binding(get: { pad.showLabels }, set: { v in setPad(with { $0.showLabels = v }) }), item: .labels)
-                if pad.kind.hasStick {
+                if pad.providesStick() {
                     toggle("움직이는 스틱", isOn: Binding(get: { pad.floatingStick }, set: { v in setPad(with { $0.floatingStick = v }) }), item: .floating)
                 }
                 Divider()
@@ -262,7 +274,7 @@ struct PauseBoard: View {
 
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
-    case resume, home, close, kind(PadKind), leftHand, size, opacity, hidePad, labels, floating, applyAll
+    case resume, home, close, kind(PadKind), editLayout, leftHand, size, opacity, hidePad, labels, floating, applyAll
     case volume, musicRate, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 

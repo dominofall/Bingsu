@@ -9,6 +9,7 @@ struct DishSettingsView: View {
     @ObservedObject private var store = DishPrefsStore.shared
     @State private var photoItem: PhotosPickerItem?
     @State private var showRumblePicker = false
+    @State private var showEditor = false
     @State private var rumbleCard: RumbleCard?
     @State private var rumbleIsOwn = false
     @State private var rumbleNote: String?
@@ -71,7 +72,7 @@ struct DishSettingsView: View {
                         Text(usesOwnPad.wrappedValue ? "아래 설정은 이 게임에만 적용돼요" : "끄면 설정 > 가상 패드의 값을 따라요")
                     }
                     if usesOwnPad.wrappedValue {
-                        PadPrefsControls(prefs: ownPad)
+                        PadPrefsControls(prefs: ownPad, onEditLayout: { showEditor = true })
                         Button("기본 설정 값으로 되돌리기") { ownPad.wrappedValue = PadPrefs.global() }
                     }
                 } header: {
@@ -147,6 +148,11 @@ struct DishSettingsView: View {
             importRumble(url)
         }
         .onAppear(perform: refreshRumble)
+        .fullScreenCover(isPresented: $showEditor) {
+            SpoonLayoutEditor(prefs: ownPad.wrappedValue, target: dish.title,
+                              save: { k, a in ownPad.wrappedValue = ownPad.wrappedValue.withLayout(k, a) },
+                              onClose: { showEditor = false })
+        }
     }
 
     // MARK: 진동표

@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "id": "contrast",
+  "name": "고대비",
+  "license": "CC0-1.0",
+  "note": "검은 바탕에 노란 글자와 굵은 테두리. 잘 안 보일 때 써 보세요.",
+  "colors": {
+    "ink": "#FFD60A",
+    "text": "#FFD60A",
+    "fill": "#000000",
+    "rim": 1.2,
+    "lineWidth": 2,
+    "press": "#FFFFFF"
+  },
+  "labels": { "font": "default" }
+}

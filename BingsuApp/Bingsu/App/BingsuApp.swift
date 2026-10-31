@@ -68,6 +68,10 @@ struct BingsuApp: App {
                     menu.pendingImport = url
                 }
                 .task {
+                    #if DEBUG
+                    // 디버그 자가 테스트: 가상 패드 배치 왕복·예전 설정 호환 (게임 쪽 자가 테스트는 GlassBowl)
+                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run() }
+                    #endif
                     // 디버그: BINGSU_ADDWEB="이름|https://..." 로 웹 게임 추가 경로 실행 (시뮬레이터 검증용; 결과는 로그)
                     if let spec = ProcessInfo.processInfo.environment["BINGSU_ADDWEB"], let bar = spec.firstIndex(of: "|") {
                         do { try menu.addWebGame(title: String(spec[..<bar]), url: String(spec[spec.index(after: bar)...])); NSLog("[WebGames] added") }

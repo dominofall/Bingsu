@@ -16,7 +16,11 @@ final class Delivery: ObservableObject {
         case confirmUpdate(Pending) // 이미 있는 게임: 업데이트 / 따로 추가 / 취소
         case installing         // 게임 파일 바꾸는 중
         case done(Result)
+        /// 게임 대신 패드 스킨 zip(`.bingsuskin` 또는 skin.json 이 든 zip)이었다. 스킨 목록에 넣었고, 쓸지는 화면이 묻는다
+        case skinDone(SkinShelf.ImportResult)
         case failed(String)
+        /// 스킨으로 알아봤지만 검사에서 거절 (주소로 다시 받기 대신 다른 파일 고르기만)
+        case skinFailed(String)
 
         var title: String {
             switch self {
@@ -27,8 +31,8 @@ final class Delivery: ObservableObject {
             case .checking: return "게임 확인 중"
             case .confirmUpdate: return "이미 있는 게임이에요"
             case .installing: return "게임 파일 바꾸는 중"
-            case .done: return "준비됐어요"
-            case .failed: return "가져오지 못했어요"
+            case .done, .skinDone: return "준비됐어요"
+            case .failed, .skinFailed: return "가져오지 못했어요"
             }
         }
         var fraction: Double? {
@@ -37,13 +41,13 @@ final class Delivery: ObservableObject {
             case .unpacking(let f): return 0.6 + f * 0.35
             case .checking: return 0.97
             case .installing: return 0.99
-            case .done: return 1
+            case .done, .skinDone: return 1
             default: return nil
             }
         }
         var isBusy: Bool {
             switch self {
-            case .idle, .done, .failed: return false
+            case .idle, .done, .skinDone, .failed, .skinFailed: return false
             default: return true
             }
         }
@@ -58,6 +62,12 @@ final class Delivery: ObservableObject {
         let dataPathApp: String
         let version: String?
         let sourceName: String
+    }
+
+    /// 1~4단계 결과: 등록할 게임, 또는 바로 넣은 패드 스킨
+    enum Prepared: Sendable {
+        case game(Staged)
+        case skin(SkinShelf.ImportResult)
     }
 
     /// 업데이트 확인을 기다리는 가져오기
@@ -115,9 +125,17 @@ final class Delivery: ObservableObject {
             }
             do {
                 Self.sweepStaleWork()
-                let staged = try await Self.prepare(source: source, removeWindowsBinaries: removeWindowsBinaries) { stage in
+                let prepared = try await Self.prepare(source: source, removeWindowsBinaries: removeWindowsBinaries) { stage in
                     Task { @MainActor in if !flag.value { self?.stage = stage } }
                 } isCancelled: { flag.value }
+                let staged: Staged
+                switch prepared {
+                case .skin(let r):
+                    NSLog("[Delivery] skin \(r.id) installed=\(r.installed) layouts=\(r.layouts?.count ?? 0)")
+                    await MainActor.run { if !flag.value { self?.stage = .skinDone(r) } }
+                    return
+                case .game(let s): staged = s
+                }
                 if flag.value { Self.discard(staged); return }
                 if let existing = Self.findExisting(title: staged.title, dataPathApp: staged.dataPathApp, preferring: targetID) {
                     let old = Self.manifestVersion(existing.location)
@@ -130,7 +148,8 @@ final class Delivery: ObservableObject {
                 }
             } catch {
                 NSLog("[Delivery] failed: \(error.localizedDescription)")
-                await MainActor.run { if !flag.value { self?.stage = .failed(error.localizedDescription) } }
+                let stage: Stage = (error as? SkinShelf.Rejection).map { .skinFailed($0.reason) } ?? .failed(error.localizedDescription)
+                await MainActor.run { if !flag.value { self?.stage = stage } }
             }
         }
     }
@@ -159,7 +178,7 @@ final class Delivery: ObservableObject {
 
     /// 1~4단계: 임시 폴더에 풀고 게임을 확인한다. 기존 게임은 건드리지 않는다.
     nonisolated static func prepare(source: URL, removeWindowsBinaries: Bool,
-                                    report: @escaping (Stage) -> Void, isCancelled: @escaping () -> Bool) async throws -> Staged {
+                                    report: @escaping (Stage) -> Void, isCancelled: @escaping () -> Bool) async throws -> Prepared {
         let fm = FileManager.default
         let gamesDir = MenuBoardStore.gamesDir
         let work = gamesDir.appendingPathComponent(".import-\(UUID().uuidString)", isDirectory: true)
@@ -177,6 +196,11 @@ final class Delivery: ObservableObject {
         fm.fileExists(atPath: local.path, isDirectory: &isDir)
         if isDir.boolValue {
             if local != staged { try fm.moveItem(at: local, to: staged) }
+        } else if SkinShelf.looksLikeSkin(local) {
+            // 패드 스킨: 풀기 전에 중앙 디렉터리만 보고 알아본 뒤 스킨 가져오기(자체 검사·SafeUnzip)로 넘긴다. work 는 defer 가 지운다
+            do { return .skin(try SkinShelf.importZip(at: local)) }
+            catch let r as SkinShelf.Rejection { throw r }
+            catch { throw SkinShelf.Rejection(reason: error.localizedDescription) }
         } else {
             report(.unzipping(0))
             try SafeUnzip.unzip(local, to: staged, progress: { report(.unzipping($0)) }, isCancelled: isCancelled)
@@ -219,8 +243,8 @@ final class Delivery: ObservableObject {
         let version = Self.readVersion(folder: root, recipe: recipe)
         if removeWindowsBinaries { Self.pruneWindowsBinaries(in: root, recipe: recipe) }
         ok = true
-        return Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
-                      version: version, sourceName: source.lastPathComponent)
+        return .game(Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
+                            version: version, sourceName: source.lastPathComponent))
     }
 
     /// 5단계: 등록. 업데이트는 기존 폴더를 옆으로 옮긴 뒤 새 폴더를 그 자리로 옮긴다 (같은 볼륨이라 이름 바꾸기 = 원자적).

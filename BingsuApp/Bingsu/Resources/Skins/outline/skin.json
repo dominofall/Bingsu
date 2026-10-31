@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "id": "outline",
+  "name": "선만",
+  "license": "CC0-1.0",
+  "note": "채움 없이 테두리만. 게임 화면을 가장 적게 가려요.",
+  "colors": {
+    "ink": "#FFFFFF",
+    "fillTop": 0,
+    "shadeBottom": 0,
+    "rim": 0.9,
+    "lineWidth": 1.5,
+    "press": "#6EC2E8"
+  }
+}

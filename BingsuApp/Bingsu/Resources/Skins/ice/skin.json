@@ -1,0 +1,18 @@
+{
+  "format": 1,
+  "id": "ice",
+  "name": "얼음",
+  "license": "CC0-1.0",
+  "note": "빙수 기본 스킨. 투명한 얼음 조각처럼 게임이 비쳐 보여요.",
+  "colors": {
+    "ink": "#FFFFFF",
+    "fillTop": 0.3,
+    "shadeBottom": 0.3,
+    "shade": "#000000",
+    "rim": 1.1,
+    "lineWidth": 1,
+    "press": "#6EC2E8"
+  },
+  "shape": { "kind": "circle" },
+  "labels": { "style": "xbox", "font": "rounded" }
+}

@@ -42,6 +42,8 @@ struct BowlContainerView: View {
     @State private var pauseFocus: PauseItem?
     @State private var lastBackup: Date?
     @State private var showSettings = false
+    /// 배치 편집 (일시정지 화면 › 배치 편집). 게임은 멈춘 채 그 위에 편집기를 띄운다
+    @State private var showEditor = false
     @State private var authRequest: AuthRequest?
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     private var menuButtonPlace: MenuButtonPlace {
@@ -60,10 +62,13 @@ struct BowlContainerView: View {
     @AppStorage("spoon.showLabels") private var gLabels = false
     @AppStorage("spoon.haptics") private var gHaptics = true
     @AppStorage("spoon.leftHanded") private var gLeftHanded = false
+    @AppStorage(PadPrefs.skinKey) private var gSkin: String?
+    @AppStorage(PadPrefs.layoutsKey) private var gLayouts: Data?
     private var padPrefs: PadPrefs {
         var p = prefsStore.effectivePad(for: dish.id)
-        // 기본·레트로·한손 배치에는 LT/RT 가 없다: 트리거를 쓰는 게임은 게임별로 따로 고르지 않았으면 스틱 배치로 연다
-        if !p.kind.hasTriggers, CutlerySet.forDish(dish).needsTriggers, prefsStore.prefs(for: dish.id).pad == nil { p.kind = .standard }
+        // 기본·레트로·한손 배치에는 LT/RT 가 없다: 트리거를 쓰는 게임은 게임별로 따로 고르지 않았으면 스틱 배치로 연다.
+        // 사용자가 배치 편집에서 LT·RT 를 더했으면 그 배치를 그대로 쓴다 (종류가 아니라 배치로 판단)
+        if !p.providesTriggers(), CutlerySet.forDish(dish).needsTriggers, prefsStore.prefs(for: dish.id).pad == nil { p.kind = .standard }
         return p
     }
     @Environment(\.scenePhase) private var scenePhase
@@ -103,7 +108,7 @@ struct BowlContainerView: View {
             }
             .ignoresSafeArea()
 
-            if showSpoon && (!controllerConnected || padForced) { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            if showSpoon && (!controllerConnected || padForced) && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
 
             if showHUD {
                 VStack {
@@ -134,8 +139,14 @@ struct BowlContainerView: View {
                 .transition(.opacity)
             }
             // 눈송이(일시정지) 버튼: 설정에 따라 구석(안전 영역 밖) 또는 패드 안. 구석은 패드가 안전 영역 안에만 놓여 안 겹친다.
-            if !showMenu { menuButton }
+            if !showMenu && !showEditor { menuButton }
             if showMenu { pauseBoard.zIndex(2) }
+            if showEditor {
+                SpoonLayoutEditor(prefs: padPrefs, backdrop: .game, target: dish.title,
+                                  save: { k, a in setPadHere(padPrefs.withLayout(k, a)) },
+                                  onClose: { showEditor = false; openPause() })
+                    .zIndex(3)
+            }
         }
         .persistentSystemOverlays(visible ? .hidden : .automatic)
         .statusBarHidden(visible)
@@ -149,7 +160,7 @@ struct BowlContainerView: View {
             if phase != .active { flush(); spoon.releaseAll() }
             // 앱이 안 보이면 게임 소리와 무음 <audio> 를 멈춘다. 무음 재생이 돌고 있으면 WebKit 이 백그라운드에서도
             // 게임 소리를 계속 내기 때문 (2026-10-31 실기기). 돌아오면 게임이 보이고 일시정지 화면이 아닐 때만 다시 켠다
-            if phase == .background || (phase == .active && visible && !showMenu) {
+            if phase == .background || (phase == .active && visible && !showMenu && !showEditor) {
                 setWebAudioHeld(phase != .active)
             }
             if phase == .background { Igloo.shared.afterPlay(dish, stillRunning: true) }
@@ -159,6 +170,7 @@ struct BowlContainerView: View {
         .onChange(of: webView) { _, wv in spoon.webView = wv }
         .onChange(of: visible) { _, v in
             if !v && showMenu { closePause(resume: false) }
+            if !v { showEditor = false }
             longSpoon?.enabled = v
             recorder.setActive(v && scenePhase == .active)
             showReturnToast()
@@ -169,9 +181,11 @@ struct BowlContainerView: View {
             spoon.cutlery = CutlerySet.forDish(dish); spoon.webView = webView; spoon.hapticsEnabled = padPrefs.haptics
             if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }   // 실제 컨트롤러 → 같은 경로로 입력
             longSpoon?.enabled = visible
-            longSpoon?.onHomeButton = { if visible && !showMenu { openPause() } }
+            longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
             // 디버그: BINGSU_PAUSE=1 이면 3초 뒤 일시정지 화면을 연다 (시뮬레이터 확인용)
             if ProcessInfo.processInfo.environment["BINGSU_PAUSE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { openPause() } }
+            // 디버그: BINGSU_LAYOUT=1 이면 3초 뒤 배치 편집기를 연다
+            if ProcessInfo.processInfo.environment["BINGSU_LAYOUT"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { editLayout() } }
             thermometer.onSample = { [weak recorder] t in
                 recorder?.ingest(fps: t.fps, p95: t.frameP95ms, stutters: t.lastStutters, memoryMB: t.memoryMB, thermal: t.thermal)
             }
@@ -273,6 +287,7 @@ struct BowlContainerView: View {
             onHome: { closePause(resume: false); flush(); spoon.releaseAll(); onHome(); Igloo.shared.afterPlay(dish, stillRunning: true) },
             onClose: { closePause(resume: false); flush(); onClose() },
             onBackup: backup, onMoreSettings: { showSettings = true },
+            onEditLayout: editLayout,
             focus: $pauseFocus)
     }
 
@@ -285,6 +300,13 @@ struct BowlContainerView: View {
         pauseFocus = controllerConnected ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
         withAnimation(.easeOut(duration: 0.22)) { showMenu = true }
+    }
+
+    /// 일시정지 화면을 닫고(게임은 멈춘 채) 배치 편집기를 연다. 닫으면 일시정지 화면으로 돌아온다
+    private func editLayout() {
+        closePause(resume: false)
+        spoon.releaseAll()
+        showEditor = true
     }
 
     private func closePause(resume: Bool = true) {
@@ -300,9 +322,7 @@ struct BowlContainerView: View {
 
     /// "모든 게임에 적용": 지금 값을 전역 설정으로 쓰고 이 게임은 전역을 따르게 한다
     private func applyPadToAll() {
-        let p = padPrefs
-        gKind = p.kind.rawValue; gScale = p.scale; gOpacity = p.opacity
-        gFloating = p.floatingStick; gLabels = p.showLabels; gHaptics = p.haptics
+        PadPrefs.setGlobal(padPrefs)
         prefsStore.update(dish.id) { $0.pad = nil }
         showToast("모든 게임에 적용했어요")
     }
@@ -371,6 +391,7 @@ struct BowlContainerView: View {
             case .home?: closePause(resume: false); flush(); spoon.releaseAll(); onHome(); Igloo.shared.afterPlay(dish, stillRunning: true)
             case .close?: closePause(resume: false); flush(); onClose()
             case .kind(let k)?: p.kind = k; setPadHere(p)
+            case .editLayout?: editLayout()
             case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = controllerConnected }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
@@ -391,8 +412,8 @@ struct BowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
-        if p.kind.hasStick { out.append(.floating) }
+        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
+        if p.providesStick() { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
@@ -410,7 +431,7 @@ struct BowlContainerView: View {
 
     @ViewBuilder private var menuButton: some View {
         let btn = Button { openPause() } label: {
-            SnowOrb(size: 32)
+            SnowOrb(size: 32, skin: SkinShelf.skin(for: padPrefs))
                 .padding(8)   // 터치 영역
         }
         .accessibilityLabel("일시정지")
@@ -423,8 +444,7 @@ struct BowlContainerView: View {
             GeometryReader { geo in
                 let ins = geo.safeAreaInsets
                 let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
-                let l = SpoonLayout.make(size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing),
-                                         kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
+                let l = SpoonLayout.make(prefs: padPrefs, size: full, safe: (ins.top, ins.leading, ins.bottom, ins.trailing))
                 if padShown, let c = l.betweenViewMenu {
                     // 화면 아래로 벗어나지 않게
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
@@ -444,23 +464,28 @@ struct BowlContainerView: View {
         guard fixedAspect else { return CGRect(x: 0, y: 0, width: W, height: H) }
         let ins = Self.windowInsets()
         if H > W {
-            let gameW = W - Self.margin * 2
-            let padTop = padLayout(full: geo.size, ins: ins)?.topEdge.map { $0 - 12 } ?? H
-            let top = ins.top
-            let gameH = gameW * 9 / 16
-            // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
-            let band = menuButtonPlace == .pad && padShown ? 8 : Self.chrome
-            let slack = max(0, padTop - top - band - gameH)
-            // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다. 아래로 치우치면 화면 가운데 아래에 떠 보인다
-            let y = top + band + slack * (padShown ? 0.75 : 0)
-            return CGRect(x: Self.margin, y: y, width: gameW, height: gameH)
+            return Self.portraitRect(W: W, H: H, top: ins.top, padTop: padLayout(full: geo.size, ins: ins)?.topEdge,
+                                     orbInPad: menuButtonPlace == .pad && padShown, padShown: padShown)
         } else {
             return Self.landscapeRect(W: W, H: H)
         }
     }
 
+    /// 세로 화면의 16:9 게임 자리 (배치 편집기의 자리 표시도 같은 계산). `padTop` 은 패드 맨 위 요소의 윗변
+    static func portraitRect(W: CGFloat, H: CGFloat, top: CGFloat, padTop: CGFloat?, orbInPad: Bool, padShown: Bool) -> CGRect {
+        let gameW = W - margin * 2
+        let gameH = gameW * 9 / 16
+        let padTop = padTop.map { $0 - 12 } ?? H
+        // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
+        let band = orbInPad ? 8 : chrome
+        let slack = max(0, padTop - top - band - gameH)
+        // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다. 아래로 치우치면 화면 가운데 아래에 떠 보인다
+        let y = top + band + slack * (padShown ? 0.75 : 0)
+        return CGRect(x: margin, y: y, width: gameW, height: gameH)
+    }
+
     /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다
-    private static func landscapeRect(W: CGFloat, H: CGFloat) -> CGRect {
+    static func landscapeRect(W: CGFloat, H: CGFloat) -> CGRect {
         let innerH = H - margin * 2
         let fullW = min(W - margin * 2, innerH * 16 / 9)
         let sideBand = (W - fullW) / 2
@@ -508,8 +533,7 @@ struct BowlContainerView: View {
     /// 지금 보이는 가상 패드 배치 (화면 전체 좌표). 패드가 숨겨져 있으면 nil.
     private func padLayout(full: CGSize, ins: UIEdgeInsets) -> SpoonLayout? {
         guard padShown else { return nil }
-        return SpoonLayout.make(size: full, safe: (ins.top, ins.left, ins.bottom, ins.right),
-                                kind: padPrefs.kind, scale: padPrefs.scale, floatingStick: padPrefs.floatingStick, leftHanded: padPrefs.leftHanded)
+        return SpoonLayout.make(prefs: padPrefs, size: full, safe: (ins.top, ins.left, ins.bottom, ins.right))
     }
 
     /// 이번 실행에서 웹 프로세스가 죽어 다시 불러온 횟수

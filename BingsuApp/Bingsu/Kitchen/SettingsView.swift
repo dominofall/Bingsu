@@ -17,6 +17,8 @@ struct SettingsView: View {
     @AppStorage("spoon.showLabels") private var showLabels = false
     @AppStorage("spoon.haptics") private var haptics = true
     @AppStorage("spoon.leftHanded") private var leftHanded = false
+    @AppStorage(PadPrefs.skinKey) private var skinID: String?
+    @AppStorage(PadPrefs.layoutsKey) private var layoutsData: Data?
     @AppStorage("bingsu.showPerformance") private var showPerformance = false
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
@@ -29,22 +31,24 @@ struct SettingsView: View {
     @ObservedObject private var igloo = Igloo.shared
     /// 지금 연결된 실제 컨트롤러 제품명 (식별자 없이)
     @State private var controllers = LongSpoon.connectedNames()
+    @State private var showEditor = false
 
     /// 전역 @AppStorage 값들을 PadPrefs 하나로 묶은 바인딩
     private var globalPad: Binding<PadPrefs> {
         Binding(
             get: { PadPrefs(kind: PadKind(rawValue: kindRaw) ?? .simple, scale: scale, opacity: opacity,
-                            floatingStick: floatingStick, showLabels: showLabels, haptics: haptics, leftHanded: leftHanded) },
+                            floatingStick: floatingStick, showLabels: showLabels, haptics: haptics, leftHanded: leftHanded,
+                            skin: skinID.flatMap { $0.isEmpty ? nil : $0 }, layouts: PadPrefs.decodeLayouts(layoutsData)) },
             set: { p in kindRaw = p.kind.rawValue; scale = p.scale; opacity = p.opacity
                    floatingStick = p.floatingStick; showLabels = p.showLabels; haptics = p.haptics
-                   leftHanded = p.leftHanded })
+                   leftHanded = p.leftHanded; skinID = p.skin; layoutsData = PadPrefs.encodeLayouts(p.layouts) })
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    PadPrefsControls(prefs: globalPad)
+                    PadPrefsControls(prefs: globalPad, onEditLayout: { showEditor = true })
                 } header: {
                     Text("가상 패드")
                 } footer: {
@@ -148,6 +152,11 @@ struct SettingsView: View {
                 }
             }
         }
+        .fullScreenCover(isPresented: $showEditor) {
+            SpoonLayoutEditor(prefs: globalPad.wrappedValue,
+                              save: { k, a in globalPad.wrappedValue = globalPad.wrappedValue.withLayout(k, a) },
+                              onClose: { showEditor = false })
+        }
     }
 
     static var versionText: String {
@@ -161,15 +170,29 @@ struct SettingsView: View {
 /// 가상 패드 조작부: 미리보기 + 종류·크기·불투명도·스틱·설명·진동. 전역 설정과 게임별 설정이 같이 쓴다.
 struct PadPrefsControls: View {
     @Binding var prefs: PadPrefs
+    /// "배치 편집" (전역 또는 이 게임). nil 이면 버튼을 숨긴다
+    var onEditLayout: (() -> Void)? = nil
 
     var body: some View {
-        SpoonPreview(kind: prefs.kind, scale: prefs.scale, opacity: prefs.opacity, floatingStick: prefs.floatingStick,
-                     leftHanded: prefs.leftHanded)
+        SpoonPreview(prefs: prefs)
             .frame(maxWidth: 360)
             .frame(maxWidth: .infinity)
             .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
         Picker("종류", selection: $prefs.kind) {
             ForEach(PadKind.allCases, id: \.self) { k in Text(k.label).tag(k) }
+        }
+        VStack(alignment: .leading, spacing: 6) {
+            Text("스킨")
+            SkinPicker(prefs: $prefs)
+        }
+        if let onEditLayout {
+            Button(action: onEditLayout) {
+                HStack {
+                    Label("배치 편집", systemImage: "hand.draw")
+                    Spacer()
+                    Text(layoutStatus).font(.footnote).foregroundStyle(.secondary)
+                }
+            }
         }
         if prefs.kind == .oneHand {
             Text("세로로 들었을 때 엄지 하나로 쓰는 배치예요. 가로로 돌리면 기본 배치로 바뀌어요.")
@@ -186,9 +209,16 @@ struct PadPrefsControls: View {
             Text("움직이는 스틱")
             Text("왼쪽 화면 어디든 엄지를 대면 그 자리에 스틱이 생겨요")
         }
-        .disabled(!prefs.kind.hasStick)
+        .disabled(!prefs.providesStick())
         Toggle("버튼 설명 표시", isOn: $prefs.showLabels)
         Toggle("진동", isOn: $prefs.haptics)
+    }
+
+    /// 이 기기에서 직접 바꾼 배치가 몇 개인지
+    private var layoutStatus: String {
+        let prefix = UIDevice.current.userInterfaceIdiom == .pad ? "pad." : "phone."
+        let n = prefs.layouts?.keys.filter { $0.hasPrefix(prefix) }.count ?? 0
+        return n == 0 ? "기본 배치" : "직접 바꾼 배치 \(n)개"
     }
 
     private func sliderRow(_ title: String, value: Binding<Double>, in range: ClosedRange<Double>) -> some View {
@@ -205,35 +235,39 @@ struct PadPrefsControls: View {
 
 /// 현재 설정으로 계산한 가상 패드 배치를 기기 화면 비율로 축소해 그린다. 터치는 받지 않는다.
 /// 가로 iPhone(또는 iPad) 기준, 한손은 세로 화면으로 보여 준다.
+/// 사용자 배치(`prefs.layouts`)가 있으면 그것으로 그린다.
 struct SpoonPreview: View {
-    let kind: PadKind
-    let scale: Double
-    let opacity: Double
-    let floatingStick: Bool
-    var leftHanded = false
+    let prefs: PadPrefs
+    /// nil 이면 prefs 의 스킨 (스킨 고르기 썸네일·스킨 만들기는 직접 준다)
+    var skin: SpoonSkin? = nil
+    /// 세로로 보일지 (한손은 늘 세로)
+    var portrait = false
+    var showZone = true
+    private var kind: PadKind { prefs.kind }
 
     private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
     /// 기준 화면(pt)과 안전 영역
     private var screen: CGSize {
         let s = isPad ? CGSize(width: 1376, height: 1032) : CGSize(width: 852, height: 393)
-        return kind == .oneHand ? CGSize(width: s.height, height: s.width) : s
+        return isPortrait ? CGSize(width: s.height, height: s.width) : s
     }
-    private var safe: (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat) {
+    private var isPortrait: Bool { portrait || kind == .oneHand }
+    private var safe: SpoonLayout.Insets {
         if isPad { return (24, 0, 20, 0) }
-        return kind == .oneHand ? (59, 0, 34, 0) : (0, 59, 21, 59)
+        return isPortrait ? (59, 0, 34, 0) : (0, 59, 21, 59)
     }
 
     var body: some View {
         let screen = screen
-        let l = SpoonLayout.make(size: screen, safe: safe, kind: kind, scale: scale, floatingStick: floatingStick, leftHanded: leftHanded)
+        let l = SpoonLayout.make(prefs: prefs, size: screen, safe: safe)
         GeometryReader { geo in
             let k = geo.size.width / screen.width
-            SpoonFace(layout: l, opacity: opacity, scale: scale, showZone: true)
+            SpoonFace(layout: l, opacity: prefs.opacity, scale: prefs.scale, skin: skin ?? SkinShelf.skin(for: prefs), showZone: showZone)
                 .frame(width: screen.width, height: screen.height)
                 .scaleEffect(k, anchor: .topLeading)
         }
         .aspectRatio(screen.width / screen.height, contentMode: .fit)
-        .frame(maxHeight: kind == .oneHand ? 260 : nil)
+        .frame(maxHeight: isPortrait ? 260 : nil)
         .background(
             LinearGradient(colors: [Color(red: 0.12, green: 0.25, blue: 0.58), Color(red: 0.06, green: 0.08, blue: 0.13)],
                            startPoint: .top, endPoint: .bottom)
@@ -332,6 +366,19 @@ struct LicensesView: View {
                     Text("MIT License · 기본 게임 \"Bingsu\"의 효과음에 사용").font(.subheadline).foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 2)
+            }
+            // 패드 스킨: 앱에 든 스킨 중 다른 사람이 만든 것 (PR 로 들어온 스킨의 작성자·라이선스)
+            let credited = SkinShelf.list().filter { $0.isBundled && $0.author != nil }
+            if !credited.isEmpty {
+                Section("패드 스킨") {
+                    ForEach(credited) { s in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(s.name).font(.headline)
+                            Text("\(s.author ?? "") · \(s.license ?? "라이선스 없음")").font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
             }
             // RPG Maker XP 엔진(BrassBowl.framework). 포크의 추가 조건(ADDITIONAL-TERMS.md 1항)에 따라
             // 저작자 표시를 다른 고지와 같은 크기로 보이고, 주소는 눌러 열 수 있게 둔다

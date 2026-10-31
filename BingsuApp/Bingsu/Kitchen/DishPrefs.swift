@@ -10,6 +10,60 @@ struct PadPrefs: Codable, Equatable {
     var showLabels = false
     var haptics = true
     var leftHanded = false   // 한손 배치를 왼손 엄지 쪽으로
+    /// 스킨 id. nil = 얼음 (빌드 24 에서 더함, 예전 파일엔 없음 → nil)
+    var skin: String? = nil
+    /// 사용자 배치. 키 `<phone|pad>.<landscape|portrait>.<kind>`, 없는 키는 기본 배치 (빌드 24 에서 더함)
+    var layouts: [String: PadArrangement]? = nil
+
+    var effectiveSkin: String { skin ?? SpoonSkin.defaultID }
+
+    /// 전역 설정 키 (SettingsView·BowlContainerView 의 @AppStorage 와 같은 이름)
+    static let skinKey = "spoon.skin", layoutsKey = "spoon.layouts"
+
+    func arrangement(idiom: UIUserInterfaceIdiom, landscape: Bool) -> PadArrangement? {
+        layouts?[PadArrangement.key(idiom: idiom, landscape: landscape, kind: kind)]
+    }
+
+    /// LT·RT 가 있는 배치인지: 가로·세로 중 하나라도 (사용자 배치가 있으면 그것, 없으면 종류의 기본 배치에) LT·RT 가 둘 다 있으면 true
+    func providesTriggers(idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> Bool {
+        [true, false].contains { o in
+            arrangement(idiom: idiom, landscape: o).map { $0.element("button.lt") != nil && $0.element("button.rt") != nil }
+                ?? (o && kind == .oneHand ? false : kind.hasTriggers)
+        }
+    }
+
+    /// 왼쪽 스틱이 있는 배치인지 ("움직이는 스틱" 설정이 의미 있음). 같은 방식으로 가로·세로를 본다
+    func providesStick(idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> Bool {
+        [true, false].contains { o in
+            arrangement(idiom: idiom, landscape: o).map { $0.element("stick.left") != nil } ?? kind.hasStick
+        }
+    }
+
+    /// 전역 설정(@AppStorage 키)에 쓴다. 바꾸는 즉시 SettingsView·게임 화면의 @AppStorage 가 따라온다
+    static func setGlobal(_ p: PadPrefs, _ d: UserDefaults = .standard) {
+        d.set(p.kind.rawValue, forKey: "spoon.kind"); d.set(p.scale, forKey: "spoon.scale"); d.set(p.opacity, forKey: "spoon.opacity")
+        d.set(p.floatingStick, forKey: "spoon.floatingStick"); d.set(p.showLabels, forKey: "spoon.showLabels")
+        d.set(p.haptics, forKey: "spoon.haptics"); d.set(p.leftHanded, forKey: "spoon.leftHanded")
+        if let s = p.skin { d.set(s, forKey: skinKey) } else { d.removeObject(forKey: skinKey) }
+        d.set(encodeLayouts(p.layouts), forKey: layoutsKey)
+    }
+
+    /// 전역 `spoon.layouts` 의 JSON. 비었으면 nil (키를 지움)
+    static func encodeLayouts(_ l: [String: PadArrangement]?) -> Data? {
+        guard let l, !l.isEmpty else { return nil }
+        return try? JSONEncoder().encode(l)
+    }
+    static func decodeLayouts(_ d: Data?) -> [String: PadArrangement]? {
+        guard let d, let l = try? JSONDecoder().decode([String: LossyArrangement].self, from: d) else { return nil }
+        let out = l.compactMapValues(\.value).filter { PadArrangement.isValidKey($0.key) }
+        return out.isEmpty ? nil : out
+    }
+
+    /// 배치 하나가 깨져도 나머지는 읽는다
+    struct LossyArrangement: Decodable {
+        var value: PadArrangement?
+        init(from decoder: Decoder) throws { value = try? PadArrangement(from: decoder) }
+    }
 
     /// 전역 설정(@AppStorage 키)에서 읽는다
     static func global(_ d: UserDefaults = .standard) -> PadPrefs {
@@ -21,12 +75,15 @@ struct PadPrefs: Codable, Equatable {
         if d.object(forKey: "spoon.showLabels") != nil { p.showLabels = d.bool(forKey: "spoon.showLabels") }
         if d.object(forKey: "spoon.haptics") != nil { p.haptics = d.bool(forKey: "spoon.haptics") }
         p.leftHanded = d.bool(forKey: "spoon.leftHanded")
+        if let s = d.string(forKey: skinKey), !s.isEmpty { p.skin = s }
+        p.layouts = decodeLayouts(d.data(forKey: layoutsKey))
         return p
     }
 }
 
 extension PadPrefs {
-    /// 나중에 더한 항목(leftHanded)이 없는 예전 게임별 설정도 읽히게, 빠진 키는 기본값
+    /// 나중에 더한 항목(leftHanded·skin·layouts)이 없는 예전 게임별 설정도 읽히게, 빠진 키는 기본값.
+    /// skin·layouts 는 깨져 있어도(다른 기기에서 온 이상한 값) 패드 설정 전체를 잃지 않게 그 값만 버린다
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = PadPrefs()
@@ -37,6 +94,11 @@ extension PadPrefs {
         showLabels = try c.decodeIfPresent(Bool.self, forKey: .showLabels) ?? d.showLabels
         haptics = try c.decodeIfPresent(Bool.self, forKey: .haptics) ?? d.haptics
         leftHanded = try c.decodeIfPresent(Bool.self, forKey: .leftHanded) ?? d.leftHanded
+        skin = (try? c.decodeIfPresent(String.self, forKey: .skin)).flatMap { $0 }.map { String($0.prefix(40)) }
+        if let l = (try? c.decodeIfPresent([String: LossyArrangement].self, forKey: .layouts)).flatMap({ $0 }) {
+            let out = l.compactMapValues(\.value).filter { PadArrangement.isValidKey($0.key) }
+            layouts = out.isEmpty ? nil : out
+        }
     }
 }
 
