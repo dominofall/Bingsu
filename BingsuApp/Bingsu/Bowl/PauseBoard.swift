@@ -111,8 +111,9 @@ struct PauseBoard: View {
                             .accessibilityAddTraits(pad.kind == k ? .isSelected : [])
                     }
                 }
-                if pad.kind == .oneHand && landscape {
-                    note("한손은 세로로 들었을 때 쓰여요. 가로에서는 기본 배치로 보여요.")
+                if pad.kind == .oneHand {
+                    if landscape { note("한손은 세로로 들었을 때 쓰여요. 가로에서는 기본 배치로 보여요.") }
+                    toggle("왼손으로 쓰기", sub: "버튼을 왼쪽 엄지 쪽으로 옮겨요", isOn: Binding(get: { pad.leftHanded }, set: { v in setPad(with { $0.leftHanded = v }) }), item: .leftHand)
                 }
                 slider("크기", value: pad.scale, in: 0.8...1.3, item: .size) { v in setPad(with { $0.scale = v }) }
                 slider("불투명도", value: pad.opacity, in: 0.25...0.9, item: .opacity) { v in setPad(with { $0.opacity = v }) }
@@ -252,7 +253,7 @@ struct PauseBoard: View {
 
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
-    case resume, home, close, kind(PadKind), size, opacity, hidePad, labels, floating, applyAll
+    case resume, home, close, kind(PadKind), leftHand, size, opacity, hidePad, labels, floating, applyAll
     case rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 

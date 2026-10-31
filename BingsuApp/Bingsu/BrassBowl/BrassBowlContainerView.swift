@@ -46,6 +46,8 @@ struct BrassBowlContainerView: View {
     private var padShown: Bool { showSpoon && (!controllerConnected || padForced) }
     private var menuButtonPlace: MenuButtonPlace {
         if let e = ProcessInfo.processInfo.environment["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
+        // 한손 배치는 설정과 상관없이 패드 구역 오른쪽 위에 고정 (2026-10-31 사용자 결정, 자리는 makeOneHand)
+        if padPrefs.kind == .oneHand { return .pad }
         return MenuButtonPlace(rawValue: menuButtonRaw) ?? .pad
     }
     private var freezer: Freezer { Freezer(dish: dish) }
@@ -372,6 +374,7 @@ struct BrassBowlContainerView: View {
             case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = controllerConnected }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
+            case .leftHand?: p.leftHanded.toggle(); setPadHere(p)
             case .applyAll?: applyPadToAll()
             case .rumble?: UserDefaults.standard.set(!Rumble.shared.enabled, forKey: Rumble.key)
             case .btSafe?: UserDefaults.standard.set(!Rumble.shared.btSafe, forKey: Rumble.btSafeKey)
@@ -388,7 +391,7 @@ struct BrassBowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건, 소리 다시 켜기·초당 프레임·화질 없음)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.size, .opacity, .hidePad, .labels]
+        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.kind.hasStick { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out.append(.rumble)

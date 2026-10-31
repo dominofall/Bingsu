@@ -230,40 +230,36 @@ struct SpoonLayout {
         ]
     }
 
-    /// 한손(세로 전용, 2026-10-31 사용자 요청): 엄지 관절은 손잡이 쪽 가장자리 바깥(약 23pt), 아래에서 약 200pt 높이에 있다고 보고,
-    /// 관절을 중심으로 한 동심 원호 위에 놓는다. 엄지는 관절을 축으로 돌기 때문에 같은 원호 위 버튼은 엄지를 굽히고 펴지 않고 쓸어서 닿는다.
-    /// - 안쪽 원호(180pt): 위에서부터 X·A·B·Y. 가장 많이 누르는 A·B 는 X·Y 보다 조금 크게, 관절 정면 가까이
-    /// - 가운데(240pt): 큰 십자키 (관절 정면)
-    /// - 바깥 원호(305pt): 덜 쓰는 버튼을 위에서부터 L·+·−·R (사용자 선택)
-    /// - 눈송이: 그 바깥 정면(370pt), 띠 밖이라 잘못 눌러 멈추지 않는다
-    /// 버튼은 지름 60pt·알약 높이 40pt 아래로 줄이지 않는다. `leftHanded` 면 좌우를 뒤집는다.
+    /// 한손(세로 전용, 2026-10-31 사용자 선택 "게임기형"): 화면 아래 1/3 안에 십자키는 바깥쪽, A·B·X·Y 는 손잡이 쪽에 둔
+    /// 휴대용 게임기 모양. L·R 은 십자키 위, −·+ 는 가운데 아래. 눈송이는 손과 상관없이 패드 구역 오른쪽 위. 포켓로그(A 확인·B 취소·+ 메뉴)를 기준으로 맞췄다.
+    /// 402pt 폭 화면 기준 좌표를 손잡이 쪽 가장자리에 붙여 놓고, 넓은 화면(iPad)에서도 같은 손 모양으로 둔다.
+    /// `leftHanded` 면 좌우를 뒤집되 L·− 은 늘 왼쪽.
     static func makeOneHand(size: CGSize, safe: (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat),
                             scale requested: CGFloat, leftHanded: Bool) -> SpoonLayout {
         let W = size.width, H = size.height
         // 작은 배율은 한손에서 누르기 어려우므로 0.95 아래로는 내리지 않고, 폭이 모자랄 때만 줄인다
-        let s = min(max(requested, 0.95), W / 372)
+        let s = min(max(requested, 0.95), W / 402)
         let bottom = H - max(safe.bottom, 12)
-        // 관절에서 거리 r, 각도 deg(정면 안쪽이 0°, 위가 +) 인 자리
-        func arc(_ r: CGFloat, _ deg: CGFloat) -> CGPoint {
-            let t = deg * .pi / 180
-            let dx = (-23 + r * cos(t)) * s, dy = (200 + r * sin(t)) * s   // 손잡이 쪽 가장자리에서 안쪽 dx, 아래에서 위로 dy
-            return CGPoint(x: leftHanded ? dx : W - dx, y: bottom - dy)
+        // (손잡이 쪽 화면 가장자리에서 안쪽으로 dx, 아래에서 위로 dy)
+        func at(_ dx: CGFloat, _ dy: CGFloat) -> CGPoint {
+            CGPoint(x: leftHanded ? dx * s : W - dx * s, y: bottom - dy * s)
         }
-        let pr = max(22 * s, 20)
-        func big(_ v: CGFloat) -> CGFloat { max(v * s, 30) }
+        let pr = max(20 * s, 20)
+        func btn(_ v: CGFloat) -> CGFloat { max(v * s, 24) }
         var l = SpoonLayout()
-        l.dpadCenter = arc(240, 0); l.dpadRadius = max(72 * s, 64)
+        l.dpadCenter = at(290, 128); l.dpadRadius = max(62 * s, 58)
         l.buttons = [
-            PadButtonSlot(button: .x, center: arc(180, 60), radius: big(30), pill: false),
-            PadButtonSlot(button: .a, center: arc(180, 25), radius: big(32), pill: false),
-            PadButtonSlot(button: .b, center: arc(180, -25), radius: big(32), pill: false),
-            PadButtonSlot(button: .y, center: arc(180, -60), radius: big(30), pill: false),
-            PadButtonSlot(button: .lb, center: arc(305, 36), radius: pr, pill: true, label: "L"),
-            PadButtonSlot(button: .rb, center: arc(305, -34), radius: pr, pill: true, label: "R"),
-            PadButtonSlot(button: .view, center: arc(305, -14), radius: pr, pill: true, label: "−"),
-            PadButtonSlot(button: .menu, center: arc(305, 14), radius: pr, pill: true, label: "+"),
+            PadButtonSlot(button: .a, center: at(70, 128), radius: btn(30), pill: false),
+            PadButtonSlot(button: .b, center: at(138, 84), radius: btn(30), pill: false),
+            PadButtonSlot(button: .x, center: at(82, 200), radius: btn(24), pill: false),
+            PadButtonSlot(button: .y, center: at(150, 156), radius: btn(24), pill: false),
+            PadButtonSlot(button: .lb, center: at(leftHanded ? 210 : 340, 224), radius: pr, pill: true, label: "L"),
+            PadButtonSlot(button: .rb, center: at(leftHanded ? 310 : 240, 224), radius: pr, pill: true, label: "R"),
+            PadButtonSlot(button: .view, center: at(leftHanded ? 170 : 234, 28), radius: pr, pill: true, label: "−"),
+            PadButtonSlot(button: .menu, center: at(leftHanded ? 234 : 170, 28), radius: pr, pill: true, label: "+"),
         ]
-        l.orbCenter = arc(370, 0)
+        // 왼손이면 L·R 줄이 오른쪽 위로 오므로 눈송이 자리를 비우려고 조금 안쪽(210·310)에 둔다
+        l.orbCenter = CGPoint(x: W - 30 * s, y: bottom - 235 * s)
         return l
     }
 

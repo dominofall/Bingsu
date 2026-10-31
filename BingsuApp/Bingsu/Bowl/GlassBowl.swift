@@ -53,6 +53,11 @@ struct GlassBowl: UIViewRepresentable {
                                                                            renderScale: quality.renderScale, fpsCap: fpsCap),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         ucc.addUserScript(WKUserScript(source: BowlScripts.sfxWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // 웹 소리(Web Audio)는 WebKit 이 앱 오디오 세션과 따로 정해 무음 스위치를 따른다. 페이지의 Audio Session API 로
+        // 설정 "무음 모드에서도 소리 재생" 과 같게 맞춘다 (iOS 16.4+, 없으면 무시)
+        let inSilent = UserDefaults.standard.object(forKey: BingsuApp.playInSilentKey) as? Bool ?? true
+        ucc.addUserScript(WKUserScript(source: "try { if (navigator.audioSession) navigator.audioSession.type = '\(inSilent ? "playback" : "ambient")'; } catch (e) {}",
+                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
         context.coordinator.onExternal = { url in DispatchQueue.main.async { authRequest = AuthRequest(url: url) } }
         context.coordinator.keyPrefix = prefix
         context.coordinator.freezerEnabled = freezerEnabled
