@@ -150,6 +150,9 @@ final class BrassBowlEngine: ObservableObject {
             log.withUnsafeFileSystemRepresentation { sym("mkxp_setDebugLogPath", StrFn.self)?($0) }
         }
         registerCallbacks()
+        // 엔진 안 SDL 이 소리를 열 때 오디오 세션 분류를 자기 기본(무음 스위치를 따르는 soloAmbient)으로 바꾸지 않게, 설정과 같은 분류를 알려 준다
+        let inSilent = UserDefaults.standard.object(forKey: BingsuApp.playInSilentKey) as? Bool ?? true
+        setenv("SDL_AUDIO_CATEGORY", inSilent ? "playback" : "ambient", 1)
 
         phase = .booting(dishID: launch.dish.id)
         dish = launch.dish

@@ -8,15 +8,19 @@ struct BingsuApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     init() {
-        // 게임 소리는 무음 스위치와 상관없이 나게 한다. 컨트롤러 햅틱 엔진이 오디오 세션을 건드려도
+        // 게임 소리는 기본으로 무음 스위치와 상관없이 나게 한다. 컨트롤러 햅틱 엔진이 오디오 세션을 건드려도
         // 분류가 바뀌지 않도록 앱에서 고정한다 (2026-10-29: 진동 추가 뒤 소리가 안 나던 문제)
         Self.configureAudioSession()
     }
 
+    /// 설정 "무음 모드에서도 소리 재생" (기본 켬). 끄면 무음 스위치를 따르고 다른 앱 소리와 섞인다
+    static let playInSilentKey = "bingsu.playInSilentMode"
+
     static func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
+        let inSilent = UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? true
         do {
-            try session.setCategory(.playback, mode: .default, options: [])
+            try session.setCategory(inSilent ? .playback : .ambient, mode: .default, options: [])
             // 출력 버퍼를 넉넉히(약 20ms): 기본(수 ms)이면 기기가 뜨겁거나 바쁠 때 버퍼를 못 채워 지지직거릴 수 있다.
             // WebKit 이 자기 값으로 덮을 수도 있어 실제 값은 로그로 확인한다
             try? session.setPreferredIOBufferDuration(0.02)

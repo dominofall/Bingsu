@@ -410,7 +410,7 @@ struct BowlContainerView: View {
     }
 
     /// 게임 웹뷰의 자리 (geo 는 안전 영역을 무시한 전체 화면 좌표).
-    /// 고정 비율(16:9) 게임: 세로는 눈송이 줄 아래 ~ 패드 윗줄 사이 가운데, 가로는 높이를 채운 16:9 가운데.
+    /// 고정 비율(16:9) 게임: 세로는 눈송이 줄 아래 ~ 패드 윗줄 사이, 패드 쪽으로 치우치게, 가로는 높이를 채운 16:9 가운데.
     /// 그 밖의 웹 게임은 스스로 화면에 맞추므로 전체화면.
     private func gameRect(_ geo: GeometryProxy) -> CGRect {
         let W = geo.size.width, H = geo.size.height   // ignoresSafeArea → 화면 전체
@@ -421,9 +421,10 @@ struct BowlContainerView: View {
             let gameW = W - Self.margin * 2, gameH = gameW * 9 / 16
             let padTop = padLayout(full: geo.size, ins: ins)?.topEdge.map { $0 - 12 } ?? H
             let top = ins.top
-            // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간의 가운데
-            let slack = max(0, padTop - top - Self.chrome - gameH)
-            let y = top + Self.chrome + slack / 2
+            // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
+            let band = menuButtonPlace == .pad && padShown ? 8 : Self.chrome
+            let slack = max(0, padTop - top - band - gameH)
+            let y = top + band + slack * 0.75
             return CGRect(x: Self.margin, y: y, width: gameW, height: gameH)
         } else {
             let innerH = H - Self.margin * 2

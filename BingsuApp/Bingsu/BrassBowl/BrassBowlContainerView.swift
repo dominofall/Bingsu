@@ -405,17 +405,19 @@ struct BrassBowlContainerView: View {
 
     // MARK: 화면 배치
 
-    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 4:3 가운데. 세로: 폭을 채운 4:3 을 눈송이 줄 아래 ~ 패드 윗줄 사이 가운데
+    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 4:3 가운데. 세로: 폭을 채운 4:3 을 눈송이 줄 아래 ~ 패드 윗줄 사이, 패드 쪽으로 치우치게
     private func gameRect(_ size: CGSize) -> CGRect {
         let W = size.width, H = size.height
         guard W > 0, H > 0 else { return .zero }
         if H > W {
             let ins = Self.windowInsets()
             let gameW = W, gameH = W / Self.aspect
-            let top = ins.top + BowlContainerView.chrome
+            // 눈송이가 패드 안에 있으면 위쪽 눈송이 줄은 비워 두지 않는다
+            let top = ins.top + (menuButtonPlace == .pad && padShown ? 8 : BowlContainerView.chrome)
             let padTop = padShown ? padLayout(size, ins: ins)?.topEdge.map { $0 - 12 } ?? H : H
             let slack = max(0, padTop - top - gameH)
-            return CGRect(x: 0, y: top + slack / 2, width: gameW, height: gameH)
+            // 남는 공간에서 패드 쪽으로 치우치게 (위 3 : 아래 1)
+            return CGRect(x: 0, y: top + slack * 0.75, width: gameW, height: gameH)
         }
         let gameH = H, gameW = min(W, H * Self.aspect)
         return CGRect(x: (W - gameW) / 2, y: 0, width: gameW, height: gameH)

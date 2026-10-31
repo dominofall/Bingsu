@@ -22,6 +22,7 @@ struct SettingsView: View {
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
     @AppStorage(AudioDiagHUD.key) private var audioDiag = false
+    @AppStorage(BingsuApp.playInSilentKey) private var playInSilent = true
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     @AppStorage(Igloo.enabledKey) private var icloudSync = true
     @ObservedObject private var igloo = Igloo.shared
@@ -87,6 +88,11 @@ struct SettingsView: View {
                             Text("블루투스 컨트롤러 진동과 이어폰 소리가 같은 무선을 나눠 써서 소리가 지직거릴 수 있어요. 켜 두면 이어폰으로 들을 때만 진동을 짧고 드물게 보내요")
                         }
                     }
+                    Toggle(isOn: $playInSilent) {
+                        Text("무음 모드에서도 소리 재생")
+                        Text("끄면 무음 모드일 때 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요")
+                    }
+                    .onChange(of: playInSilent) { _, _ in BingsuApp.configureAudioSession() }
                     Picker("일시정지 버튼 자리", selection: $menuButtonRaw) {
                         ForEach(MenuButtonPlace.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }
