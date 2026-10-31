@@ -93,7 +93,7 @@ struct BowlContainerView: View {
                 let r = gameRect(geo)
                 GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
                           paused: !visible, onRestart: restarted)
-                    .frame(width: r.width, height: r.height)
+                    .frame(width: r.width, height: r.height - refitNudge)
                     .clipShape(RoundedRectangle(cornerRadius: Self.corner, style: .continuous))
                     .position(x: r.midX, y: r.midY)
             }
@@ -141,7 +141,13 @@ struct BowlContainerView: View {
         }
         .onChange(of: padPrefs.haptics) { _, on in spoon.hapticsEnabled = on }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active { nudgeWebViewSize() }
             if phase != .active { flush(); spoon.releaseAll() }
+            // 앱이 안 보이면 게임 소리와 무음 <audio> 를 멈춘다. 무음 재생이 돌고 있으면 WebKit 이 백그라운드에서도
+            // 게임 소리를 계속 내기 때문 (2026-10-31 실기기). 돌아오면 게임이 보이고 일시정지 화면이 아닐 때만 다시 켠다
+            if phase == .background || (phase == .active && visible && !showMenu) {
+                setWebAudioHeld(phase != .active)
+            }
             if phase == .background { Igloo.shared.afterPlay(dish, stillRunning: true) }
             recorder.setActive(phase == .active && visible)
             showReturnToast()
@@ -153,6 +159,7 @@ struct BowlContainerView: View {
             recorder.setActive(v && scenePhase == .active)
             showReturnToast()
             webView?.evaluateJavaScript("window.__bingsu && __bingsu.\(v ? "resume" : "pause")()", completionHandler: nil)
+            webView?.evaluateJavaScript("window.__bingsuSilentHold && __bingsuSilentHold(\(!v))", completionHandler: nil)
         }
         .onAppear {
             spoon.cutlery = CutlerySet.forDish(dish); spoon.webView = webView; spoon.hapticsEnabled = padPrefs.haptics
@@ -268,7 +275,7 @@ struct BowlContainerView: View {
     private func openPause() {
         guard !showMenu else { return }
         spoon.releaseAll()
-        webView?.evaluateJavaScript("window.__bingsu && __bingsu.pause()", completionHandler: nil)
+        setWebAudioHeld(true)
         lastBackup = dish.isRemote ? nil : freezer.backups().first?.date
         pauseFocus = controllerConnected ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
@@ -278,7 +285,7 @@ struct BowlContainerView: View {
     private func closePause(resume: Bool = true) {
         longSpoon?.menuInput = nil
         withAnimation(.easeOut(duration: 0.18)) { showMenu = false }
-        if resume { webView?.evaluateJavaScript("window.__bingsu && __bingsu.resume()", completionHandler: nil) }
+        if resume { setWebAudioHeld(false) }
     }
 
     /// 일시정지 화면에서 바꾼 패드 값은 이 게임에만 저장한다 (9.3)
@@ -327,6 +334,7 @@ struct BowlContainerView: View {
                 pauseFocus = .kind(n)
             case .size: p.scale = nudge(p.scale, 0.05 * d, 0.8...1.3); setPadHere(p)
             case .opacity: p.opacity = nudge(p.opacity, 0.05 * d, 0.25...0.9); setPadHere(p)
+            case .volume: BingsuApp.setGameVolume(BingsuApp.gameVolume + 0.05 * d)
             case .rumbleStrength:
                 let v = UserDefaults.standard.object(forKey: Rumble.strengthKey) == nil ? 0.7 : UserDefaults.standard.double(forKey: Rumble.strengthKey)
                 UserDefaults.standard.set(nudge(v, 0.1 * d, 0.1...1), forKey: Rumble.strengthKey)
@@ -371,7 +379,7 @@ struct BowlContainerView: View {
         var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.kind.hasStick { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
-        out.append(.rumble)
+        out += [.volume, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
         out += [.fps, .quality, .hud]
         if !dish.isRemote { out.append(.backup) }
@@ -421,9 +429,16 @@ struct BowlContainerView: View {
         guard fixedAspect else { return CGRect(x: 0, y: 0, width: W, height: H) }
         let ins = Self.windowInsets()
         if H > W {
-            let gameW = W - Self.margin * 2, gameH = gameW * 9 / 16
+            let gameW = W - Self.margin * 2
             let padTop = padLayout(full: geo.size, ins: ins)?.topEdge.map { $0 - 12 } ?? H
             let top = ins.top
+            // 기본 게임(Bingsu)은 페이지가 스스로 세로 배치를 하므로 16:9 상자에 가두지 않고 눈송이 줄 ~ 패드 윗줄을 다 준다
+            // (16:9 로 두면 iPhone 세로에서 안내 카드·무대가 잘림, 2026-10-31)
+            if MenuBoardStore.isBuiltIn(dish) {
+                let y = top + (menuButtonPlace == .pad && padShown ? 8 : Self.chrome)
+                return CGRect(x: Self.margin, y: y, width: gameW, height: max(200, min(H - ins.bottom, padTop) - y))
+            }
+            let gameH = gameW * 9 / 16
             // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
             let band = menuButtonPlace == .pad && padShown ? 8 : Self.chrome
             let slack = max(0, padTop - top - band - gameH)
@@ -437,6 +452,23 @@ struct BowlContainerView: View {
             let gameW = gameH * 16 / 9
             let cy = sideBand >= Self.chrome ? H / 2 : Self.chrome + (H - Self.chrome) / 2
             return CGRect(x: (W - gameW) / 2, y: cy - gameH / 2, width: gameW, height: gameH)
+        }
+    }
+
+    /// 게임 소리(AudioContext)와 무음 모드용 무음 <audio> 를 함께 멈추거나 다시 켠다
+    private func setWebAudioHeld(_ held: Bool) {
+        webView?.evaluateJavaScript("window.__bingsu && __bingsu.\(held ? "pause" : "resume")(); window.__bingsuSilentHold && __bingsuSilentHold(\(held))",
+                                    completionHandler: nil)
+    }
+
+    /// 돌아온 뒤 웹뷰 높이를 잠깐 1pt 줄였다 되돌리는 값.
+    /// iPad 는 백그라운드 스냅샷 때 웹뷰 크기를 여러 번 바꾸는데, 돌아와서 resize 이벤트만 보내면 WebKit 이 예전 뷰포트를
+    /// 그대로 알려 줘 게임이 작게 남는 일이 있다(2026-10-31 iPad Air). 실제로 크기를 바꿔 WebKit 이 뷰포트를 새로 계산하게 한다
+    @State private var refitNudge: CGFloat = 0
+    private func nudgeWebViewSize() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            refitNudge = 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { refitNudge = 0 }
         }
     }
 

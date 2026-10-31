@@ -16,9 +16,33 @@ struct BingsuApp: App {
     /// 설정 "무음 모드에서도 소리 재생" (기본 켬). 끄면 무음 스위치를 따르고 다른 앱 소리와 섞인다
     static let playInSilentKey = "bingsu.playInSilentMode"
 
-    static func configureAudioSession() {
+    /// 소리 설정("무음 모드에서도 소리 재생"·게임별 소리 크기)이 바뀌었을 때. 켜 둔 게임 화면이 받아 바로 적용한다
+    static let soundPrefsChanged = Notification.Name("bingsu.soundPrefsChanged")
+
+    /// 게임 소리 크기 (0~1, 기본 1). 모든 게임 공통 — 설정 › 게임 중, 일시정지 화면에서 바꾼다
+    static let gameVolumeKey = "bingsu.gameVolume"
+    static var gameVolume: Double {
+        let d = UserDefaults.standard
+        return d.object(forKey: gameVolumeKey) == nil ? 1 : min(1, max(0, d.double(forKey: gameVolumeKey)))
+    }
+    /// 5% 단위로 저장하고 켜 둔 게임이 바로 따르게 알린다
+    static func setGameVolume(_ v: Double) {
+        UserDefaults.standard.set(min(1, max(0, (v * 20).rounded() / 20)), forKey: gameVolumeKey)
+        NotificationCenter.default.post(name: soundPrefsChanged, object: nil)
+    }
+
+    /// 지금 화면에 보이는 게임. 게임별 "무음 모드에서도 소리 재생"을 고를 때 쓴다 (홈이면 nil → 전역 설정)
+    @MainActor static var audioDishID: String?
+
+    /// 무음 모드에서도 소리를 낼지: 게임별 설정이 있으면 그것, 없으면 설정 › 게임 중의 값
+    @MainActor static func playInSilent(for dishID: String?) -> Bool {
+        if let dishID, let own = DishPrefsStore.shared.prefs(for: dishID).playInSilent { return own }
+        return UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? true
+    }
+
+    @MainActor static func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
-        let inSilent = UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? true
+        let inSilent = playInSilent(for: audioDishID)
         do {
             try session.setCategory(inSilent ? .playback : .ambient, mode: .default, options: [])
             // 출력 버퍼를 넉넉히(약 20ms): 기본(수 ms)이면 기기가 뜨겁거나 바쁠 때 버퍼를 못 채워 지지직거릴 수 있다.

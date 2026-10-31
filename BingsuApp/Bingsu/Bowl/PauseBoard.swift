@@ -31,6 +31,7 @@ struct PauseBoard: View {
     /// 컨트롤러 초점 (BowlContainerView 가 버튼 입력을 넘겨 준다)
     @Binding var focus: PauseItem?
 
+    @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
@@ -141,12 +142,13 @@ struct PauseBoard: View {
             }
 
             group("소리·진동", wide: wide) {
+                slider("소리 크기", value: gameVolume, in: 0...1, item: .volume) { BingsuApp.setGameVolume($0) }
                 toggle("진동", isOn: $rumble, item: .rumble)
                 if rumble {
                     slider("세기", value: rumbleStrength, in: 0.1...1, item: .rumbleStrength) { rumbleStrength = $0 }
                     toggle("블루투스 이어폰 보호", sub: "무선 이어폰일 때 진동을 가볍게", isOn: $rumbleBTSafe, item: .btSafe)
                 }
-                note("진동은 모든 게임에 같이 적용돼요.")
+                note("소리 크기와 진동은 모든 게임에 같이 적용돼요.")
             }
 
             group("화면·성능", wide: wide) {
@@ -219,7 +221,7 @@ struct PauseBoard: View {
     private func slider(_ title: String, value: Double, in range: ClosedRange<Double>, item: PauseItem,
                         set: @escaping (Double) -> Void) -> some View {
         HStack(spacing: 10) {
-            Text(title).font(.subheadline).frame(width: 64, alignment: .leading)
+            Text(title).font(.subheadline).lineLimit(1).fixedSize().frame(minWidth: 64, alignment: .leading)
             Slider(value: Binding(get: { value }, set: set), in: range)
             Text("\(Int((value * 100).rounded()))%").font(.footnote.monospacedDigit()).foregroundStyle(.secondary).frame(width: 40, alignment: .trailing)
         }
@@ -254,7 +256,7 @@ struct PauseBoard: View {
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
     case resume, home, close, kind(PadKind), leftHand, size, opacity, hidePad, labels, floating, applyAll
-    case rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
+    case volume, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 
 /// 패드 종류 고르기 칸 (이름만)

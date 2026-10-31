@@ -68,6 +68,12 @@ struct BrassBowlContainerView: View {
                     .ignoresSafeArea()
                     .onAppear { applyViewport(geo.size) }
                     .onChange(of: geo.size) { _, s in applyViewport(s) }
+                    // 다른 앱에서 돌아오면 iOS 가 스냅샷 때 바꾼 엔진 창 크기를 되돌리지만 geo.size 는 그대로라
+                    // 다시 알려 주지 않으면 게임 화면이 작은 채 남는다(iPad). 자리 잡는 동안 몇 번 다시 알린다
+                    .onChange(of: scenePhase) { _, phase in
+                        guard phase == .active else { return }
+                        for t in [0.1, 0.5, 1.2] { DispatchQueue.main.asyncAfter(deadline: .now() + t) { applyViewport(geo.size) } }
+                    }
                     .onChange(of: padShown) { _, _ in applyViewport(geo.size) }
                 if !isPlaying {
                     loadingCover.frame(width: r.width, height: r.height).position(x: r.midX, y: r.midY)
@@ -359,6 +365,7 @@ struct BrassBowlContainerView: View {
                 pauseFocus = .kind(all[min(all.count - 1, max(0, i + Int(d)))])
             case .size: p.scale = nudge(p.scale, 0.05 * d, 0.8...1.3); setPadHere(p)
             case .opacity: p.opacity = nudge(p.opacity, 0.05 * d, 0.25...0.9); setPadHere(p)
+            case .volume: BingsuApp.setGameVolume(BingsuApp.gameVolume + 0.05 * d)
             case .rumbleStrength:
                 let v = UserDefaults.standard.object(forKey: Rumble.strengthKey) == nil ? 0.7 : UserDefaults.standard.double(forKey: Rumble.strengthKey)
                 UserDefaults.standard.set(nudge(v, 0.1 * d, 0.1...1), forKey: Rumble.strengthKey)
@@ -394,7 +401,7 @@ struct BrassBowlContainerView: View {
         var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.kind.hasStick { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
-        out.append(.rumble)
+        out += [.volume, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
         out += [.hud, .backup, .more]
         return out
@@ -513,6 +520,12 @@ struct BrassBowlHost: UIViewRepresentable {
         override func didMoveToWindow() {
             super.didMoveToWindow()
             if window != nil { tryEmbed() }
+        }
+
+        /// 게임 화면은 늘 이 뷰 크기 그대로. SDL 이 백그라운드 스냅샷 때 자기 창 크기로 바꿔 둔 것도 여기서 되돌린다
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            if let gv = gameView, gv.frame != bounds { gv.frame = bounds }
         }
     }
 }

@@ -6,7 +6,7 @@ enum BowlScripts {
     /// 문서 시작 전: 냉동실 복원 + 공용 브리지
     /// `freezer == false`(원격 웹 게임)면 localStorage 를 읽지도, 파일로 보내지도 않는다 — 로그인 토큰이 파일로 새는 것을 막기 위해.
     static func atDocumentStart(restore: Freezer.Snapshot?, keyPrefix: String, freezer: Bool, desktopSpoof: Bool,
-                                renderScale: Double? = nil, fpsCap: Int? = nil) -> String {
+                                renderScale: Double? = nil, fpsCap: Int? = nil, volume: Double = 1) -> String {
         let restoreJSON: String
         if let restore, let data = try? JSONSerialization.data(withJSONObject: ["at": restore.savedAt, "data": restore.entries] as [String: Any]),
            let s = String(data: data, encoding: .utf8) {
@@ -44,6 +44,12 @@ enum BowlScripts {
 
           // 일시정지: rAF 콜백을 묶어 두고, 오디오 컨텍스트를 suspend 한다 (홈으로 나갔을 때)
           let PAUSED = false, resumedGap = false; const pendingRAF = []; const contexts = new Set();
+          // 게임별 소리 크기: 컨텍스트마다 destination 앞에 GainNode 를 하나 끼우고 게임에는 그것을 destination 으로 보여 준다
+          let VOLUME = \(min(1, max(0, volume))); const masters = new WeakMap();
+          const setVolume = (v) => {
+            const n = Number(v); VOLUME = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
+            for (const c of contexts) { const g = masters.get(c); if (g) try { g.gain.setValueAtTime(VOLUME, c.currentTime); } catch (e) { g.gain.value = VOLUME; } }
+          };
           const rafOrig = window.requestAnimationFrame.bind(window);
           const cafOrig = window.cancelAnimationFrame.bind(window);
           // 프레임 제한: 콜백을 모아 두고 화면 갱신 몇 번에 한 번만 넘긴다 (60Hz 에서 30 이면 한 번 건너뜀).
@@ -75,6 +81,13 @@ enum BowlScripts {
             const Wrapped = new Proxy(C, { construct(t, args) {
               // (latencyHint "playback" 을 넣어 봤지만 iOS WebKit 은 무시: baseLatency 2.7ms 그대로, 2026-10-30 iPhone 16)
               const c = Reflect.construct(t, args); contexts.add(c);
+              try {
+                const real = c.destination, g = c.createGain();
+                g.gain.value = VOLUME; g.connect(real); masters.set(c, g);
+                // 채널 수 등 destination 고유 값을 읽는 게임을 위해 진짜 것을 비춰 준다
+                for (const k of ["maxChannelCount"]) { try { Object.defineProperty(g, k, { get: () => real[k] }); } catch (e) {} }
+                Object.defineProperty(c, "destination", { configurable: true, get: () => g });
+              } catch (e) { post("bowl", { event: "audio", msg: "volume node failed " + e }); }
               post("bowl", { event: "audio", msg: "context sr=" + c.sampleRate + " base=" + (Number(c.baseLatency) * 1000).toFixed(1) + "ms" });
               // iOS 가 오디오를 끊으면(블루투스 경로 변경 등) 컨텍스트가 interrupted/suspended 로 바뀐다.
               // 게임은 화면 터치 때만 다시 켜므로 컨트롤러만 쓰면 소리가 영영 멈춘다 → 우리가 멈춘 게 아니면 다시 켠다
@@ -267,7 +280,7 @@ enum BowlScripts {
               target.dispatchEvent(ev);
               if (down && window.__bingsuKeyDebug) post("bowl", { event: "key", msg: code + " keyCode=" + ev.keyCode + " prevented=" + ev.defaultPrevented + " target=" + (target === window ? "window" : target.tagName) });
             },
-            flush, pause, resume, kickAudio, restartAudio, setFpsCap,
+            flush, pause, resume, kickAudio, restartAudio, setFpsCap, setVolume,
           };
           post("bowl", { event: "ready", msg: "restore=" + restored });
         })();
@@ -378,6 +391,55 @@ enum BowlScripts {
               return p;
             };
           }
+        })();
+        """
+    }
+
+    /// 무음 모드에서도 소리 재생. WebKit 은 Web Audio 만 쓰는 페이지를 "ambient"(무음 스위치를 따름)로 다룬다.
+    /// 1) Audio Session API 로 분류를 playback 으로, 2) 그것만으로 안 되는 기기(iPad 포켓로그, 2026-10-31)를 위해
+    /// 아무 소리 없는 <audio> 를 반복 재생해 WebKit 이 페이지를 미디어 재생으로 보게 한다. 끄면 둘 다 되돌린다.
+    /// 네이티브가 설정을 바꾸면 `__bingsuSilentMode(true|false)` 를 부른다
+    static func silentMode(playInSilent: Bool) -> String {
+        """
+        (() => {
+          const post = (m) => { try { window.webkit.messageHandlers.bowl.postMessage({ event: "audio", msg: m }); } catch (e) {} };
+          let on = \(playInSilent ? "true" : "false"), held = false, el = null, url = null;
+          // 0.5초짜리 8kHz 8비트 무음 WAV (0x80 = 무음)
+          const silentURL = () => {
+            if (url) return url;
+            const n = 4000, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+            const tag = (o, t) => { for (let i = 0; i < 4; i++) b[o + i] = t.charCodeAt(i); };
+            tag(0, "RIFF"); v.setUint32(4, 36 + n, true); tag(8, "WAVE"); tag(12, "fmt ");
+            v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+            v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+            tag(36, "data"); v.setUint32(40, n, true); b.fill(0x80, 44);
+            try { url = URL.createObjectURL(new Blob([b], { type: "audio/wav" })); }
+            catch (e) { let s = ""; for (const x of b) s += String.fromCharCode(x); url = "data:audio/wav;base64," + btoa(s); }
+            return url;
+          };
+          const keep = () => {
+            if (!on || held || document.hidden) { if (el) el.pause(); return; }
+            if (!el) {
+              el = document.createElement("audio");
+              el.loop = true; el.preload = "auto"; el.setAttribute("playsinline", ""); el.setAttribute("x-webkit-airplay", "deny");
+              el.src = silentURL();
+            }
+            const p = el.play(); if (p && p.catch) p.catch((e) => post("silent keep failed " + e));
+          };
+          const apply = (v) => {
+            on = !!v;
+            try { if (navigator.audioSession) navigator.audioSession.type = on ? "playback" : "ambient"; } catch (e) {}
+            keep();
+            post("session " + (navigator.audioSession ? navigator.audioSession.type : "none") + " keep=" + on);
+          };
+          window.__bingsuSilentMode = apply;
+          // 네이티브: 게임이 안 보이거나(홈·다른 앱) 일시정지면 true. 무음 재생이 백그라운드 소리를 살려 두지 않게
+          window.__bingsuSilentHold = (h) => { held = !!h; keep(); };
+          try { if (navigator.audioSession) navigator.audioSession.type = on ? "playback" : "ambient"; } catch (e) {}
+          // 페이지가 뜬 뒤 무음 <audio> 시작, 첫 터치·키에서 한 번 더 (자동 재생이 막힌 경우), 다시 보일 때 다시
+          document.addEventListener("DOMContentLoaded", () => apply(on), { once: true });
+          for (const t of ["pointerdown", "touchend", "keydown"]) window.addEventListener(t, keep, { once: true, capture: true });
+          document.addEventListener("visibilitychange", keep);
         })();
         """
     }

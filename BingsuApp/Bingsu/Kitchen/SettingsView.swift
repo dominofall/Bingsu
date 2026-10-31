@@ -23,6 +23,7 @@ struct SettingsView: View {
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
     @AppStorage(AudioDiagHUD.key) private var audioDiag = false
     @AppStorage(BingsuApp.playInSilentKey) private var playInSilent = true
+    @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     @AppStorage(Igloo.enabledKey) private var icloudSync = true
     @ObservedObject private var igloo = Igloo.shared
@@ -67,6 +68,15 @@ struct SettingsView: View {
                 .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in controllers = LongSpoon.connectedNames() }
 
                 Section("게임 중") {
+                    VStack(alignment: .leading, spacing: 6) {
+                        LabeledContent("게임 소리 크기", value: "\(Int((gameVolume * 100).rounded()))%")
+                        HStack(spacing: 10) {
+                            Image(systemName: "speaker.fill").foregroundStyle(.secondary)
+                            Slider(value: Binding(get: { gameVolume }, set: { BingsuApp.setGameVolume($0) }), in: 0...1, step: 0.05)
+                            Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary)
+                        }
+                        Text("기기 음량과 따로, 모든 게임 소리를 함께 줄여요").font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle(isOn: $rumble) {
                         Text("컨트롤러 진동")
                         Text("컨트롤러가 있으면 컨트롤러로, 없으면 폰으로 울려요. 게임이 요청한 진동과, 지원하는 게임의 효과음(피격·기절 등)에 맞춰 울려요")
@@ -92,7 +102,10 @@ struct SettingsView: View {
                         Text("무음 모드에서도 소리 재생")
                         Text("끄면 무음 모드일 때 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요")
                     }
-                    .onChange(of: playInSilent) { _, _ in BingsuApp.configureAudioSession() }
+                    .onChange(of: playInSilent) { _, _ in
+                        BingsuApp.configureAudioSession()
+                        NotificationCenter.default.post(name: BingsuApp.soundPrefsChanged, object: nil)
+                    }
                     Picker("일시정지 버튼 자리", selection: $menuButtonRaw) {
                         ForEach(MenuButtonPlace.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
                     }

@@ -151,8 +151,9 @@ final class BrassBowlEngine: ObservableObject {
         }
         registerCallbacks()
         // 엔진 안 SDL 이 소리를 열 때 오디오 세션 분류를 자기 기본(무음 스위치를 따르는 soloAmbient)으로 바꾸지 않게, 설정과 같은 분류를 알려 준다
-        let inSilent = UserDefaults.standard.object(forKey: BingsuApp.playInSilentKey) as? Bool ?? true
+        let inSilent = BingsuApp.playInSilent(for: launch.dish.id)
         setenv("SDL_AUDIO_CATEGORY", inSilent ? "playback" : "ambient", 1)
+        installVolumeScript(for: launch.dish)
 
         phase = .booting(dishID: launch.dish.id)
         dish = launch.dish
@@ -166,6 +167,145 @@ final class BrassBowlEngine: ObservableObject {
         }
         return nil
     }
+
+    // MARK: 게임 소리 크기 (모든 게임 공통)
+
+    /// 엔진에는 소리 크기 함수가 없어서, 게임 스크립트보다 먼저 도는 Ruby 스크립트(preloadScript)로 `Audio` 재생 함수를 감싸
+    /// 크기에 배율을 곱한다. 배율은 파일로 주고 스크립트가 0.5초쯤마다 읽어, 바뀌면 지금 배경음을 같은 곡·새 크기로 다시 부른다
+    /// (mkxp-z 는 같은 곡이면 처음부터 다시 틀지 않고 크기만 바꾼다)
+    private static let volumeFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-volume.txt")
+    private static let volumeScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-volume.rb")
+    private var volumeObserver: NSObjectProtocol?
+
+    private func installVolumeScript(for dish: Dish) {
+        writeVolume()
+        setenv("BINGSU_VOLUME_FILE", Self.volumeFile.path, 1)
+        guard (try? Self.volumeScript.write(to: Self.volumeScriptFile, atomically: true, encoding: .utf8)) != nil else { return }
+        // 게임의 mkxp.json 에 preloadScript 가 있으면 함께 넘긴다(덮어쓰기는 최상위 키 단위). 읽을 수 없는데 키가 있으면 건드리지 않는다
+        var scripts: [String] = []
+        let config = dish.location.appendingPathComponent("mkxp.json")
+        if let text = try? String(contentsOf: config, encoding: .utf8), text.contains("preloadScript") {
+            let stripped = text.split(separator: "\n", omittingEmptySubsequences: false)
+                .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }.joined(separator: "\n")
+            guard let obj = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any],
+                  let own = obj["preloadScript"] as? [String] else {
+                NSLog("[BrassBowl] 소리 크기: 게임 mkxp.json 의 preloadScript 를 읽지 못해 적용하지 않음"); return
+            }
+            scripts = own
+        }
+        scripts.append(Self.volumeScriptFile.path)
+        if let data = try? JSONSerialization.data(withJSONObject: ["preloadScript": scripts]), let json = String(data: data, encoding: .utf8) {
+            sym("mkxp_setConfigOverlayJSON", StrFn.self)?(json)
+        }
+        if volumeObserver == nil {
+            volumeObserver = NotificationCenter.default.addObserver(forName: BingsuApp.soundPrefsChanged, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated {
+                    let e = BrassBowlEngine.shared
+                    if e.runningDishID != nil { e.writeVolume() }
+                }
+            }
+        }
+    }
+
+    private func writeVolume() {
+        let v = BingsuApp.gameVolume
+        try? String(format: "%.2f", v).write(to: Self.volumeFile, atomically: true, encoding: .utf8)
+    }
+
+    /// Ruby 1.8 문법 안에서만 쓴다 (예전 게임은 옛 Ruby 로 돈다)
+    private static let volumeScript = """
+    # 빙수: 게임별 소리 크기 (BrassBowlEngine.installVolumeScript)
+    module BingsuVolume
+      @path = ENV["BINGSU_VOLUME_FILE"]
+      @scale = 1.0
+      @stamp = nil
+      @tick = 0
+      @bgm = nil
+      @bgs = nil
+      class << self
+        attr_accessor :bgm, :bgs
+        def refresh
+          return false unless @path && File.exist?(@path)
+          s = File.read(@path).strip
+          return false if s == @stamp
+          @stamp = s
+          v = s.to_f
+          v = 0.0 if v < 0
+          v = 1.0 if v > 1
+          @scale = v
+          true
+        rescue StandardError
+          false
+        end
+        def vol(v)
+          (v.to_i * @scale).round
+        end
+        def again(args)
+          a = args.dup
+          a[1] = vol(a[1])
+          a
+        end
+        def tick
+          @tick += 1
+          return unless @tick % 30 == 0
+          return unless refresh
+          Audio.bingsu_bgm_play(*again(@bgm)) if @bgm
+          Audio.bingsu_bgs_play(*again(@bgs)) if @bgs
+        rescue StandardError
+        end
+      end
+    end
+    BingsuVolume.refresh
+
+    class << Audio
+      alias_method :bingsu_bgm_play, :bgm_play
+      alias_method :bingsu_bgs_play, :bgs_play
+      alias_method :bingsu_me_play, :me_play
+      alias_method :bingsu_se_play, :se_play
+      alias_method :bingsu_bgm_stop, :bgm_stop
+      alias_method :bingsu_bgs_stop, :bgs_stop
+      alias_method :bingsu_bgm_fade, :bgm_fade
+      alias_method :bingsu_bgs_fade, :bgs_fade
+      def bgm_play(name, volume = 100, *rest)
+        BingsuVolume.bgm = [name, volume] + rest
+        bingsu_bgm_play(name, BingsuVolume.vol(volume), *rest)
+      end
+      def bgs_play(name, volume = 100, *rest)
+        BingsuVolume.bgs = [name, volume] + rest
+        bingsu_bgs_play(name, BingsuVolume.vol(volume), *rest)
+      end
+      def me_play(name, volume = 100, *rest)
+        bingsu_me_play(name, BingsuVolume.vol(volume), *rest)
+      end
+      def se_play(name, volume = 80, *rest)
+        bingsu_se_play(name, BingsuVolume.vol(volume), *rest)
+      end
+      def bgm_stop(*a)
+        BingsuVolume.bgm = nil
+        bingsu_bgm_stop(*a)
+      end
+      def bgs_stop(*a)
+        BingsuVolume.bgs = nil
+        bingsu_bgs_stop(*a)
+      end
+      def bgm_fade(*a)
+        BingsuVolume.bgm = nil
+        bingsu_bgm_fade(*a)
+      end
+      def bgs_fade(*a)
+        BingsuVolume.bgs = nil
+        bingsu_bgs_fade(*a)
+      end
+    end
+
+    class << Graphics
+      alias_method :bingsu_volume_update, :update
+      def update(*a)
+        BingsuVolume.tick
+        bingsu_volume_update(*a)
+      end
+    end
+    """
 
     static let restartMessage = "RPG Maker XP 게임은 한 번 끝나면 빙수를 다시 열어야 다시 할 수 있어요. 앱 전환기에서 빙수를 위로 밀어 닫은 뒤 다시 열어 주세요."
 

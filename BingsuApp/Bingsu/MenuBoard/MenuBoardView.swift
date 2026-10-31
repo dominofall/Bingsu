@@ -43,7 +43,7 @@ struct MenuBoardView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private let chipMin: CGFloat = 150, chipSpacing: CGFloat = 18
-    private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing)] }
+    private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing, alignment: .top)] }
     /// 홈이 보이고 시트가 하나도 없을 때만 컨트롤러 입력을 받는다
     private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && editing == nil && deleting == nil && conflict == nil }
     /// 칩 수 = 게임 수 + "게임 추가" 칩
@@ -71,6 +71,11 @@ struct MenuBoardView: View {
                 .allowsHitTesting(showBowl)
                 .zIndex(1)
             }
+        }
+        // 게임별 "무음 모드에서도 소리 재생": 게임이 보일 때 그 게임 값, 홈이면 전역 값으로 오디오 세션을 맞춘다
+        .onChange(of: showBowl ? running?.id : nil) { _, id in
+            BingsuApp.audioDishID = id
+            BingsuApp.configureAudioSession()
         }
         .alert(xpNotice?.title ?? "", isPresented: Binding(get: { xpNotice != nil }, set: { if !$0 { xpNotice = nil } }), presenting: xpNotice) { n in
             if let go = n.proceed {
@@ -478,12 +483,9 @@ struct GameChip: View {
                        strokeWidth: 1.5, shadowColor: Palette.accent, shadowOpacity: 0.22, shadowRadius: 12, shadowY: 6)
                 .overlay(FocusFill(radius: Self.radius, on: focused))
             HStack(alignment: .top, spacing: 6) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(dish.title).font(.subheadline.weight(.semibold)).lineLimit(2).multilineTextAlignment(.leading)
-                        .foregroundStyle(.primary)
-                    Text(running ? "실행 중 · 이어하기" : dish.isRemote ? "웹 게임" : (dish.recipe.unservableNote ?? "설치됨"))
-                        .font(.caption2).foregroundStyle(running ? Palette.accent : .secondary)
-                }
+                ChipCaption(title: dish.title,
+                            note: running ? "실행 중 · 이어하기" : dish.isRemote ? "웹 게임" : (dish.recipe.unservableNote ?? "설치됨"),
+                            noteColor: running ? Palette.accent : .secondary)
                 Spacer(minLength: 0)
                 if running {
                     Circle().fill(Palette.ribbon).frame(width: 9, height: 9).padding(.top, 5)
@@ -492,6 +494,32 @@ struct GameChip: View {
             .padding(.horizontal, 2)
         }
         .opacity(dish.recipe.servable ? 1 : 0.55)
+    }
+}
+
+/// 게임칩 아래 글자: 제목은 늘 두 줄 자리를 잡고(한 줄이어도), 두 줄을 넘으면 글자를 줄인 뒤 말줄임.
+/// 칩마다 높이가 같아야 한 줄의 표지가 제목 길이·"게임 추가" 칩과 상관없이 같은 자리에 선다
+struct ChipCaption: View {
+    let title: String
+    let note: String
+    var noteColor: Color = .secondary
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // 높이 틀: 제목 두 줄 + 상태 한 줄. 실제 글자는 위에 붙이고 남는 자리는 아래에 둔다
+            lines(Text("가\n가"), Text(" "), noteColor: .clear).hidden()
+            lines(Text(title), Text(note), noteColor: noteColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    private func lines(_ t: Text, _ n: Text, noteColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            t.font(.subheadline.weight(.semibold))
+                .lineLimit(2).minimumScaleFactor(0.75).multilineTextAlignment(.leading)
+                .foregroundStyle(.primary)
+            n.font(.caption2).lineLimit(1).minimumScaleFactor(0.8).foregroundStyle(noteColor)
+        }
     }
 }
 
@@ -528,7 +556,12 @@ struct AddGameChip: View {
             .overlay(RoundedRectangle(cornerRadius: GameChip.radius, style: .continuous)
                 .strokeBorder(Palette.accent.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [8, 7])))
             .overlay(FocusFill(radius: GameChip.radius, on: focused))
-            Text("zip 파일 또는 웹 주소").font(.caption2).foregroundStyle(.secondary).padding(.horizontal, 2)
+            // 게임칩 글자 칸과 같은 높이를 잡아 둔다
+            ChipCaption(title: " ", note: " ").hidden()
+                .overlay(alignment: .topLeading) {
+                    Text("zip 파일 또는 웹 주소").font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 2)
         }
     }
 }

@@ -50,13 +50,13 @@ struct GlassBowl: UIViewRepresentable {
         ucc.addUserScript(WKUserScript(source: BowlScripts.atDocumentStart(restore: freezerEnabled ? freezer.loadLocalStorage() : nil,
                                                                            keyPrefix: prefix, freezer: freezerEnabled,
                                                                            desktopSpoof: !dish.isRemote,
-                                                                           renderScale: quality.renderScale, fpsCap: fpsCap),
+                                                                           renderScale: quality.renderScale, fpsCap: fpsCap,
+                                                                           volume: BingsuApp.gameVolume),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         ucc.addUserScript(WKUserScript(source: BowlScripts.sfxWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true))
-        // 웹 소리(Web Audio)는 WebKit 이 앱 오디오 세션과 따로 정해 무음 스위치를 따른다. 페이지의 Audio Session API 로
-        // 설정 "무음 모드에서도 소리 재생" 과 같게 맞춘다 (iOS 16.4+, 없으면 무시)
-        let inSilent = UserDefaults.standard.object(forKey: BingsuApp.playInSilentKey) as? Bool ?? true
-        ucc.addUserScript(WKUserScript(source: "try { if (navigator.audioSession) navigator.audioSession.type = '\(inSilent ? "playback" : "ambient")'; } catch (e) {}",
+        // 웹 소리(Web Audio)는 WebKit 이 앱 오디오 세션과 따로 정해 무음 스위치를 따른다. 페이지의 Audio Session API 와
+        // 무음 <audio> 로 "무음 모드에서도 소리 재생"(게임별 → 전역)과 같게 맞춘다 (BowlScripts.silentMode)
+        ucc.addUserScript(WKUserScript(source: BowlScripts.silentMode(playInSilent: BingsuApp.playInSilent(for: dish.id)),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
         context.coordinator.onExternal = { url in DispatchQueue.main.async { authRequest = AuthRequest(url: url) } }
         context.coordinator.keyPrefix = prefix
@@ -153,7 +153,7 @@ struct GlassBowl: UIViewRepresentable {
                 let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init)
                 let reason = (n.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt) ?? 0
                 NSLog("[Bowl] audio interruption \(type == .began ? "began" : "ended") reason=\(reason)")
-                if type == .ended { BingsuApp.configureAudioSession(); self?.kickAudio() }
+                if type == .ended { MainActor.assumeIsolated { BingsuApp.configureAudioSession() }; self?.kickAudio() }
             })
             observers.append(nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] n in
                 let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
@@ -164,10 +164,20 @@ struct GlassBowl: UIViewRepresentable {
             })
             observers.append(nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: .main) { [weak self] _ in
                 NSLog("[Bowl] audio media services reset")
-                BingsuApp.configureAudioSession(); self?.kickAudio()
+                MainActor.assumeIsolated { BingsuApp.configureAudioSession() }; self?.kickAudio()
             })
             // 다른 앱에 갔다 오면 iOS 가 백그라운드 스냅샷을 찍느라 웹뷰 크기를 잠깐 바꾼다.
             // 그 사이 게임(Phaser)이 작은 크기로 맞춰 둔 채 돌아오는 일이 있어, 돌아올 때 확대 배율과 크기를 다시 맞춘다
+            // 설정이나 이 게임 설정에서 "무음 모드에서도 소리 재생"·소리 크기를 바꾸면 페이지에도 바로 적용한다
+            observers.append(nc.addObserver(forName: BingsuApp.soundPrefsChanged, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let on = BingsuApp.playInSilent(for: self.dish.id)
+                    let vol = BingsuApp.gameVolume
+                    self.webView?.evaluateJavaScript("window.__bingsuSilentMode && __bingsuSilentMode(\(on)); window.__bingsu && __bingsu.setVolume && __bingsu.setVolume(\(vol))",
+                                                     completionHandler: nil)
+                }
+            })
             observers.append(nc.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 self?.refit()
             })

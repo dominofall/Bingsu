@@ -47,6 +47,7 @@ struct DishPrefs: Codable, Equatable {
     var quality: Quality?         // 사용자가 고른 화질. nil = 자동(벤치마크 권장값)
     var recommendedQuality: Quality?   // 첫 실행 벤치마크가 정한 권장 화질
     var fpsLimit: FpsLimit?       // 사용자가 고른 프레임 제한. nil = 자동(게임 기본값 + 뜨거워지면 30)
+    var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 게임 중의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
 
     /// 실제로 쓸 화질: 직접 고른 값 → 벤치마크 권장 → 높음
     var effectiveQuality: Quality { quality ?? recommendedQuality ?? .high }

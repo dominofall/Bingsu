@@ -30,6 +30,17 @@ struct DishSettingsView: View {
                 set: { p in store.update(dish.id) { $0.pad = p } })
     }
 
+    private enum SilentChoice: Hashable { case global, on, off }
+    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = true
+    private var silentChoice: Binding<SilentChoice> {
+        Binding(get: { prefs.playInSilent.map { $0 ? .on : .off } ?? .global },
+                set: { c in
+                    store.update(dish.id) { $0.playInSilent = c == .global ? nil : c == .on }
+                    BingsuApp.configureAudioSession()
+                    NotificationCenter.default.post(name: BingsuApp.soundPrefsChanged, object: nil)
+                })
+    }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -65,6 +76,18 @@ struct DishSettingsView: View {
                     }
                 } header: {
                     Text("가상 패드")
+                }
+
+                Section {
+                    Picker("무음 모드에서도 소리 재생", selection: silentChoice) {
+                        Text("기본 설정 따르기 (\(globalPlayInSilent ? "켬" : "끔"))").tag(SilentChoice.global)
+                        Text("켬").tag(SilentChoice.on)
+                        Text("끔").tag(SilentChoice.off)
+                    }
+                } header: {
+                    Text("소리")
+                } footer: {
+                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 게임 중에서 모든 게임에 같이 정해요.")
                 }
 
                 Section {
