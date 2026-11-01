@@ -103,7 +103,7 @@ empo(같은 작성자의 런처)는 이 코어로 "RPG Maker XP, VX, VX Ace" 를
 | 3 | `BrassBowl/CutlerySet+XP.swift` | A=`KeyC` | RGSS2/3 용 배치 새로: A=`KeyZ`(또는 Enter), B=`KeyX`, X=`KeyA`, Y=`KeyS`, Z=`KeyD`, L=`KeyQ`, R=`KeyW`, 대시=Shift. 꼬리표도 "확인/취소/대시/메뉴" 로 |
 | 4 | `Freezer/IceTray.swift` + `Shaver/Delivery.swift:250-275` | 얼음틀은 `Saves/<dataPathApp>/` 만 봄, 업데이트는 게임 폴더를 통째로 교체 | (a) 엔진 쪽: 빙수 preload 스크립트로 `Save\d+\.rvdata2?` 경로를 `System.data_directory` 로 돌리기(이미 소리 크기용 preload 를 넣는 자리가 있음, `BrassBowlEngine.swift:336-366`), 또는 (b) 빙수 쪽: 얼음틀이 게임 폴더 맨 위의 저장 파일도 묶고 업데이트 때 옮겨 심기. **(a) 가 PC 세이브 넣기·iCloud 가 XP 와 같은 길이라 단순**. 다만 일부 게임은 `Save` 이름을 바꾸므로 [추정] 확장자 기준 + 게임 폴더 맨 위로 한정 |
 | 5 | `BrassBowl/BrassBowlContainerView.swift:54` | 4:3 | 엔진이 알려 주는 게임 크기(`mkxp_getGameWindow`·게임 영역 콜백, `docs/phase3-mkxp-poc.md` 4.1)로. 최소한 RGSS2/3 은 544:416 |
-| 6 | MIDI | 게임 `mkxp.json` 의 `midiSoundFont` 만 | 일반 VX/Ace 는 mkxp.json·sf2 가 없음 → 빙수가 기본 GM 사운드폰트를 동봉하고 오버레이 JSON 으로 넘김. 후보(라이선스 확인 필요 [미확인]): GeneralUser GS, FluidR3_GM(MIT 로 알려짐), TimGM6mb(GPL-2, 6MB 안팎) |
+| 6 | MIDI | 게임 `mkxp.json` 의 `midiSoundFont` 만 | 일반 VX/Ace 는 mkxp.json·sf2 가 없음 → 빙수가 기본 GM 사운드폰트를 동봉하고 오버레이 JSON 으로 넘김. 후보: GeneralUser GS, FluidR3_GM(MIT 로 알려짐), TimGM6mb(GPL-2, 6MB 안팎). → 빌드 26 구현에서 확인 [확인]: TimGM6mb 는 GPL-2 only 라 GPLv3 앱과 못 묶고 GeneralUser GS 는 30MB 대 → 동봉 안 함, 사용자 sf2 넣기만(IMPLEMENTATION-vx.md "구현 중 바뀐 것") |
 | 7 | RTP | 없음 | `Game.ini RTP=RPGVXAce` 인데 `Graphics/`·`Audio/` 가 비었으면 시작 전 안내. 사용자가 RTP 폴더를 가져오면 오버레이 JSON `"RTP": [경로]`. RTP 설치 파일은 Windows exe 라 빙수가 풀어 주기는 어렵다(zip 으로 된 RTP 를 받게 안내) [추정] |
 | 8 | 화면 문구 | "RPG Maker XP 게임은…" 등 엔진 이름이 화면에 나옴 | PLAN 7장 "엔진은 사용자에게 보여주지 않는다" 와 어긋남. VX 를 붙일 때 "이 게임은…" 같은 중립 문구로 |
 
@@ -145,7 +145,8 @@ empo `MkxpCore.isGameRoot`(`*.ini` 의 `Scripts=` 또는 아카이브)·`MkxpPro
 | 8 | `Game.ini RTP=RPGVXAce`(또는 `RTP1=`) 인데 `Graphics/System` 이 없음 | 실행 전 RTP 안내 |
 
 - `Game.ini` 를 읽을 때 CRLF·Shift-JIS/CP949 를 고려(지금 `mkxp.json` CRLF 버그를 고친 것과 같은 종류).
-- 게임 폴더가 zip 안 한 단계 아래(`MyGame/Game.exe`)인 경우는 기존 가져오기가 처리하는지 확인 필요 [미확인].
+- 게임 폴더가 zip 안 한 단계 아래(`MyGame/Game.exe`)인 경우는 기존 가져오기(`Delivery`)가 이미 처리한다 [확인, 빌드 26 구현].
+- 8번 규칙은 실제 게임에서 맞지 않았다: Hello? Hell... o? 는 `Graphics/System` 에 그림 세 장만 넣고 나머지는 RTP 를 쓴다. 빌드 26 은 RTP 에만 있는 그림(VX·Ace `Graphics/System/IconSet`, XP `Graphics/Windowskins/`) 이 폴더·아카이브 이름표 어디에도 없을 때로 판단한다 [확인].
 - `Dish.Recipe` 는 `.mkxp` 하나로 두고 RGSS 버전·Ruby 는 실행 때 다시 판별해도 된다(지금 `RubyProfile.detect` 와 같은 자리).
 
 ---
@@ -330,6 +331,14 @@ empo `MkxpCore.isGameRoot`(`*.ini` 의 `Scripts=` 또는 아카이브)·`MkxpPro
    - 시험용 장면(제안): 걷기·대화·전투 한 번·저장/불러오기·MIDI 또는 OGG BGM·암호화 배포 한 벌·한글 텍스트.
 2. **작가가 무료로 배포한 프리웨어 — 로컬 시험용으로만**: 저장소·앱 번들·문서 스크린샷에 넣지 않는다(PLAN 8.1 과 같은 취급, `Games/` 는 이미 gitignore). 엔진 버전은 받아서 폴더로 확인할 것(위 1.6·2.1 표).
 3. 포켓몬 팬게임은 이번 범위에서 시험 대상으로 삼지 않는다(닌텐도 IP — 기존 원칙대로 로컬에만).
+
+**빌드 26 구현 때 실제로 쓴 게임 (2026-11-01, 로컬 `Games/vx-test/` 에만, 저장소·앱에 넣지 않음)** — 두 작품 모두 작가 허락으로 vgperson 이 영어판을 무료 배포한다.
+
+| 게임 | 출처 | RGSS | 암호화 | RTP | 비고 |
+|---|---|---|---|---|---|
+| Hello? Hell... o? | https://vgperson.com/games/hellohello.htm | 3 (VX Ace, Ruby 1.9) | `Game.rgss3a` | 필요(`RPGVXAce`) | 메뉴를 막고 진행 중 `DataManager.save_game(0)` 으로 저장. 조명 스크립트(HN_Light)가 맵을 떠날 때 오류 |
+| The Witch's House 1.09a | https://vgperson.com/games/witchhouse.htm | 2 (VX, Ruby 1.8) | `Game.rgss2a` | 필요 없음 | 저장을 `Save/N.rvdata`·`PublicData.rvdata` 로 함(표준 이름 아님) |
+| RPG Maker VX Ace RTP | https://assets.rpgmakerweb.com/RPGVXAce_RTP.zip | — | — | — | zip 안이 Windows 설치 파일이라 innoextract 로 풀어 폴더째 다시 zip |
 
 ---
 

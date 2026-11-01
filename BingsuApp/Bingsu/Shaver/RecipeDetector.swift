@@ -9,8 +9,10 @@ enum RecipeDetector {
         // Electron: 이미 풀린 asar (dist/index.html + assets/) 또는 풀기 전 app.asar
         if has("dist/index.html") && has("assets") { return .electron }
         if has("resources/app.asar") { return .electron }
-        // mkxp-z / RPG Maker XP
-        if has("mkxp.json") || (has("Game.ini") && has("Data/Scripts.rxdata")) { return .mkxp }
+        // mkxp-z / RPG Maker XP·VX·VX Ace: mkxp.json, 암호화 아카이브, ini 의 Scripts=, Data/Scripts.* (RGSSProbe)
+        if has("mkxp.json") { return .mkxp }
+        let rgss = RGSSProbe.probe(folder: folder)
+        if rgss.version != nil && rgss.hasScripts { return .mkxp }
         // RPG Maker MV/MZ (NW.js)
         if has("package.nw") || has("nw.pak") || has("www/index.html") { return .rpgMakerMV }
         if has("index.html") { return .electron }
@@ -63,11 +65,8 @@ enum RecipeDetector {
         return nil
     }
 
+    /// ini 의 Title= (UTF-8·CP949·Shift-JIS, CRLF, exe 이름을 따라 바뀐 ini 도 — RGSSProbe)
     private static func iniTitle(_ folder: URL) -> String? {
-        guard let ini = try? String(contentsOf: folder.appendingPathComponent("Game.ini"), encoding: .utf8) else { return nil }
-        for line in ini.split(whereSeparator: \.isNewline) where line.hasPrefix("Title=") {
-            return String(line.dropFirst(6)).trimmingCharacters(in: .whitespaces)
-        }
-        return nil
+        RGSSProbe.probe(folder: folder).title
     }
 }

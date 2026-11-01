@@ -18,6 +18,8 @@ final class Delivery: ObservableObject {
         case done(Result)
         /// 게임 대신 패드 스킨 zip(`.bingsuskin` 또는 skin.json 이 든 zip)이었다. 스킨 목록에 넣었고, 쓸지는 화면이 묻는다
         case skinDone(SkinShelf.ImportResult)
+        /// 게임 대신 RTP(공용 그림·소리 묶음) zip 이었다. RTP 선반에 넣었다 (이름)
+        case rtpDone(String)
         case failed(String)
         /// 스킨으로 알아봤지만 검사에서 거절 (주소로 다시 받기 대신 다른 파일 고르기만)
         case skinFailed(String)
@@ -31,7 +33,7 @@ final class Delivery: ObservableObject {
             case .checking: return "게임 확인 중"
             case .confirmUpdate: return "이미 있는 게임이에요"
             case .installing: return "게임 파일 바꾸는 중"
-            case .done, .skinDone: return "준비됐어요"
+            case .done, .skinDone, .rtpDone: return "준비됐어요"
             case .failed, .skinFailed: return "가져오지 못했어요"
             }
         }
@@ -41,13 +43,13 @@ final class Delivery: ObservableObject {
             case .unpacking(let f): return 0.6 + f * 0.35
             case .checking: return 0.97
             case .installing: return 0.99
-            case .done, .skinDone: return 1
+            case .done, .skinDone, .rtpDone: return 1
             default: return nil
             }
         }
         var isBusy: Bool {
             switch self {
-            case .idle, .done, .skinDone, .failed, .skinFailed: return false
+            case .idle, .done, .skinDone, .rtpDone, .failed, .skinFailed: return false
             default: return true
             }
         }
@@ -62,12 +64,15 @@ final class Delivery: ObservableObject {
         let dataPathApp: String
         let version: String?
         let sourceName: String
+        /// RPG Maker 게임(.mkxp)이면 RGSSProbe 결과
+        var rgss: RGSSProbe.Result? = nil
     }
 
     /// 1~4단계 결과: 등록할 게임, 또는 바로 넣은 패드 스킨
     enum Prepared: Sendable {
         case game(Staged)
         case skin(SkinShelf.ImportResult)
+        case rtp(String)
     }
 
     /// 업데이트 확인을 기다리는 가져오기
@@ -92,6 +97,8 @@ final class Delivery: ObservableObject {
         var previousVersion: String? = nil
         var backedUp = false
         var keptOld = false
+        /// 게임 폴더에 있던 PC 저장 파일(Save01.rvdata2 등)을 저장 데이터 폴더로 옮긴 수
+        var movedSaves = 0
     }
 
     @Published private(set) var stage: Stage = .idle
@@ -133,6 +140,9 @@ final class Delivery: ObservableObject {
                 case .skin(let r):
                     NSLog("[Delivery] skin \(r.id) installed=\(r.installed) layouts=\(r.layouts?.count ?? 0)")
                     await MainActor.run { if !flag.value { self?.stage = .skinDone(r) } }
+                    return
+                case .rtp(let name):
+                    await MainActor.run { if !flag.value { self?.stage = .rtpDone(name) } }
                     return
                 case .game(let s): staged = s
                 }
@@ -236,15 +246,22 @@ final class Delivery: ObservableObject {
         // 4) 게임 확인
         report(.checking)
         let recipe = RecipeDetector.detect(folder: root)
+        if recipe == .unknown, RTPShelf.looksLikeRTP(root) {
+            let name = RTPShelf.guessName(root, sourceName: source.lastPathComponent)
+            try RTPShelf.install(root, name: name)
+            return .rtp(name)
+        }
         guard recipe != .unknown else {
             throw DeliveryError.unsupported(found: visibleItems(root).map(\.lastPathComponent).sorted())
         }
         let desc = RecipeDetector.describe(folder: root, recipe: recipe)
         let version = Self.readVersion(folder: root, recipe: recipe)
+        // RGSS 판·RTP 는 exe·dll 을 지우기 전에 본다 (ini 의 Library= 는 지워진 dll 이름이라 상관없지만 순서를 지킨다)
+        let rgss = recipe == .mkxp ? RGSSProbe.probe(folder: root) : nil
         if removeWindowsBinaries { Self.pruneWindowsBinaries(in: root, recipe: recipe) }
         ok = true
         return .game(Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
-                            version: version, sourceName: source.lastPathComponent))
+                            version: version, sourceName: source.lastPathComponent, rgss: rgss))
     }
 
     /// 5단계: 등록. 업데이트는 기존 폴더를 옆으로 옮긴 뒤 새 폴더를 그 자리로 옮긴다 (같은 볼륨이라 이름 바꾸기 = 원자적).
@@ -265,9 +282,14 @@ final class Delivery: ObservableObject {
             id = dish.id
         }
 
-        let manifest: [String: Any] = ["title": title, "dataPathApp": s.dataPathApp, "recipe": s.recipe.rawValue,
+        var manifest: [String: Any] = ["title": title, "dataPathApp": s.dataPathApp, "recipe": s.recipe.rawValue,
                                        "version": s.version ?? "", "importedAt": ISO8601DateFormatter().string(from: Date()),
                                        "sourceName": s.sourceName]
+        if let r = s.rgss {
+            manifest["rgss"] = (r.version ?? .xp).rawValue
+            if let rtp = r.rtp { manifest["rtp"] = rtp }
+            manifest["needsRTP"] = r.needsRTP
+        }
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
             .write(to: s.root.appendingPathComponent(manifestName))
 
@@ -297,11 +319,44 @@ final class Delivery: ObservableObject {
             try fm.moveItem(at: s.root, to: final)
         }
 
-        let dish = Dish(id: id, title: title, recipe: s.recipe, location: final, dataPathApp: s.dataPathApp)
+        let dish = Dish(id: id, title: title, recipe: s.recipe, location: final, dataPathApp: s.dataPathApp,
+                        rgss: s.rgss.map { $0.version ?? .xp }, rtp: s.rgss?.rtp, needsRTP: s.rgss?.needsRTP ?? false)
         var result = Result(dish: dish, version: s.version, bytes: folderSize(final), updatedExisting: { if case .update = mode { return true }; return false }())
         result.backedUp = backedUp
         result.keptOld = keptOld
+        result.movedSaves = moveGameFolderSaves(dish)
         return result
+    }
+
+    /// VX·VX Ace 는 저장 파일을 게임 폴더에 쓴다. 빙수는 엔진 쪽 preload(BrassBowlEngine.savesScript)로 저장 데이터 폴더에 쓰게 하므로,
+    /// PC 에서 하던 게임을 저장 파일째 가져오면 그 파일을 저장 데이터 폴더로 옮긴다. 이미 같은 이름이 있으면 덮어쓰지 않고
+    /// 저장 데이터 폴더의 `backups/` 에 넣는다(지금 저장이 이긴다). XP 는 건드리지 않는다(Essentials 는 자기 저장 폴더를 쓴다)
+    nonisolated static func moveGameFolderSaves(_ dish: Dish) -> Int {
+        guard dish.recipe == .mkxp, let v = dish.rgss, v >= .vx else { return 0 }
+        let fm = FileManager.default
+        let names = ((try? fm.contentsOfDirectory(atPath: dish.location.path)) ?? []).filter(isGameFolderSave)
+        guard !names.isEmpty else { return 0 }
+        let fz = Freezer(dish: dish)
+        let saves = fz.directory
+        var moved = 0
+        for name in names.sorted() {
+            let src = dish.location.appendingPathComponent(name)
+            var dest = saves.appendingPathComponent(name)
+            if fm.fileExists(atPath: dest.path) {
+                let backups = fz.backupsDirectory
+                try? fm.createDirectory(at: backups, withIntermediateDirectories: true)
+                let stamp = ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+                dest = backups.appendingPathComponent("\(stamp) \(name)")
+            }
+            if (try? fm.moveItem(at: src, to: dest)) != nil { moved += 1 }
+        }
+        NSLog("[Delivery] \(dish.id): 게임 폴더의 저장 파일 \(moved)개를 저장 데이터 폴더로 옮김")
+        return moved
+    }
+
+    /// `Save1.rvdata`·`Save01.rvdata2` 모양 (엔진 preload 가 돌리는 이름과 같은 규칙)
+    nonisolated static func isGameFolderSave(_ name: String) -> Bool {
+        name.range(of: #"^Save\d*\.(rvdata2|rvdata)$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// 같은 게임 찾기: 저장 폴더 이름(dataPathApp)이 같거나, 그게 없으면 제목이 같은 것.

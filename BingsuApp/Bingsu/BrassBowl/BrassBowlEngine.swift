@@ -2,7 +2,7 @@ import Foundation
 import UIKit
 import Darwin
 
-/// 놋그릇: RPG Maker XP 엔진(mkxp-z iOS 포크, GPLv3)을 실행 중에 불러와 돌린다.
+/// 놋그릇: RPG Maker XP·VX·VX Ace 엔진(mkxp-z iOS 포크, GPLv3)을 실행 중에 불러와 돌린다.
 ///
 /// 앱은 엔진을 링크하지 않는다. RPG Maker XP 게임을 처음 열 때 `Frameworks/BrassBowl.framework/BrassBowl` 을 dlopen 하고
 /// `mkxp_*` 함수를 dlsym 으로 찾는다(만드는 법: BingsuApp/BrassBowl/README.md).
@@ -34,6 +34,8 @@ final class BrassBowlEngine: ObservableObject {
     @Published var errorMessage: String?
     /// 게임이 이름 입력 같은 글자 입력을 기다린다
     @Published private(set) var textInputActive = false
+    /// 엔진이 알려 준 게임 화면 비율(가로/세로). 게임이 `Graphics.resize_screen` 으로 바꾸면 따라 바뀐다. 아직 모르면 nil
+    @Published private(set) var gameAspect: CGFloat?
 
     var runningDishID: String? {
         switch phase {
@@ -77,9 +79,11 @@ final class BrassBowlEngine: ObservableObject {
     typealias UserCb = @convention(c) (UnsafeMutableRawPointer?) -> Void
     typealias MsgCb = @convention(c) (UnsafePointer<CChar>?, UnsafeMutableRawPointer?) -> Void
     typealias ModeCb = @convention(c) (Int32, UnsafeMutableRawPointer?) -> Void
+    typealias RectCb = @convention(c) (Float, Float, Float, Float, UnsafeMutableRawPointer?) -> Void
     private typealias SetUserCbFn = @convention(c) (UserCb?, UnsafeMutableRawPointer?) -> Void
     private typealias SetMsgCbFn = @convention(c) (MsgCb?, UnsafeMutableRawPointer?) -> Void
     private typealias SetModeCbFn = @convention(c) (ModeCb?, UnsafeMutableRawPointer?) -> Void
+    private typealias SetRectCbFn = @convention(c) (RectCb?, UnsafeMutableRawPointer?) -> Void
 
     private var handle: UnsafeMutableRawPointer?
     /// 이번 프로세스에서 켠 게임 (끝나면 저장 파일을 묶어 올린다)
@@ -116,16 +120,19 @@ final class BrassBowlEngine: ObservableObject {
 
     /// 게임 시작. 실패하면 이유를 돌려준다
     func start(_ launch: Launch) -> String? {
-        guard runningDishID == nil else { return "다른 RPG Maker XP 게임이 켜져 있어요" }
+        guard runningDishID == nil else { return "다른 게임이 켜져 있어요. 그 게임을 끝낸 뒤 빙수를 다시 열어 주세요" }
         guard !hasEnded else { return Self.restartMessage }
         switch Self.availability {
-        case .missing: return "이 빌드에는 RPG Maker XP 실행기가 없어요"
+        case .missing: return "이 빌드에는 이 게임을 여는 실행기가 없어요"
         case .ready: break
         }
-        guard open() else { return "RPG Maker XP 실행기를 불러오지 못했어요" }
+        guard open() else { return "게임 실행기를 불러오지 못했어요" }
         let game = launch.dish.location
-        let profile = RubyProfile.detect(folder: game)
-        NSLog("[BrassBowl] 시작 \(launch.dish.id) ruby=\(profile.ruby) syntax=\(profile.syntax)")
+        let rgss = Self.rgss(for: launch.dish)
+        let override = DishPrefsStore.shared.prefs(for: launch.dish.id).rubyOverride
+        let profile = RubyProfile.detect(folder: game, rgss: rgss, override: ProcessInfo.processInfo.environment["BINGSU_RUBY"] ?? override)
+        let screen = rgss == .xp ? "auto" : "544x416"
+        NSLog("[BrassBowl] 시작 \(launch.dish.id) rgss=\(rgss.rawValue) ruby=\(profile.ruby) syntax=\(profile.syntax) screen=\(screen)")
 
         call("mkxp_resetSessionState")
         setSetting("rubyVersion", profile.ruby)
@@ -137,6 +144,8 @@ final class BrassBowlEngine: ObservableObject {
         sym("mkxp_setLauncherIdentity", StrFn.self)?("bingsu")
         try? FileManager.default.createDirectory(at: launch.savesDir, withIntermediateDirectories: true)
         launch.savesDir.withUnsafeFileSystemRepresentation { sym("mkxp_setUserDataDirectory", StrFn.self)?($0) }
+        // VX·VX Ace 저장 파일을 돌릴 곳 (savesScript). System.data_directory 와 같은 폴더
+        setenv("BINGSU_SAVE_DIR", launch.savesDir.path, 1)
         if let assets = assetsDir {
             assets.appendingPathComponent("Fonts").withUnsafeFileSystemRepresentation { sym("mkxp_setSharedFontsDirectory", StrFn.self)?($0) }
             assets.appendingPathComponent("cacert.pem").withUnsafeFileSystemRepresentation { sym("mkxp_setCABundlePath", StrFn.self)?($0) }
@@ -149,17 +158,19 @@ final class BrassBowlEngine: ObservableObject {
         if ProcessInfo.processInfo.environment["BINGSU_MKXP_LOG"] == "1" {
             let log = FileManager.default.temporaryDirectory.appendingPathComponent("brassbowl.log")
             log.withUnsafeFileSystemRepresentation { sym("mkxp_setDebugLogPath", StrFn.self)?($0) }
+            NSLog("[BrassBowl] rgss=\(rgss.rawValue) ruby=\(profile.ruby) screen=\(screen)")
         }
         registerCallbacks()
         // 엔진 안 SDL 이 소리를 열 때 오디오 세션 분류를 자기 기본(무음 스위치를 따르는 soloAmbient)으로 바꾸지 않게, 설정과 같은 분류를 알려 준다
         let inSilent = BingsuApp.playInSilent(for: launch.dish.id)
         setenv("SDL_AUDIO_CATEGORY", inSilent ? "playback" : "ambient", 1)
-        installVolumeScript(for: launch.dish)
+        installOverlay(for: launch.dish, rgss: rgss)
 
         phase = .booting(dishID: launch.dish.id)
         dish = launch.dish
+        gameAspect = nil
         game.withUnsafeFileSystemRepresentation { sym("mkxp_setGamePath", StrFn.self)?($0) }
-        guard let run = sym("mkxp_run_app", RunFn.self) else { phase = .idle; return "RPG Maker XP 실행기가 맞지 않아요" }
+        guard let run = sym("mkxp_run_app", RunFn.self) else { phase = .idle; return "게임 실행기가 맞지 않아요" }
         // 메인 큐 블록이 아니라 런루프 콜아웃에서 (app_bridge.h mkxp_run_app 주석)
         RunLoop.main.perform {
             let code = run(CommandLine.argc, CommandLine.unsafeArgv)
@@ -179,6 +190,7 @@ final class BrassBowlEngine: ObservableObject {
     private static let offlineScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-offline.rb")
 
     private static let hostScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-host.rb")
+    private static let savesScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu_saves.rb")
 
     /// 같은 와이파이 방장 (2026-10-31 사용자 요청: 같은 와이파이면 게임 가능하게까지).
     /// 포켓몬 파티! 의 "온라인 방 만들기" 는 PC 에서 따로 켠 서버(127.0.0.1)를 쓰는데, iOS 에는 그 서버가 없다.
@@ -333,29 +345,59 @@ final class BrassBowlEngine: ObservableObject {
     """
     private var volumeObserver: NSObjectProtocol?
 
-    private func installVolumeScript(for dish: Dish) {
+    /// 실행할 RGSS 판: 디버그 BINGSU_RGSS → 가져올 때 적은 값 → 폴더 판별
+    nonisolated static func rgss(for dish: Dish) -> RGSSVersion {
+        if let env = ProcessInfo.processInfo.environment["BINGSU_RGSS"], let n = Int(env), let v = RGSSVersion(rawValue: n) { return v }
+        return dish.rgss ?? RGSSProbe.version(folder: dish.location)
+    }
+
+    /// 엔진 설정 덮어쓰기(mkxp_setConfigOverlayJSON, 최상위 키 단위로 게임 mkxp.json 을 이긴다).
+    /// preloadScript(소리 크기·온라인·VX 저장 위치), rgssVersion, RGSS2/3 기본 화면 544×416, MIDI 사운드폰트, RTP.
+    /// 게임 mkxp.json 에 이미 있는 키(defScreenW·midiSoundFont·RTP)는 게임 값을 그대로 둔다
+    private func installOverlay(for dish: Dish, rgss: RGSSVersion) {
         writeVolume()
         setenv("BINGSU_VOLUME_FILE", Self.volumeFile.path, 1)
-        guard (try? Self.volumeScript.write(to: Self.volumeScriptFile, atomically: true, encoding: .utf8)) != nil else { return }
-        // 게임의 mkxp.json 에 preloadScript 가 있으면 함께 넘긴다(덮어쓰기는 최상위 키 단위). 읽을 수 없는데 키가 있으면 건드리지 않는다
-        var scripts: [String] = []
+        var overlay: [String: Any] = ["rgssVersion": rgss.rawValue]
+        // 게임의 mkxp.json 을 읽는다(주석 줄 빼고). 읽을 수 없는데 preloadScript 키가 있으면 스크립트는 건드리지 않는다
+        var own: [String: Any] = [:]
+        var scriptsOK = true
         let config = dish.location.appendingPathComponent("mkxp.json")
-        if let text = try? String(contentsOf: config, encoding: .utf8), text.contains("preloadScript") {
-            let stripped = text.split(separator: "\n", omittingEmptySubsequences: false)
+        if let text = try? String(contentsOf: config, encoding: .utf8) {
+            let stripped = text.split(whereSeparator: \.isNewline)
                 .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }.joined(separator: "\n")
-            guard let obj = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any],
-                  let own = obj["preloadScript"] as? [String] else {
-                NSLog("[BrassBowl] 소리 크기: 게임 mkxp.json 의 preloadScript 를 읽지 못해 적용하지 않음"); return
+            if let obj = (try? JSONSerialization.jsonObject(with: Data(stripped.utf8))) as? [String: Any] {
+                own = obj
+            } else if text.contains("preloadScript") {
+                NSLog("[BrassBowl] 게임 mkxp.json 의 preloadScript 를 읽지 못해 빙수 스크립트를 넣지 않음")
+                scriptsOK = false
             }
-            scripts = own
         }
-        scripts.append(Self.volumeScriptFile.path)
-        let online = DishPrefsStore.shared.prefs(for: dish.id).allowOnline != false
-        let extra = online ? (Self.hostScript, Self.hostScriptFile) : (Self.offlineScript, Self.offlineScriptFile)
-        if (try? extra.0.write(to: extra.1, atomically: true, encoding: .utf8)) != nil {
-            scripts.append(extra.1.path)
+        if scriptsOK, (try? Self.volumeScript.write(to: Self.volumeScriptFile, atomically: true, encoding: .utf8)) != nil {
+            var scripts = own["preloadScript"] as? [String] ?? []
+            scripts.append(Self.volumeScriptFile.path)
+            let online = DishPrefsStore.shared.prefs(for: dish.id).allowOnline != false
+            let extra = online ? (Self.hostScript, Self.hostScriptFile) : (Self.offlineScript, Self.offlineScriptFile)
+            if (try? extra.0.write(to: extra.1, atomically: true, encoding: .utf8)) != nil {
+                scripts.append(extra.1.path)
+            }
+            // VX·VX Ace: 게임 폴더에 쓰는 Save*.rvdata2 를 저장 데이터 폴더로. 엔진 preload(windows_fs.rb) 뒤에 돈다
+            if rgss >= .vx, (try? Self.savesScript.write(to: Self.savesScriptFile, atomically: true, encoding: .utf8)) != nil {
+                scripts.append(Self.savesScriptFile.path)
+            }
+            overlay["preloadScript"] = scripts
         }
-        if let data = try? JSONSerialization.data(withJSONObject: ["preloadScript": scripts]), let json = String(data: data, encoding: .utf8) {
+        if rgss >= .vx, own["defScreenW"] == nil, own["defScreenH"] == nil {
+            overlay["defScreenW"] = 544
+            overlay["defScreenH"] = 416
+        }
+        if (own["midiSoundFont"] as? String ?? "").isEmpty, let sf = SoundFontShelf.current?.url {
+            overlay["midiSoundFont"] = sf.path
+        }
+        if own["RTP"] == nil, let name = dish.rtp, let dir = RTPShelf.folder(named: name) {
+            overlay["RTP"] = [dir.path]
+        }
+        NSLog("[BrassBowl] 설정 덧씌움 \(overlay.keys.sorted()) sf=\((overlay["midiSoundFont"] as? String).map { ($0 as NSString).lastPathComponent } ?? "-") rtp=\((overlay["RTP"] as? [String])?.first.map { ($0 as NSString).lastPathComponent } ?? "-")")
+        if let data = try? JSONSerialization.data(withJSONObject: overlay), let json = String(data: data, encoding: .utf8) {
             sym("mkxp_setConfigOverlayJSON", StrFn.self)?(json)
         }
         if volumeObserver == nil {
@@ -468,7 +510,102 @@ final class BrassBowlEngine: ObservableObject {
     end
     """
 
-    static let restartMessage = "RPG Maker XP 게임은 한 번 끝나면 빙수를 다시 열어야 다시 할 수 있어요. 앱 전환기에서 빙수를 위로 밀어 닫은 뒤 다시 열어 주세요."
+    /// VX·VX Ace 저장 위치 (2026-11-01 결정, docs/engines/IMPLEMENTATION-vx.md §4). 기본 스크립트는 `Save01.rvdata2`(VX `Save1.rvdata`)를
+    /// 게임 폴더에 써서 게임 업데이트(폴더 교체) 때 사라지고 얼음틀·iCloud 가 못 본다. 게임이 저장 스크립트를 어떻게 고쳤든 먹도록
+    /// 파일 API 를 감싸 상대 경로 `Save<숫자>.rvdata2|rvdata|rxdata` 만 저장 데이터 폴더(BINGSU_SAVE_DIR)로 돌린다.
+    /// `Dir.glob("Save*.rvdata2")` 는 그 폴더에서 찾아 원래 모양(상대 이름)으로 돌려준다(게임이 이름에서 번호를 뽑는다).
+    /// 엔진 windows_fs.rb 뒤에 돌아 그 감싸기(대소문자 무시) 위에 얹힌다. windows_fs 의 "예전 빌드 저장 되살리기"는 저장 데이터 폴더의
+    /// 맨 이름 저장 파일을 게임 폴더로 옮겨 버리므로 이 게임에서는 끈다. RGSS2/3 에서만 넣는다. Ruby 1.8 문법 안에서만 쓴다
+    private static let savesScript = """
+    # 빙수: VX·VX Ace 저장 파일을 저장 데이터 폴더로 (BrassBowlEngine.savesScript)
+    module BingsuSaves
+      NAME = /\\A(?:\\.[\\\\\\/])?Save\\d*\\.(?:rvdata2|rvdata|rxdata)\\z/i
+      GLOB = /\\A(?:\\.[\\\\\\/])?Save[^\\\\\\/]*\\.(?:rvdata2|rvdata|rxdata)\\z/i
+      @dir = nil
+      def self.dir
+        return @dir if @dir
+        d = ENV["BINGSU_SAVE_DIR"].to_s
+        d = System.data_directory.to_s if d.empty? && defined?(System) && System.respond_to?(:data_directory)
+        d = d.gsub(/[\\\\\\/]+\\z/, "")
+        @dir = d.empty? ? nil : d
+      end
+      def self.map(path)
+        return path unless path.is_a?(String) && dir
+        s = path.strip
+        return path unless s =~ NAME
+        "#{dir}/#{s.sub(/\\A\\.[\\\\\\/]/, '')}"
+      end
+      def self.glob?(pat)
+        pat.is_a?(String) && dir && pat.strip =~ GLOB ? true : false
+      end
+      def self.glob(pat)
+        s = pat.strip
+        lead = s[/\\A\\.[\\\\\\/]/] || ""
+        want = s[lead.length..-1]
+        names = (Dir.entries(dir) rescue [])
+        names.select { |n| n =~ NAME && File.fnmatch(want, n) }.sort.map { |n| lead + n }
+      end
+      # 클래스(모듈)의 클래스 메서드를 감싼다. which = 돌릴 인자 번호들 (:all 이면 전부)
+      def self.wrap(target, names, which = [0])
+        sc = class << target; self; end
+        names.each do |m|
+          next unless sc.method_defined?(m) || sc.private_method_defined?(m)
+          a = "_bingsu_saves_" + m.to_s.sub("?", "_p")
+          next if sc.method_defined?(a) || sc.private_method_defined?(a)
+          sc.send(:alias_method, a, m)
+          idx = which == :all ? "(0...args.length).to_a" : which.inspect
+          sc.class_eval("def #{m}(*args, &blk); #{idx}.each { |i| args[i] = BingsuSaves.map(args[i]) if i < args.length }; #{a}(*args, &blk); end")
+          sc.send(:ruby2_keywords, m) if sc.respond_to?(:ruby2_keywords, true)
+        end
+      end
+    end
+
+    if defined?(MKXPSaveFS)
+      module MKXPSaveFS
+        def self.recover_legacy_save(*a); nil; end
+        def self.recover_glob_matches(*a); nil; end
+      end
+    end
+
+    BingsuSaves.wrap(File, [:open, :new, :exist?, :exists?, :file?, :size, :size?, :zero?, :mtime, :atime, :ctime, :stat,
+                            :read, :binread, :readlines, :foreach, :write, :binwrite, :readable?, :writable?])
+    BingsuSaves.wrap(File, [:delete, :unlink], :all)
+    BingsuSaves.wrap(File, [:rename], [0, 1])
+    BingsuSaves.wrap(FileTest, [:exist?, :exists?, :file?, :size, :size?, :zero?])
+    BingsuSaves.wrap(IO, [:read, :binread, :readlines, :foreach])
+
+    class << Dir
+      alias_method :_bingsu_saves_glob, :glob
+      def glob(pattern, *args, &blk)
+        return _bingsu_saves_glob(pattern, *args, &blk) unless BingsuSaves.glob?(pattern)
+        found = BingsuSaves.glob(pattern)
+        return found unless blk
+        found.each { |f| blk.call(f) }
+        nil
+      end
+      alias_method :_bingsu_saves_brackets, :[]
+      def [](*patterns)
+        return _bingsu_saves_brackets(*patterns) unless patterns.length == 1 && BingsuSaves.glob?(patterns[0])
+        BingsuSaves.glob(patterns[0])
+      end
+      ruby2_keywords :glob if respond_to?(:ruby2_keywords, true)
+    end
+
+    module Kernel
+      alias_method :_bingsu_saves_load_data, :load_data
+      alias_method :_bingsu_saves_save_data, :save_data
+      def load_data(path, *args)
+        _bingsu_saves_load_data(BingsuSaves.map(path), *args)
+      end
+      def save_data(obj, path, *args)
+        _bingsu_saves_save_data(obj, BingsuSaves.map(path), *args)
+      end
+      module_function :load_data, :save_data
+    end
+    System.puts("[bingsu_saves] Save*.rvdata2/.rvdata -> #{BingsuSaves.dir}") if defined?(System) && System.respond_to?(:puts)
+    """
+
+    static let restartMessage = "이 게임은 한 번 끝나면 빙수를 다시 열어야 다시 할 수 있어요. 앱 전환기에서 빙수를 위로 밀어 닫은 뒤 다시 열어 주세요."
 
     private func engineEnded() {
         guard let id = runningDishID ?? { if case .ended(let i, _) = phase { return i }; return nil }() else { return }
@@ -483,6 +620,13 @@ final class BrassBowlEngine: ObservableObject {
             IceTray.sync(d, allowUnpack: true)
             Igloo.shared.afterPlay(d, stillRunning: false)
         }
+    }
+
+    fileprivate func gameRectChanged(aspect a: CGFloat) {
+        guard runningDishID != nil, a > 0.3, a < 4 else { return }
+        if let old = gameAspect, abs(old - a) / old < 0.01 { return }
+        NSLog("[BrassBowl] 게임 화면 비율 \(String(format: "%.3f", a))")
+        gameAspect = a
     }
 
     /// 첫 프레임이 그려졌다
@@ -515,6 +659,12 @@ final class BrassBowlEngine: ObservableObject {
         }, nil)
         sym("mkxp_setTextInputModeCallback", SetModeCbFn.self)?({ active, _ in
             Task { @MainActor in BrassBowlEngine.shared.textInputActive = active != 0 }
+        }, nil)
+        // 게임 그림이 그려지는 자리(점 단위). 엔진이 빙수가 준 자리 안에 비율을 지켜 넣으므로 가로/세로가 곧 게임 해상도 비율
+        sym("mkxp_setGameRectChangedCallback", SetRectCbFn.self)?({ _, _, w, h, _ in
+            guard w > 8, h > 8 else { return }
+            let a = CGFloat(w / h)
+            Task { @MainActor in BrassBowlEngine.shared.gameRectChanged(aspect: a) }
         }, nil)
     }
 
@@ -581,15 +731,22 @@ final class BrassBowlEngine: ObservableObject {
 
 /// 게임 폴더를 보고 Ruby 버전·문법 변환을 고른다.
 /// - mkxp.json 이 있거나 Ruby 3 DLL 을 들고 온 게임(Essentials 20~21 등) → Ruby 3.1 그대로("modern")
-/// - 그 밖의 옛 RPG Maker XP 게임(RGSS1, Ruby 1.8 문법) → legacy (엔진이 Ruby 1.8 로 돌림)
-struct RubyProfile {
+/// - VX Ace(RGSS3, 원래 Ruby 1.9.2) → 1.9, legacy
+/// - 그 밖의 옛 게임(XP·VX, Ruby 1.8 문법) → 1.8, legacy
+/// `override`("18"/"19"/"31", 이 게임 설정 › 고급 또는 BINGSU_RUBY)가 있으면 Ruby 만 그 값. 3.1 의 modern 문법은 원래 modern 인 게임만
+struct RubyProfile: Equatable {
     let ruby: String
     let syntax: String
 
-    static func detect(folder: URL) -> RubyProfile {
+    static let choices = ["18", "19", "31"]
+
+    static func detect(folder: URL, rgss: RGSSVersion = .xp, override: String? = nil) -> RubyProfile {
         let fm = FileManager.default
         let names = (try? fm.contentsOfDirectory(atPath: folder.path)) ?? []
         let modern = names.contains("mkxp.json") || names.contains { $0.lowercased().hasPrefix("x64-msvcrt-ruby3") }
-        return modern ? RubyProfile(ruby: "31", syntax: "modern") : RubyProfile(ruby: "18", syntax: "legacy")
+        let auto: RubyProfile = modern ? RubyProfile(ruby: "31", syntax: "modern")
+            : rgss == .vxAce ? RubyProfile(ruby: "19", syntax: "legacy") : RubyProfile(ruby: "18", syntax: "legacy")
+        guard let o = override, choices.contains(o), o != auto.ruby else { return auto }
+        return RubyProfile(ruby: o, syntax: o == "31" && modern ? "modern" : "legacy")
     }
 }

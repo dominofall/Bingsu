@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import UniformTypeIdentifiers
 
 /// 게임 하나의 설정: 표지 이미지, 이 게임만의 가상 패드 설정, 컨트롤러 진동표, 성능(화질·기록), 저장 데이터(로컬 게임만).
 /// 게임 목록에서 게임칩을 꾹 눌러 열거나, 게임 중 일시정지 시트 "이 게임 설정"으로 연다.
@@ -14,6 +15,9 @@ struct DishSettingsView: View {
     @State private var rumbleIsOwn = false
     @State private var rumbleNote: String?
     @State private var rumbleExportURL: URL?
+    @State private var showSoundFontPicker = false
+    @State private var soundFont: SoundFontShelf.Font? = SoundFontShelf.current
+    @State private var soundFontNote: String?
     @StateObject private var freezerModel: FreezerModel
 
     init(dish: Dish) {
@@ -85,10 +89,23 @@ struct DishSettingsView: View {
                         Text("켬").tag(SilentChoice.on)
                         Text("끔").tag(SilentChoice.off)
                     }
+                    if dish.recipe == .mkxp {
+                        LabeledContent("MIDI 사운드폰트", value: soundFont.map { $0.bundled ? "기본 (\($0.name))" : $0.name } ?? "없음")
+                        Button { showSoundFontPicker = true } label: { Label("MIDI 사운드폰트 파일(.sf2) 넣기", systemImage: "square.and.arrow.down") }
+                        if soundFont?.bundled == false {
+                            Button(role: .destructive) {
+                                SoundFontShelf.removeUserFont()
+                                soundFont = SoundFontShelf.current
+                                soundFontNote = "넣은 사운드폰트를 지웠어요"
+                            } label: { Label("넣은 사운드폰트 지우기", systemImage: "trash") }
+                        }
+                        if let soundFontNote { Text(soundFontNote).font(.footnote).foregroundStyle(.secondary) }
+                    }
                 } header: {
                     Text("소리")
                 } footer: {
-                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 게임 중에서 모든 게임에 같이 정해요.")
+                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 게임 중에서 모든 게임에 같이 정해요."
+                         + (dish.recipe == .mkxp ? " MIDI 배경음악은 사운드폰트가 있어야 소리가 나요. 넣은 사운드폰트는 이런 게임 모두가 같이 쓰고, 게임에 들어 있는 사운드폰트가 먼저예요. 게임을 처음 켤 때 적용돼요." : ""))
                 }
 
                 if dish.recipe == .mkxp {
@@ -99,6 +116,20 @@ struct DishSettingsView: View {
                         Text("온라인")
                     } footer: {
                         Text("켜 두면 게임이 인터넷 서버에 접속해 온라인 멀티를 할 수 있어요. 믿을 수 있는 서버에만 접속하세요. 끄면 인터넷이 없는 것처럼 실행돼요. 바꾼 값은 게임을 처음 켤 때 적용돼요. 이미 한 번 켰다면 빙수를 완전히 닫았다 다시 열어 주세요.")
+                    }
+
+                    Section {
+                        Picker("Ruby 버전", selection: Binding(get: { prefs.rubyOverride ?? "" },
+                                                             set: { v in store.update(dish.id) { $0.rubyOverride = v.isEmpty ? nil : v } })) {
+                            Text("자동 (\(autoRuby))").tag("")
+                            Text("1.8").tag("18")
+                            Text("1.9").tag("19")
+                            Text("3.1").tag("31")
+                        }
+                    } header: {
+                        Text("고급")
+                    } footer: {
+                        Text("게임이 시작하자마자 스크립트 오류로 멈출 때만 바꿔 보세요. 바꾼 값은 게임을 처음 켤 때 적용돼요.")
                     }
                 }
 
@@ -148,11 +179,28 @@ struct DishSettingsView: View {
             importRumble(url)
         }
         .onAppear(perform: refreshRumble)
+        // 창에서 직접 띄우는 선택기 (iPad 에서 시트 안 fileImporter 가 멈추는 문제, GamePicker). 고른 파일은 임시 복사본
+        .background(GamePicker(isPresented: $showSoundFontPicker, types: [UTType(filenameExtension: "sf2") ?? .data]) { url in
+            guard let url else { return }
+            defer { if Delivery.isOwnCopy(url) { try? FileManager.default.removeItem(at: url) } }
+            do {
+                soundFont = try SoundFontShelf.importFile(url)
+                soundFontNote = "사운드폰트를 넣었어요. 게임을 처음 켤 때 적용돼요"
+            } catch {
+                soundFontNote = "넣지 못했어요: " + error.localizedDescription
+            }
+        }.frame(width: 0, height: 0))
         .fullScreenCover(isPresented: $showEditor) {
             SpoonLayoutEditor(prefs: ownPad.wrappedValue, target: dish.title,
                               save: { k, a in ownPad.wrappedValue = ownPad.wrappedValue.withLayout(k, a) },
                               onClose: { showEditor = false })
         }
+    }
+
+    /// 자동일 때 고르는 Ruby (RubyProfile)
+    private var autoRuby: String {
+        let r = RubyProfile.detect(folder: dish.location, rgss: BrassBowlEngine.rgss(for: dish)).ruby
+        return r == "18" ? "1.8" : r == "19" ? "1.9" : "3.1"
     }
 
     // MARK: 진동표

@@ -49,6 +49,7 @@ struct DeliveryView: View {
                         Spacer()
                         switch delivery.stage {
                         case .done(let r): resultCard(r)
+                        case .rtpDone(let name): rtpCard(name)
                         case .failed(let msg): failure(msg)
                         case .skinFailed(let msg): failure(msg, skin: true)
                         default: progress
@@ -64,7 +65,7 @@ struct DeliveryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if case .done = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if isSkin {} else {
+                    if case .done = delivery.stage {} else if case .rtpDone = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if isSkin {} else {
                         Button("취소") { delivery.cancel(); onDone(nil) }
                     }
                 }
@@ -108,11 +109,31 @@ struct DeliveryView: View {
                 } else if let v = r.version, !v.isEmpty { row("버전", v) }
                 row("용량", ByteCountFormatter.string(fromByteCount: Int64(r.bytes), countStyle: .file))
                 row("저장 위치", "저장 데이터 › \(r.dish.dataPathApp)")
+                if r.movedSaves > 0 { row("저장 파일", "게임 폴더에 있던 저장 파일 \(r.movedSaves)개를 옮겼어요") }
                 row("실행", r.dish.recipe.servable ? "iPhone에서 바로 실행할 수 있어요" : "아직 실행할 수 없는 형식이에요 (준비 중)")
+                if r.dish.needsRTP, let rtp = r.dish.rtp, !RTPShelf.isInstalled(rtp) {
+                    row("RTP", "RTP 가 필요해요 · \(rtp). RTP 폴더를 zip 으로 묶어 게임 추가 › RTP 넣기로 넣어 주세요")
+                }
             }
             .padding(16)
             .background(Palette.card, in: RoundedRectangle(cornerRadius: 14))
             Button { onDone(r) } label: { Text("확인").frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent).tint(Palette.accent)
+        }
+    }
+
+    /// RTP zip 을 넣었다
+    private func rtpCard(_ name: String) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 44)).foregroundStyle(Palette.accent)
+            Text("RTP 를 넣었어요").font(.title3.bold())
+            VStack(alignment: .leading, spacing: 6) {
+                row("이름", name)
+                row("쓰는 게임", "이 RTP 를 쓰는 게임을 열면 같이 읽어요")
+            }
+            .padding(16)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 14))
+            Button { onDone(nil) } label: { Text("확인").frame(maxWidth: .infinity) }
                 .buttonStyle(.borderedProminent).tint(Palette.accent)
         }
     }

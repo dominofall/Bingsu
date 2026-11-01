@@ -556,7 +556,7 @@ struct CutlerySet {
         // 진동 실험실(tools/rumble-lab): 표준 게임패드로 읽어야 게임이 vibrationActuator 로 진동을 요청할 수 있다
         if dish.dataPathApp == "bingsu-rumble-lab" { return .pokebonk }
         if dish.id == MenuBoardStore.sampleID { return .sampleGame }
-        if dish.recipe == .mkxp { return .rpgMakerXP }   // BrassBowl/CutlerySet+XP.swift
+        if dish.recipe == .mkxp { return .rpgMaker(dish) }   // BrassBowl/CutlerySet+XP.swift (XP·VX 판별)
         if dish.isRemote { return CutlerySet(transport: .keyboard, labels: [:], keys: [:], stickKeys: [:]) }
         return .keyboardDefault
     }

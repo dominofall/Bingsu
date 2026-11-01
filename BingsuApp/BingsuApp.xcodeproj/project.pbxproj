@@ -17,6 +17,7 @@
 		137F44E8983CD6401E9EB8B6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCE4B25C91A30226FA7CE67 /* Glass.swift */; };
 		175CF3F1248AA510C122057F /* WebGames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DE1AD2F52844D2C74FB12B /* WebGames.swift */; };
 		190C528E23B0F5B4D13852DA /* DownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5139AB857871D3CC678B92 /* DownloadView.swift */; };
+		19C1BD6F3A5FBB9B20AD2C97 /* BrassShelves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396F3A801DC4567F234ACF3 /* BrassShelves.swift */; };
 		1E99712AB9DE67B7C4EBC318 /* SkinPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8895E843068FA01C56BEC359 /* SkinPicker.swift */; };
 		21ABF4514382A8BC12365874 /* BingsuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26660F721EB6692A526F0AA /* BingsuApp.swift */; };
 		28A43B4C0978D8D45733FA60 /* Igloo.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCDF197A6F1466C399E2968D /* Igloo.swift */; };
@@ -69,6 +70,7 @@
 		D2E7584993AA67ADD5538980 /* Dish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A4FDE53502C75F063E7580 /* Dish.swift */; };
 		D401791711BEDF7422DF001B /* GlassBowl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7DF0C151691866EEB6446A /* GlassBowl.swift */; };
 		D4A5AB6D1320F0EFEA465084 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5EE0ADB93C88F0A0601CBAE5 /* Assets.xcassets */; };
+		D53D0922DAEB3E7909346C17 /* RGSSProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */; };
 		DF82236AFFC89454986D18DA /* SavedDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9937FB5BFFACDD23793D55 /* SavedDataView.swift */; };
 		E185C5F4095BDD9BDB53DBFB /* DiagLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2983C24C173522B3B218825 /* DiagLog.swift */; };
 		E2E71BE164BFFF57F4A9243A /* CutlerySet+XP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345AA05D99D2919B652C1806 /* CutlerySet+XP.swift */; };
@@ -117,6 +119,7 @@
 		6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveCounter.swift; sourceTree = "<group>"; };
 		7C42938298781D2E35741C26 /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
 		7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSkin.swift; sourceTree = "<group>"; };
+		8396F3A801DC4567F234ACF3 /* BrassShelves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrassShelves.swift; sourceTree = "<group>"; };
 		8895E843068FA01C56BEC359 /* SkinPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinPicker.swift; sourceTree = "<group>"; };
 		8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RumbleSet.swift; sourceTree = "<group>"; };
 		93A4FDE53502C75F063E7580 /* Dish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dish.swift; sourceTree = "<group>"; };
@@ -140,6 +143,7 @@
 		C4FE01E2A220C5F817EA754F /* BowlContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlContainerView.swift; sourceTree = "<group>"; };
 		C7102FD38D1EF51048ED8E2F /* DishPrefs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DishPrefs.swift; sourceTree = "<group>"; };
 		C72A0868389022A39B2B41DE /* LongSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LongSpoon.swift; sourceTree = "<group>"; };
+		C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RGSSProbe.swift; sourceTree = "<group>"; };
 		D44A9111A0EFCB4E6077F87B /* SpoonLayoutEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonLayoutEditor.swift; sourceTree = "<group>"; };
 		D57FFEAD0C4B5982C0DBC2AF /* Courier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Courier.swift; sourceTree = "<group>"; };
 		D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokemonSchemeHandler.swift; sourceTree = "<group>"; };
@@ -220,7 +224,9 @@
 			children = (
 				E008BDF8B5048BDF74686502 /* BrassBowlContainerView.swift */,
 				4D21C1CC71DE7C6BC818538A /* BrassBowlEngine.swift */,
+				8396F3A801DC4567F234ACF3 /* BrassShelves.swift */,
 				345AA05D99D2919B652C1806 /* CutlerySet+XP.swift */,
+				C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */,
 			);
 			path = BrassBowl;
 			sourceTree = "<group>";
@@ -475,6 +481,7 @@
 				4D166909B14201F76C0EE963 /* BowlScripts.swift in Sources */,
 				C90E8C11C3038613DCEF2D5B /* BrassBowlContainerView.swift in Sources */,
 				094080A02037DAA432ED4741 /* BrassBowlEngine.swift in Sources */,
+				19C1BD6F3A5FBB9B20AD2C97 /* BrassShelves.swift in Sources */,
 				AE30282DD65A172A596FEF2F /* ConflictView.swift in Sources */,
 				8C4B3BFB49AA7F692CA82984 /* Courier.swift in Sources */,
 				E2E71BE164BFFF57F4A9243A /* CutlerySet+XP.swift in Sources */,
@@ -507,6 +514,7 @@
 				70D9400070111AD5E199DF46 /* PerfLog.swift in Sources */,
 				C54A8C7260B1548399E5D5CB /* PerfSection.swift in Sources */,
 				9AA55B7BBFF66C1D869D0EBF /* PokemonSchemeHandler.swift in Sources */,
+				D53D0922DAEB3E7909346C17 /* RGSSProbe.swift in Sources */,
 				8616F3FC74E026DF0C7D538D /* RecipeDetector.swift in Sources */,
 				35B8B8BC3B7AA9D6BF34D6A9 /* Rumble.swift in Sources */,
 				D26C3971FB856CC93AB73DBD /* RumbleSet.swift in Sources */,
@@ -589,7 +597,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -651,7 +659,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 25;
+				CURRENT_PROJECT_VERSION = 26;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

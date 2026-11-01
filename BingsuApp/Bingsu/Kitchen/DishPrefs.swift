@@ -112,6 +112,8 @@ struct DishPrefs: Codable, Equatable {
     var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 게임 중의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
     var musicRate: MusicRate?     // 포켓로그 배경음악 음질. nil = 절약(24kHz) (빌드 23 에서 더함, 예전 파일엔 없음 → nil)
     var allowOnline: Bool?        // RPG Maker 게임의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
+    var rubyOverride: String?     // RPG Maker 게임의 Ruby 버전 "18"/"19"/"31". nil = 자동 (빌드 26 에서 더함, 예전 파일엔 없음 → nil)
+    var rtpNoticeShown: Bool?     // RTP 가 필요하다는 안내를 이 게임에서 한 번 보였다 (빌드 26)
 
     /// 실제로 쓸 화질: 직접 고른 값 → 벤치마크 권장 → 높음
     var effectiveQuality: Quality { quality ?? recommendedQuality ?? .high }

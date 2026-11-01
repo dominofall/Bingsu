@@ -12,6 +12,22 @@ extension CutlerySet {
                .view: "KeyQ", .menu: "KeyZ",
                .up: "ArrowUp", .down: "ArrowDown", .left: "ArrowLeft", .right: "ArrowRight"],
         stickKeys: [.up: "ArrowUp", .down: "ArrowDown", .left: "ArrowLeft", .right: "ArrowRight"])
+
+    /// RPG Maker VX·VX Ace (RGSS2/3) — 엔진 기본 키 연결 그대로. RGSS2/3 에는 C 키가 없고 확인이 Z·Space·Enter,
+    /// 취소·메뉴가 Esc·X·Num0, 대시가 Shift, 게임 버튼 X·Y·Z 가 A·S·D, L·R 이 Q·W (mkxp-z keybindings.cpp)
+    static let rpgMakerVX = CutlerySet(
+        transport: .keyboard,
+        labels: [.field: [.a: "확인", .b: "취소·메뉴", .x: "대시", .y: "Z", .lb: "L", .rb: "R",
+                          .lt: "X", .rt: "Y", .view: "대시", .menu: "메뉴"]],
+        keys: [.a: "KeyZ", .b: "KeyX", .x: "ShiftLeft", .y: "KeyD", .lb: "KeyQ", .rb: "KeyW", .lt: "KeyA", .rt: "KeyS",
+               .view: "ShiftLeft", .menu: "Escape",
+               .up: "ArrowUp", .down: "ArrowDown", .left: "ArrowLeft", .right: "ArrowRight"],
+        stickKeys: [.up: "ArrowUp", .down: "ArrowDown", .left: "ArrowLeft", .right: "ArrowRight"])
+
+    /// RPG Maker 게임의 판에 맞는 배치
+    static func rpgMaker(_ dish: Dish) -> CutlerySet {
+        BrassBowlEngine.rgss(for: dish) == .xp ? .rpgMakerXP : .rpgMakerVX
+    }
 }
 
 /// KeyboardEvent.code → SDL 스캔코드(USB HID, app_bridge.h 의 MKXP_SCANCODE_*). 모르는 키는 nil
@@ -28,6 +44,7 @@ enum BrassKeys {
         case "Backspace": return 42
         case "Tab": return 43
         case "Space": return 44
+        case "Numpad0": return 98
         case "ArrowRight": return 79
         case "ArrowLeft": return 80
         case "ArrowDown": return 81

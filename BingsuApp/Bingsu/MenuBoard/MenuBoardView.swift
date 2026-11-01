@@ -102,7 +102,7 @@ struct MenuBoardView: View {
         }
         if let r = running, r.recipe == .mkxp, r.id != dish.id {
             xpNotice = XPNotice(title: "\(r.title) 을(를) 끝낼까요?",
-                                message: "다른 게임을 열면 멈춰 둔 RPG Maker XP 게임이 끝나요. 게임 안에서 저장하지 않은 진행은 사라지고, 다시 하려면 빙수를 다시 열어야 해요.",
+                                message: "다른 게임을 열면 멈춰 둔 이 게임이 끝나요. 게임 안에서 저장하지 않은 진행은 사라지고, 다시 하려면 빙수를 다시 열어야 해요.",
                                 proceed: { running = nil; showBowl = false; DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { serve(dish) } })
             return true
         }
@@ -198,6 +198,8 @@ struct MenuBoardView: View {
             Button("zip 파일 가져오기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
             Button("주소로 zip 내려받기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showDownload = true } }
             Button("주소로 웹 게임 추가") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showAddWeb = true } }
+            // RTP zip 도 게임 가져오기가 알아보고 RTP 선반에 넣는다 (Delivery.prepare)
+            Button("RTP 넣기 (zip)") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
         } message: {
             Text("PC용 게임은 zip 으로, 브라우저 게임은 https 주소로 넣어요. iCloud Drive 의 큰 zip 은 선택한 뒤 내려받는 동안 잠시 멈춘 것처럼 보일 수 있어요.")
         }
@@ -283,7 +285,7 @@ struct MenuBoardView: View {
             Button("종료", role: .destructive) {
                 if dish.recipe == .mkxp {
                     xpNotice = XPNotice(title: "\(dish.title) 을(를) 끝낼까요?",
-                                        message: "게임 안에서 저장하지 않은 진행은 사라져요. RPG Maker XP 게임은 끝낸 뒤 빙수를 다시 열어야 다시 할 수 있어요.",
+                                        message: "게임 안에서 저장하지 않은 진행은 사라져요. 이 게임은 끝낸 뒤 빙수를 다시 열어야 다시 할 수 있어요.",
                                         proceed: { running = nil })
                 } else { running = nil }
             }
@@ -470,6 +472,12 @@ struct GameChip: View {
     /// 컨트롤러 초점
     var focused = false
 
+    /// RTP 를 따로 넣어야 하는 게임 (DeliveryView 결과 카드와 같은 문구)
+    private var rtpNote: String? {
+        guard dish.needsRTP, let rtp = dish.rtp, !RTPShelf.isInstalled(rtp) else { return nil }
+        return "RTP 가 필요해요 · \(rtp)"
+    }
+
     static let radius: CGFloat = 22
     /// 유리 틀 두께
     static let rim: CGFloat = 5
@@ -487,7 +495,7 @@ struct GameChip: View {
                 .overlay(FocusFill(radius: Self.radius, on: focused))
             HStack(alignment: .top, spacing: 6) {
                 ChipCaption(title: dish.title,
-                            note: running ? "실행 중 · 이어하기" : dish.isRemote ? "웹 게임" : (dish.recipe.unservableNote ?? "설치됨"),
+                            note: running ? "실행 중 · 이어하기" : dish.isRemote ? "웹 게임" : (dish.recipe.unservableNote ?? rtpNote ?? "설치됨"),
                             noteColor: running ? Palette.accent : .secondary)
                 Spacer(minLength: 0)
                 if running {

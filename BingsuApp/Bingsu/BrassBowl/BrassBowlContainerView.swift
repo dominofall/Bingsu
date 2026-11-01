@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import GameController
 
-/// RPG Maker XP 게임 화면: 엔진(SDL) 화면 + 가상 패드 + 눈송이(일시정지) 화면.
+/// RPG Maker XP·VX·VX Ace 게임 화면: 엔진(SDL) 화면 + 가상 패드 + 눈송이(일시정지) 화면.
 /// 일시정지 화면은 웹 게임과 같은 `PauseBoard` (초당 프레임·화질·소리 다시 켜기는 엔진이 정해서 뺀다).
 /// 웹 게임 화면(`BowlContainerView`)과 같은 자리에 같은 인자로 들어간다(MenuBoardView).
 struct BrassBowlContainerView: View {
@@ -26,6 +26,8 @@ struct BrassBowlContainerView: View {
     /// 배치 편집 (일시정지 화면 › 배치 편집). 엔진은 멈춘 채 그 위에 편집기를 띄운다
     @State private var showEditor = false
     @State private var confirmQuit = false
+    /// RTP 가 없는 게임을 처음 열 때 한 번 안내한다 (DishPrefs.rtpNoticeShown)
+    @State private var rtpNotice = false
     @State private var textEntry = ""
     @State private var fpsTimer: Timer?
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
@@ -55,8 +57,11 @@ struct BrassBowlContainerView: View {
         return MenuButtonPlace(rawValue: menuButtonRaw) ?? .pad
     }
     private var freezer: Freezer { Freezer(dish: dish) }
-    /// RPG Maker XP 기본 화면 비율 4:3 (게임마다 512×384·640×480 등)
-    private static let aspect: CGFloat = 4.0 / 3.0
+    /// 게임 화면 비율: 엔진이 알려 준 값(게임이 해상도를 바꾸면 따라감), 아직 모르면 판 기본값
+    /// (XP 4:3 — 게임마다 512×384·640×480 등, VX·VX Ace 544×416)
+    private var aspect: CGFloat {
+        engine.gameAspect ?? (BrassBowlEngine.rgss(for: dish) == .xp ? 4.0 / 3.0 : 544.0 / 416.0)
+    }
 
     init(dish: Dish, visible: Bool = true, onHome: @escaping () -> Void = {}, onClose: @escaping () -> Void) {
         self.dish = dish; self.visible = visible; self.onHome = onHome; self.onClose = onClose
@@ -79,6 +84,7 @@ struct BrassBowlContainerView: View {
                         for t in [0.1, 0.5, 1.2] { DispatchQueue.main.asyncAfter(deadline: .now() + t) { applyViewport(geo.size) } }
                     }
                     .onChange(of: padShown) { _, _ in applyViewport(geo.size) }
+                    .onChange(of: engine.gameAspect) { _, _ in applyViewport(geo.size) }
                 if !isPlaying {
                     loadingCover.frame(width: r.width, height: r.height).position(x: r.midX, y: r.midY)
                 }
@@ -119,7 +125,13 @@ struct BrassBowlContainerView: View {
             Button("끝내기", role: .destructive) { quit() }
             Button("취소", role: .cancel) {}
         } message: {
-            Text("게임 안에서 저장하지 않은 진행은 사라져요. RPG Maker XP 게임은 끝낸 뒤 빙수를 다시 열어야 다시 할 수 있어요.")
+            Text("게임 안에서 저장하지 않은 진행은 사라져요. 이 게임은 끝낸 뒤 빙수를 다시 열어야 다시 할 수 있어요.")
+        }
+        .alert("RTP 가 필요해요", isPresented: $rtpNotice) {
+            Button("그냥 열기") { rtpNoticeDone(); startEngine() }
+            Button("목록으로", role: .cancel) { rtpNoticeDone(); onClose() }
+        } message: {
+            Text("이 게임은 공용 그림·소리 묶음(RTP · \(dish.rtp ?? ""))을 따로 써요. RTP 폴더를 zip 으로 묶어 게임 추가 › RTP 넣기로 넣어 주세요. RTP 설치 파일(exe)은 넣을 수 없어요. 그냥 열면 그림이나 소리가 빠질 수 있어요.")
         }
         .alert("게임 오류", isPresented: Binding(get: { engine.errorMessage != nil }, set: { if !$0 { engine.dismissError() } })) {
             Button("확인") { engine.dismissError() }
@@ -190,7 +202,7 @@ struct BrassBowlContainerView: View {
         VStack(spacing: 14) {
             Image(systemName: clean ? "checkmark.circle" : "exclamationmark.triangle").font(.system(size: 40)).foregroundStyle(.white.opacity(0.85))
             Text(clean ? "게임이 끝났어요" : "게임이 멈췄어요").font(.title3.weight(.semibold)).foregroundStyle(.white)
-            Text("RPG Maker XP 게임을 다시 하려면 앱 전환기에서 빙수를 위로 밀어 닫은 뒤 다시 열어 주세요. 저장한 데이터는 그대로 있어요.")
+            Text("이 게임을 다시 하려면 앱 전환기에서 빙수를 위로 밀어 닫은 뒤 다시 열어 주세요. 저장한 데이터는 그대로 있어요.")
                 .font(.subheadline).foregroundStyle(.white.opacity(0.75)).multilineTextAlignment(.center).frame(maxWidth: 420)
             Button("목록으로") { onClose() }.buttonStyle(.borderedProminent).tint(Palette.accent)
         }
@@ -219,6 +231,19 @@ struct BrassBowlContainerView: View {
         recorder.setActive(visible)
         if let t = Igloo.shared.takeToast(dish.id) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showToast(t) } }
         guard engine.runningDishID != dish.id else { return }   // 이미 켜져 있음(화면만 다시 만들어짐)
+        if dish.needsRTP, let rtp = dish.rtp, !RTPShelf.isInstalled(rtp), prefsStore.prefs(for: dish.id).rtpNoticeShown != true {
+            rtpNotice = true
+            return
+        }
+        startEngine()
+    }
+
+    private func rtpNoticeDone() {
+        prefsStore.update(dish.id) { $0.rtpNoticeShown = true }
+    }
+
+    /// 엔진 켜기 (RTP 안내를 거친 뒤)
+    private func startEngine() {
         // iCloud·백업 되돌리기로 save.json 이 바뀌었으면 Game.rxdata 로 풀어 둔다 (게임이 켜지기 전)
         IceTray.sync(dish, allowUnpack: true)
         if let err = engine.start(.init(dish: dish, savesDir: freezer.directory)) {
@@ -432,13 +457,13 @@ struct BrassBowlContainerView: View {
 
     // MARK: 화면 배치
 
-    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 4:3 가운데. 세로: 폭을 채운 4:3 을 눈송이 줄 아래 ~ 패드 윗줄 사이, 패드 쪽으로 치우치게
+    /// 게임 화면 자리 (화면 전체 좌표). 가로: 높이를 채운 게임 비율 가운데. 세로: 폭을 채운 게임 비율을 눈송이 줄 아래 ~ 패드 윗줄 사이, 패드 쪽으로 치우치게
     private func gameRect(_ size: CGSize) -> CGRect {
         let W = size.width, H = size.height
         guard W > 0, H > 0 else { return .zero }
         if H > W {
             let ins = Self.windowInsets()
-            let gameW = W, gameH = W / Self.aspect
+            let gameW = W, gameH = W / aspect
             // 눈송이가 패드 안에 있으면 위쪽 눈송이 줄은 비워 두지 않는다
             let top = ins.top + (menuButtonPlace == .pad && padShown ? 8 : BowlContainerView.chrome)
             let padTop = padShown ? padLayout(size, ins: ins)?.topEdge.map { $0 - 12 } ?? H : H
@@ -447,7 +472,7 @@ struct BrassBowlContainerView: View {
             // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다
             return CGRect(x: 0, y: top + slack * (padShown ? 0.75 : 0), width: gameW, height: gameH)
         }
-        let gameH = H, gameW = min(W, H * Self.aspect)
+        let gameH = H, gameW = min(W, H * aspect)
         return CGRect(x: (W - gameW) / 2, y: 0, width: gameW, height: gameH)
     }
 

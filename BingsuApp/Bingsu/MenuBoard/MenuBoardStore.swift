@@ -121,12 +121,32 @@ final class MenuBoardStore: ObservableObject {
             var dataPath = (m["dataPathApp"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? title
             // RPG Maker XP: 저장 폴더는 언제나 게임의 mkxp.json dataPathApp (예전 가져오기가 CRLF 를 못 읽어 Game.ini 제목으로 적었을 수 있음)
             if recipe == .mkxp { dataPath = RecipeDetector.describe(folder: folder, recipe: .mkxp).dataPathApp }
-            return Dish(id: id, title: title, recipe: recipe, location: folder, dataPathApp: dataPath)
+            var dish = Dish(id: id, title: title, recipe: recipe, location: folder, dataPathApp: dataPath)
+            if recipe == .mkxp {
+                // 빌드 26 전 가져오기에는 rgss 가 없다 → 폴더를 다시 본다
+                if let n = m["rgss"] as? Int, let v = RGSSVersion(rawValue: n) {
+                    dish.rgss = v
+                    dish.rtp = (m["rtp"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                    dish.needsRTP = m["needsRTP"] as? Bool ?? false
+                } else {
+                    Self.applyProbe(&dish)
+                }
+            }
+            return dish
         }
         let recipe = RecipeDetector.detect(folder: folder)
         guard recipe != .unknown else { return nil }
         let d = RecipeDetector.describe(folder: folder, recipe: recipe)
-        return Dish(id: id, title: d.title, recipe: recipe, location: folder, dataPathApp: d.dataPathApp)
+        var dish = Dish(id: id, title: d.title, recipe: recipe, location: folder, dataPathApp: d.dataPathApp)
+        if recipe == .mkxp { Self.applyProbe(&dish) }
+        return dish
+    }
+
+    nonisolated static func applyProbe(_ dish: inout Dish) {
+        let p = RGSSProbe.probe(folder: dish.location)
+        dish.rgss = p.version ?? .xp
+        dish.rtp = p.rtp
+        dish.needsRTP = p.needsRTP
     }
 
     /// 게임 파일만 지운다. 저장 데이터(Saves/)는 남긴다.

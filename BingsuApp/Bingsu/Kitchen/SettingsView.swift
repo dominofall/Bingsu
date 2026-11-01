@@ -367,12 +367,12 @@ struct LicensesView: View {
                     }
                 }
             }
-            // RPG Maker XP 엔진(BrassBowl.framework). 포크의 추가 조건(ADDITIONAL-TERMS.md 1항)에 따라
+            // RPG Maker XP·VX·VX Ace 엔진(BrassBowl.framework). 포크의 추가 조건(ADDITIONAL-TERMS.md 1항)에 따라
             // 저작자 표시를 다른 고지와 같은 크기로 보이고, 주소는 눌러 열 수 있게 둔다
             Section {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("mkxp-z-apple-mobile, Copyright (C) 2026 Mateo M., https://github.com/mateo-m/mkxp-z-apple-mobile").font(.headline)
-                    Text("GPL-3.0 (추가 조건 있음) · RPG Maker XP 게임 실행에 사용").font(.subheadline).foregroundStyle(.secondary)
+                    Text("GPL-3.0 (추가 조건 있음) · RPG Maker 게임 실행에 사용").font(.subheadline).foregroundStyle(.secondary)
                     Link("소스 코드 (\(BrassBowlNotice.engineCommit))", destination: BrassBowlNotice.forkURL).font(.subheadline)
                 }
                 .padding(.vertical, 2)
@@ -399,9 +399,9 @@ struct LicensesView: View {
                     }
                 }
             } header: {
-                Text("RPG Maker XP 엔진")
+                Text("RPG Maker 게임 엔진")
             } footer: {
-                Text("빙수는 RPG Maker XP 게임을 돌리려고 mkxp-z-apple-mobile 을 고치지 않은 채 묶어 넣어요. 엔진은 GNU GPL 이라 누구나 위 주소에서 같은 판의 소스를 받을 수 있어요. 엔진을 묶는 빙수 쪽 빌드 방법은 빙수 소스의 BingsuApp/BrassBowl 폴더에 있어요.")
+                Text("빙수는 RPG Maker 게임을 돌리려고 mkxp-z-apple-mobile 을 고치지 않은 채 묶어 넣어요. 엔진은 GNU GPL 이라 누구나 위 주소에서 같은 판의 소스를 받을 수 있어요. 엔진을 묶는 빙수 쪽 빌드 방법은 빙수 소스의 BingsuApp/BrassBowl 폴더에 있어요.")
             }
         }
         .navigationTitle("오픈소스 라이선스")

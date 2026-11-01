@@ -103,3 +103,42 @@ MV/MZ(빌드 27), 일반 XP 게임(비 Essentials) 의 `Save1.rxdata` 이동, RT
 ## 12. 끝낼 때
 
 PLAN.md 로드맵 Phase 3 에 "VX/VX Ace" 항목을 `[x]` 로 추가하고 요약·확인 결과, `docs/beta/testflight-info.md` §2 에 빌드 26 테스트 문안 초안, `docs/beta/guide.md` 절, `THIRD_PARTY_LICENSES.md`(사운드폰트가 들어갔으면). 빌드 번호는 부모 세션이 올린다.
+
+## 13. 확인 결과 (2026-11-01, 시뮬레이터)
+
+테스트 게임은 vgperson 이 영어로 옮겨 무료 배포하는 두 작품(`Games/vx-test/` 아래에만 둠, research.md §4.3). RTP 는 공식 `RPGVXAce_RTP.zip` 안의 설치 파일을 PC 도구(innoextract)로 풀어 폴더째 zip 으로 묶어 넣었다.
+
+| 항목 | 결과 |
+|---|---|
+| XP 회귀(iPhone) | 파티!: `rgss=1 ruby=31 syntax=modern`, 4:3(콜백 1.334), A→`KeyC` 로 타이틀 메뉴, RTP 안내 안 뜸. 어나더 레드: `rgss=1 ruby=31`, `Saves/` 의 기존 저장 불러옴. 파티!는 이어할 저장이 없어 새 저장은 안 해 봄(RGSS1 은 저장 스크립트를 안 넣으므로 경로 변화 없음) |
+| VX Ace 판별·실행(iPhone) | Hello? Hell... o?(`Game.rgss3a` 암호화): 가져오기 `recipe=mkxp rgss=3 rtp=RPGVXAce needsRTP=true`, 실행 `rgss=3 ruby=19 syntax=legacy screen=544x416`. 게임이 640×480 으로 바꾸자 화면 비율도 1.308→1.334 로 따라감. 패드 A→`KeyZ`, B→`KeyX` |
+| RTP | RTP 없이 열면 "RTP 가 필요해요" 한 번 → 그냥 열기 → 효과음 `Audio/SE/Decision1` 없음 오류(예상대로). RTP zip 가져오기 → "RTP 를 넣었어요 · RPGVXAce" → 다시 열면 안내 없이 RTP 타일·소리로 진행, 덧씌움 로그 `rtp=RPGVXAce` |
+| 저장(VX Ace) | 이 게임은 메뉴를 막고 진행 중에 `DataManager.save_game(0)` 로 저장한다. 시험용 preload(게임 폴더 `mkxp.json`, 저장소에 없음)로 맵에서 같은 호출 → `Saves/Hello? Hell... o?/Save01.rvdata2` 생김, 게임 폴더엔 없음, `Dir.glob('Save*.rvdata2')` = `["Save01.rvdata2"]`. 다시 켜서 `load_header`·`load_game(0)` 성공(맵 2). IceTray 가 save.json 에 묶음 |
+| 업데이트 | 같은 zip 다시 가져오기 → 업데이트 → `Save01.rvdata2`·save.json 그대로, 업데이트 전 백업 생김 |
+| PC 세이브 | zip 에 `Save01.rvdata2`(내용 다름)·`Save02.rvdata2` 를 넣어 업데이트 → "게임 폴더에 있던 저장 파일 2개를 옮겼어요", Save02 는 `Saves/`, 이미 있던 Save01 과 겹친 것은 `backups/<시각> Save01.rvdata2` |
+| VX(iPhone) | The Witch's House(`Game.rgss2a` 암호화): `rgss=2 ruby=18 screen=544x416`, RTP 필요 없음. 게임 자체 저장 화면(File 1~4)에서 저장 → 다시 켜면 타이틀 Continue 켜짐. **단, 이 게임은 저장을 `Save/1.rvdata`·`PublicData.rvdata` 로 하므로 게임 폴더에 남는다**(아래 "남은 것") |
+| iPad Pro 13 | Witch's House 가로 화면, A→`KeyZ` B→`KeyX` X→`ShiftLeft` Y→`KeyD` L→`KeyQ` R→`KeyW`, 비율 1.308 |
+| MIDI | 사용자 sf2 를 `Application Support/SoundFont/` 에 두고 테스트 게임에 시험용 `.mid` 를 넣어 `Audio.bgm_play` → 오류 없음, 덧씌움 로그 `sf=test.sf2`. 소리 자체는 귀로 확인 못 함 |
+| 문구 | `git grep "RPG Maker XP" BingsuApp/Bingsu -- '*.swift'` 는 주석뿐 |
+| 메모리 | Hello Hello 타이틀 71MB, 맵 83MB(시뮬레이터 phys_footprint), 약 59fps |
+
+**하지 않은 것:** 가짜 iCloud(`BINGSU_FAKE_ICLOUD`) 두 시뮬레이터 이어하기(IceTray 가 `Save01.rvdata2` 를 save.json 에 묶는 것까지만 확인), 사람 손으로 끝까지 진행하며 저장(두 게임 모두 시험용 preload 로 저장 호출), 실기기.
+
+**남은 것(다음 빌드 후보):**
+- 게임이 저장 이름·폴더를 바꾼 경우(Witch's House 의 `Save/N.rvdata`·`PublicData.rvdata` 처럼) 저장이 게임 폴더에 남아 업데이트(예전 파일 삭제)·iCloud 에서 빠진다. 감싸기 규칙을 "맨 위 `Save*/` 폴더와 `Data/` 밖 `*.rvdata*`" 로 넓히거나, 업데이트 때 게임이 만든 파일을 옮겨 심는 방법 중 하나.
+- Hello Hello 의 조명 스크립트(HN_Light)가 맵을 떠날 때(메뉴·저장 화면으로 바꿀 때) `self.bitmap` 이 nil 이라 오류. 원래 게임은 메뉴를 막아 두어 보통 진행에선 안 나올 수 있으나, 엔딩에서 타이틀로 돌아갈 때 나는지 확인 필요(엔진 쪽 차이일 수 있음).
+- PC 세이브가 이미 있는 저장과 겹쳐 `backups/` 로 간 파일은 이 게임 설정 › 백업 목록(json 만 보임)에 나오지 않는다. 결과 화면 문구도 "n개를 옮겼어요" 하나뿐.
+
+## 구현 중 바뀐 것
+
+- **판별**: ini 글자 판별 순서를 UTF-8 → (가나가 있고 반각 가나가 없으면) Shift-JIS → CP949 → Shift-JIS 로 했다. CP949 를 먼저 시도하면 일본어 ini 가 깨진 한글로 읽히는 경우가 있어서. exe 이름으로 바뀐 ini 는 `Scripts=` 가 있는 맨 위 `*.ini` 를 찾는다.
+- **needsRTP**: §1.6 의 "`Graphics/System` 없음" 대신 RTP 에만 있는 그림(VX·Ace `Graphics/System/IconSet`, XP `Graphics/Windowskins/`)이 게임 폴더에도, 아카이브 이름표에도 없을 때로 했다. Hello Hello 는 `Graphics/System` 에 세 장만 넣어 두어 원래 규칙으론 못 잡았다. 아카이브(v1·v3) 이름표만 읽는 `RGSSArchive.entryNames` 를 넣었다.
+- **IceTray**: 이미 `rxdata`·`rvdata`·`rvdata2` 를 허용하고 키를 16진수로 바꾸고 있어 고칠 것이 없었다.
+- **저장 스크립트**: §4 의 목록 외에 `FileTest`·`IO.read` 류·`File.stat/size?/zero?/readable?/writable?/readlines/foreach/binread/binwrite`·`Dir.[]`·`File.delete` 여러 인자도 감쌌다. 엔진 `windows_fs.rb` 의 예전 저장 되살리기(`MKXPSaveFS.recover_legacy_save`·`recover_glob_matches`)는 RGSS2/3 에서 끈다 — 켜 두면 `Saves/` 맨 위의 `Save01.rvdata2` 를 게임 폴더로 도로 옮겨 버린다. Ruby 1.8 에서도 돌게 `alias`+문자열 `class_eval` 로 썼다. 저장 폴더는 `BINGSU_SAVE_DIR` 환경 변수(없으면 `System.data_directory`).
+- **Ruby 덮어쓰기**: 이 게임 설정 › 고급 › Ruby 버전(자동/1.8/1.9/3.1). 바꾸는 것은 Ruby 판뿐이고 문법 변환(modern)은 원래 modern 인 게임에서 3.1 을 고를 때만 유지한다(1.9 로 낮춘 Essentials 게임에 modern 변환을 걸지 않으려고).
+- **사운드폰트**: 동봉하지 않았다. TimGM6mb 는 Debian copyright 기준 GPL-2 only("or later" 없음)라 GPLv3 앱과 같이 줄 수 없고, GeneralUser GS 는 30MB 대라 8MB 조건을 넘는다. 그 밖의 CC0 GM 폰트는 크기·음질을 확인하지 못했다. 그래서 이 게임 설정 › 소리 › "MIDI 사운드폰트 파일(.sf2) 넣기"만 두었다(512MB 까지, `RIFF....sfbk` 머리 확인, 하나만 두고 모든 RPG Maker 게임 공용). `THIRD_PARTY_LICENSES.md` 는 바꾸지 않았다.
+- **RTP 넣기**: 따로 화면을 만들지 않고 일반 게임 가져오기가 "게임이 아니고 `Graphics/`·`Audio/` 가 있는 zip" 을 RTP 로 알아보게 했다. 게임 추가 메뉴의 "RTP 넣기 (zip)" 는 같은 파일 고르기를 연다. 이름은 zip·폴더 이름(vxace/vx/rpgxp·standard) → 안의 폴더 모양(Battlebacks1 → Ace, Autotiles·Windowskins → XP, 나머지 VX) 순으로 고른다. 안내 시트 버튼은 "그냥 열기"·"목록으로".
+- **화면 비율**: 엔진의 `mkxp_setGameRectChangedCallback` 이 그리는 영역을 알려 주므로 그 w/h 를 쓴다(1% 안쪽 변화는 무시). 콜백이 오기 전에는 RGSS2/3 544:416, XP 4:3. XP 는 실행 로그에 `screen=auto`.
+- **문구**: 설정 › 오픈소스 라이선스의 엔진 설명도 "RPG Maker XP" → "RPG Maker" 로(mkxp-z 고지 자체는 그대로).
+- **실행 로그**: `BINGSU_MKXP_LOG` 와 상관없이 `[BrassBowl] rgss=… ruby=… screen=…` 과 `설정 덧씌움 [키] sf=… rtp=…` 를 한 줄씩 남긴다.
+- **zip 안 한 단계 아래 폴더**: 기존 `Delivery` 가 이미 처리해 새 규칙이 필요 없었다.
