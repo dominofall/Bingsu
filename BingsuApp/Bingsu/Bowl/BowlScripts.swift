@@ -458,6 +458,85 @@ enum BowlScripts {
     """
     }
 
+    /// 포켓로그 소리 파일 저장 (2026-11-01). WebKit 은 XHR 로 받은 오디오 형식(audio/mpeg·audio/x-m4a) 응답을
+    /// 스트리밍으로 보고 HTTP 캐시에 넣지 않는다. 그래서 들었던 배경음악도 매번 서버에서 다시 받아 로딩이 길어졌다
+    /// (iPad 측정: battle_trainer.mp3 2.6MB 에 34초, 캐시에 mp3·m4a 0개, wav 418개). 서버는 10년 캐시를 허락한다.
+    /// 같은 출처 /audio/ 아래 mp3·m4a·ogg 를 처음 받을 때 Cache API 에 복사해 두고, 다음부터는 XHR 을 보내지 않고
+    /// 저장한 것으로 완료 이벤트를 흉내 낸다. 주소의 ?t= 가 게임 판이라 판이 바뀌면 새로 받고 예전 판은 지운다.
+    /// 다른 소리 스크립트(musicDiet·sfxWatch)는 readyState 4 의 readystatechange 에서 응답을 읽으므로 그 순서를 지킨다.
+    /// 끄면 저장한 것을 지운다(네이티브도 WKWebsiteDataTypeFetchCache 를 지움). `__bingsuAudioCache(true|false)`
+    static func audioCache(on: Bool) -> String {
+        """
+    (() => {
+      let ON = \(on ? "true" : "false");
+      const NAME = "bingsu-audio-v1", EXT = /\\.(mp3|m4a|ogg|aac|flac)$/i;
+      const dbg = (m) => { try { window.webkit.messageHandlers.diag.postMessage("acache " + m); } catch (e) {} };
+      if (typeof caches === "undefined" || !window.XMLHttpRequest) { dbg("unavailable"); return; }
+      let store = null;
+      const open = () => store || (store = caches.open(NAME).catch((e) => { dbg("open failed " + e); store = null; return null; }));
+      const audioURL = (m, u) => {
+        if (String(m).toUpperCase() !== "GET") return null;
+        try { const x = new URL(u, location.href); return x.origin === location.origin && x.pathname.startsWith("/audio/") && EXT.test(x.pathname) ? x.href : null; }
+        catch (e) { return null; }
+      };
+      const X = XMLHttpRequest.prototype, xo = X.open, xs = X.send, xa = X.abort;
+      X.open = function (m, u) {
+        this.__acUrl = ON ? audioURL(m, u) : null; this.__acAborted = false; this.__acServed = false;
+        if (this.__acUrl && !this.__acHooked) {
+          this.__acHooked = true;
+          // 처음 받은 것을 저장. 게임의 onload(곧바로 디코딩해 버퍼를 분리)보다 먼저 도는 readystatechange 에서 복사한다
+          this.addEventListener("readystatechange", () => {
+            if (this.readyState !== 4 || !this.__acUrl || this.__acServed || this.status !== 200 || this.responseType !== "arraybuffer") return;
+            const buf = this.response; if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
+            const url = this.__acUrl, copy = buf.slice(0), type = this.getResponseHeader("content-type") || "application/octet-stream";
+            open().then((c) => {
+              if (!c || !ON) return;
+              const bare = url.split("?")[0];
+              return c.delete(bare, { ignoreSearch: true })   // 예전 판(다른 ?t=)은 지운다
+                .then(() => c.put(url, new Response(copy, { headers: { "content-type": type, "content-length": String(copy.byteLength) } })))
+                .then(() => dbg("stored " + bare.split("/audio/")[1] + " " + (copy.byteLength >> 10) + "KB"));
+            }).catch((e) => dbg("store failed " + e));
+          });
+        }
+        return xo.apply(this, arguments);
+      };
+      const finish = (xhr, buf, type, url) => {
+        const def = (k, v) => Object.defineProperty(xhr, k, { value: v, configurable: true });
+        def("readyState", 4); def("status", 200); def("statusText", "OK"); def("response", buf); def("responseURL", url);
+        def("getResponseHeader", (h) => { const k = String(h).toLowerCase(); return k === "content-type" ? type : k === "content-length" ? String(buf.byteLength) : null; });
+        def("getAllResponseHeaders", () => "content-type: " + type + "\\r\\ncontent-length: " + buf.byteLength + "\\r\\n");
+        const pe = (t) => new ProgressEvent(t, { lengthComputable: true, loaded: buf.byteLength, total: buf.byteLength });
+        xhr.dispatchEvent(new Event("readystatechange"));
+        xhr.dispatchEvent(pe("progress")); xhr.dispatchEvent(pe("load")); xhr.dispatchEvent(pe("loadend"));
+      };
+      X.send = function () {
+        const url = this.__acUrl, args = arguments;
+        if (!url || !ON || this.responseType !== "arraybuffer") return xs.apply(this, args);
+        const t0 = performance.now();
+        open().then((c) => c ? c.match(url) : null).then((r) => {
+          if (this.__acAborted) return;
+          if (!r) { xs.apply(this, args); return; }
+          const type = r.headers.get("content-type") || "application/octet-stream";
+          return r.arrayBuffer().then((buf) => {
+            if (this.__acAborted) return;
+            this.__acServed = true;
+            dbg("hit " + url.split("?")[0].split("/audio/")[1] + " " + (buf.byteLength >> 10) + "KB " + (performance.now() - t0).toFixed(0) + "ms");
+            finish(this, buf, type, url);
+          });
+        }).catch((e) => { dbg("read failed " + e); if (!this.__acAborted && !this.__acServed) { try { xs.apply(this, args); } catch (x) {} } });
+      };
+      X.abort = function () { this.__acAborted = true; return xa.apply(this, arguments); };
+      window.__bingsuAudioCache = (v) => { ON = !!v; if (!ON) { store = null; caches.delete(NAME).catch(() => {}); } };
+      if (!ON) { caches.delete(NAME).catch(() => {}); return; }
+      // 디버그: 시작할 때 저장된 수와 용량
+      open().then((c) => c && c.keys()).then((k) => {
+        const est = navigator.storage && navigator.storage.estimate ? navigator.storage.estimate() : Promise.resolve({});
+        return est.then((e) => dbg("on entries=" + (k ? k.length : 0) + " usage=" + ((e.usage || 0) / 1048576).toFixed(0) + "MB quota=" + ((e.quota || 0) / 1048576).toFixed(0) + "MB"));
+      }).catch(() => {});
+    })();
+    """
+    }
+
     /// 무음 모드에서도 소리 재생. WebKit 은 Web Audio 만 쓰는 페이지를 "ambient"(무음 스위치를 따름)로 다룬다.
     /// 1) Audio Session API 로 분류를 playback 으로, 2) 그것만으로 안 되는 기기(iPad 포켓로그, 2026-10-31)를 위해
     /// 아무 소리 없는 <audio> 를 반복 재생해 WebKit 이 페이지를 미디어 재생으로 보게 한다. 끄면 둘 다 되돌린다.

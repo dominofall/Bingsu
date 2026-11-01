@@ -55,6 +55,9 @@ struct GlassBowl: UIViewRepresentable {
             // 배경음악을 낮은 표본율로 풀어 메모리 쌓임을 줄인다 (BowlScripts.musicDiet, 다른 소리 스크립트보다 먼저)
             let rate = (DishPrefsStore.shared.prefs(for: dish.id).musicRate ?? .default).rawValue
             ucc.addUserScript(WKUserScript(source: BowlScripts.musicDiet(rate: rate), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            // 들었던 배경음악·울음소리를 다시 받지 않게 저장해 둔다 (BowlScripts.audioCache, 이 게임 설정에서 끌 수 있음)
+            let cacheOn = DishPrefsStore.shared.prefs(for: dish.id).audioCache != false
+            ucc.addUserScript(WKUserScript(source: BowlScripts.audioCache(on: cacheOn), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         // Ogg Vorbis 디코더 + 폴리필 (게임 모듈보다 먼저)
         if let url = Bundle.main.url(forResource: "ogg-vorbis-decoder.min", withExtension: "js"),
@@ -221,7 +224,9 @@ struct GlassBowl: UIViewRepresentable {
                     guard let self else { return }
                     let on = BingsuApp.playInSilent(for: self.dish.id)
                     let vol = BingsuApp.gameVolume
-                    self.webView?.evaluateJavaScript("window.__bingsuSilentMode && __bingsuSilentMode(\(on)); window.__bingsu && __bingsu.setVolume && __bingsu.setVolume(\(vol))",
+                    let cache = DishPrefsStore.shared.prefs(for: self.dish.id).audioCache != false
+                    self.webView?.evaluateJavaScript("window.__bingsuSilentMode && __bingsuSilentMode(\(on)); window.__bingsu && __bingsu.setVolume && __bingsu.setVolume(\(vol));"
+                                                     + " window.__bingsuAudioCache && __bingsuAudioCache(\(cache))",
                                                      completionHandler: nil)
                 }
             })

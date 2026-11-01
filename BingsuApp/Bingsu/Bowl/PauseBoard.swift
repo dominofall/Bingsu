@@ -36,6 +36,8 @@ struct PauseBoard: View {
     @Binding var focus: PauseItem?
 
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
+    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = true
+    @ObservedObject private var prefsStore = DishPrefsStore.shared
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
@@ -162,12 +164,17 @@ struct PauseBoard: View {
                               selection: Binding(get: { musicRate.wrappedValue ?? .default }, set: { musicRate.wrappedValue = $0 }))
                     note("낮출수록 오래 해도 게임이 덜 다시 불러와져요. 새로 나오는 곡부터 바뀌어요.")
                 }
+                // 2026-11-01 사용자 요청: 게임하면서 다른 앱 영상을 같이 보기. "무음 모드에서도 소리 재생"(이 게임)의 반대
+                toggle("다른 앱 소리와 함께 듣기", sub: "영상·음악 앱과 같이 들려요. 무음 모드면 게임 소리는 꺼져요",
+                       isOn: Binding(get: { _ = globalPlayInSilent; _ = prefsStore.prefs(for: dish.id); return !BingsuApp.playInSilent(for: dish.id) },
+                                     set: { BingsuApp.setPlayInSilent(!$0, for: dish.id) }),
+                       item: .mixAudio)
                 toggle("진동", isOn: $rumble, item: .rumble)
                 if rumble {
                     slider("세기", value: rumbleStrength, in: 0.1...1, item: .rumbleStrength) { rumbleStrength = $0 }
                     toggle("블루투스 이어폰 보호", sub: "무선 이어폰일 때 진동을 가볍게", isOn: $rumbleBTSafe, item: .btSafe)
                 }
-                note("소리 크기와 진동은 모든 게임에 같이 적용돼요.")
+                note("소리 크기와 진동은 모든 게임에, 다른 앱 소리와 함께 듣기는 이 게임에만 적용돼요.")
             }
 
             group("화면·성능", wide: wide) {
@@ -275,7 +282,7 @@ struct PauseBoard: View {
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
     case resume, home, close, kind(PadKind), editLayout, leftHand, size, opacity, hidePad, labels, floating, applyAll
-    case volume, musicRate, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
+    case volume, musicRate, mixAudio, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 
 /// 패드 종류 고르기 칸 (이름만)

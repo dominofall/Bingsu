@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import WebKit
 
 /// 게임 하나의 설정: 표지 이미지, 이 게임만의 가상 패드 설정, 컨트롤러 진동표, 성능(화질·기록), 저장 데이터(로컬 게임만).
 /// 게임 목록에서 게임칩을 꾹 눌러 열거나, 게임 중 일시정지 시트 "이 게임 설정"으로 연다.
@@ -43,6 +44,19 @@ struct DishSettingsView: View {
                     store.update(dish.id) { $0.playInSilent = c == .global ? nil : c == .on }
                     BingsuApp.configureAudioSession()
                     NotificationCenter.default.post(name: BingsuApp.soundPrefsChanged, object: nil)
+                })
+    }
+
+    /// 포켓로그 소리 파일 저장 (BowlScripts.audioCache). 끄면 이 게임 웹 저장소의 Cache API 저장분을 지운다
+    private var audioCache: Binding<Bool> {
+        Binding(get: { prefs.audioCache != false },
+                set: { on in
+                    store.update(dish.id) { $0.audioCache = on ? nil : false }
+                    if !on {
+                        WKWebsiteDataStore(forIdentifier: GlassBowl.storeID(for: dish))
+                            .removeData(ofTypes: [WKWebsiteDataTypeFetchCache], modifiedSince: .distantPast) {}
+                    }
+                    NotificationCenter.default.post(name: BingsuApp.soundPrefsChanged, object: nil)   // 켜진 게임에도 바로
                 })
     }
 
@@ -116,6 +130,17 @@ struct DishSettingsView: View {
                         Text("화면")
                     } footer: {
                         Text("켜면 도트 그림을 흐리지 않고 또렷하게 키워요. 끄면 부드럽게 보여요. 게임을 다시 켜면 적용돼요.")
+                    }
+                }
+
+                if dish.knownWeb == .pokerogue {
+                    Section {
+                        Toggle(isOn: audioCache) {
+                            Text("음악·울음소리 저장")
+                            Text("들었던 곡은 기다리지 않고 바로 틀어요")
+                        }
+                    } footer: {
+                        Text("한 번 받은 배경음악과 포켓몬 울음소리를 이 기기에 저장해 두고, 다음부터는 서버에서 다시 받지 않아요. 전부 모이면 300MB 정도예요. 끄면 저장한 파일을 지워요.")
                     }
                 }
 

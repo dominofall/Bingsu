@@ -398,6 +398,7 @@ struct BowlContainerView: View {
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
             case .leftHand?: p.leftHanded.toggle(); setPadHere(p)
             case .applyAll?: applyPadToAll()
+            case .mixAudio?: BingsuApp.setPlayInSilent(!BingsuApp.playInSilent(for: dish.id), for: dish.id)
             case .rumble?: UserDefaults.standard.set(!Rumble.shared.enabled, forKey: Rumble.key)
             case .btSafe?: UserDefaults.standard.set(!Rumble.shared.btSafe, forKey: Rumble.btSafeKey)
             case .hud?: showHUD.toggle()
@@ -416,7 +417,7 @@ struct BowlContainerView: View {
         var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.providesStick() { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
-        out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.rumble]
+        out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.mixAudio, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
         out += [.fps, .quality, .hud]
         if !dish.isRemote { out.append(.backup) }

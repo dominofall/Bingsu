@@ -40,6 +40,13 @@ struct BingsuApp: App {
         return UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? true
     }
 
+    /// 이 게임만 "무음 모드에서도 소리 재생"을 정하고 바로 적용한다 (일시정지 화면 "다른 앱 소리와 함께 듣기"는 이 값의 반대)
+    @MainActor static func setPlayInSilent(_ on: Bool, for dishID: String) {
+        DishPrefsStore.shared.update(dishID) { $0.playInSilent = on }
+        configureAudioSession()
+        NotificationCenter.default.post(name: soundPrefsChanged, object: nil)
+    }
+
     @MainActor static func configureAudioSession() {
         let session = AVAudioSession.sharedInstance()
         let inSilent = playInSilent(for: audioDishID)
