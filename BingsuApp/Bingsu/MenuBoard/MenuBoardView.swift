@@ -139,7 +139,7 @@ struct MenuBoardView: View {
                     ContentUnavailableView {
                         Label("아직 게임이 없어요", systemImage: "snowflake")
                     } description: {
-                        Text("게임 파일을 가져와 시작해 보세요.")
+                        Text("RPG Maker 로 만든 PC용 게임을 zip 으로 가져와 시작해 보세요.")
                     } actions: {
                         Button("게임 추가") { showAddMenu = true }.buttonStyle(.borderedProminent).tint(Palette.accent)
                     }
@@ -197,11 +197,13 @@ struct MenuBoardView: View {
             // iPad 에선 이 대화상자가 팝오버라, 닫히는 도중에 다른 창을 띄우면 그 창이 터치를 못 받는 채로 남는다 → 닫힌 뒤에 띄운다
             Button("zip 파일 가져오기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
             Button("주소로 zip 내려받기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showDownload = true } }
-            Button("주소로 웹 게임 추가") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showAddWeb = true } }
             // RTP zip 도 게임 가져오기가 알아보고 RTP 선반에 넣는다 (Delivery.prepare)
             Button("RTP 넣기 (zip)") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
+            // 브라우저 게임은 부가 기능이라 맨 아래 (App Review 4.7: PC용 RPG Maker 게임 실행이 앱의 주 목적)
+            Button("주소로 웹 게임 추가") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showAddWeb = true } }
         } message: {
-            Text("PC용 게임은 zip 으로, 브라우저 게임은 https 주소로 넣어요. iCloud Drive 의 큰 zip 은 선택한 뒤 내려받는 동안 잠시 멈춘 것처럼 보일 수 있어요.")
+            // iPhone 가로에서 버튼 넷이 다 보이도록 짧게 (길면 마지막 줄이 잘린다)
+            Text("RPG Maker XP·VX·VX Ace·MV·MZ 로 만든 PC용 게임을 zip 으로 넣어요.")
         }
         .sheet(isPresented: $showAddWeb) { AddWebGameView().environmentObject(menu) }
         .sheet(isPresented: $showDownload) { DownloadView(courier: courier) }
