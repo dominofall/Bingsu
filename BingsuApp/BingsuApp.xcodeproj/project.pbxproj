@@ -12,6 +12,7 @@
 		075CD23E7FDA85BB037A5849 /* IceBowl in Resources */ = {isa = PBXBuildFile; fileRef = 3617925A02610223A49BE51D /* IceBowl */; };
 		094080A02037DAA432ED4741 /* BrassBowlEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D21C1CC71DE7C6BC818538A /* BrassBowlEngine.swift */; };
 		0B3E24A5D975669DFE977D19 /* IceTray.swift in Sources */ = {isa = PBXBuildFile; fileRef = 295FCF0A4046752C77CFFBC8 /* IceTray.swift */; };
+		0D1D4A8229B22D9E89D1F79B /* DriveShelf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B86D0248C95E21AE4C56C2F /* DriveShelf.swift */; };
 		1123EBA1909EAEDFC37B4265 /* SpoonSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */; };
 		137F44E8983CD6401E9EB8B6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCE4B25C91A30226FA7CE67 /* Glass.swift */; };
 		175CF3F1248AA510C122057F /* WebGames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DE1AD2F52844D2C74FB12B /* WebGames.swift */; };
@@ -31,8 +32,10 @@
 		4F7D8AD32BA29499CEAD7EF1 /* DeliveryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C21A849703554258828BC24 /* DeliveryView.swift */; };
 		52966682F2BD98257537291F /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F10797A0398F1BA51C5ADAF /* Palette.swift */; };
 		52EC196FE7CD52FFAE1F6702 /* MenuPadNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C0227D72374A629D33F563 /* MenuPadNavigator.swift */; };
+		68E1194F1E0F81855A7610CC /* DriveCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */; };
 		70D9400070111AD5E199DF46 /* PerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37105115927CA826EDF1F164 /* PerfLog.swift */; };
 		79EF35A85F0FE761724F89C0 /* GamePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09F035B0C3E611B20D88C77C /* GamePicker.swift */; };
+		7BAE4F8F89B52ABF21C05DE6 /* IglooSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989577B7C6251DD25703E9D4 /* IglooSelfTest.swift */; };
 		80950D9AA7313C118A603F43 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6B6355752F363DBD24157CFD /* ZIPFoundation */; };
 		83FF9626499DF6D3BF2B1E45 /* SpoonLayoutEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44A9111A0EFCB4E6077F87B /* SpoonLayoutEditor.swift */; };
 		8616F3FC74E026DF0C7D538D /* RecipeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF71D97A8C5CCC358C42466C /* RecipeDetector.swift */; };
@@ -42,6 +45,7 @@
 		938F1FE0C2462E529A0E3661 /* SampleGame in Resources */ = {isa = PBXBuildFile; fileRef = 9D9A4C8786BBFE3221D36278 /* SampleGame */; };
 		945A7EDEC7444DF3FDEDBC00 /* LongSpoon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A0868389022A39B2B41DE /* LongSpoon.swift */; };
 		960FEFB105501E8D62B8DD14 /* AuthPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2253E1CC5483C9EF25653A7 /* AuthPopupView.swift */; };
+		973A882430815F6DB7E0DE88 /* DriveTicket.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FAEB8CE0AF31876BC807AC /* DriveTicket.swift */; };
 		9812BA6C83623EDFF8AF5ABA /* Rumble in Resources */ = {isa = PBXBuildFile; fileRef = 2851AF9D86A7BC63BFE83C44 /* Rumble */; };
 		9AA55B7BBFF66C1D869D0EBF /* PokemonSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */; };
 		9E0A32648E672FFAB3971FA3 /* SafeUnzip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7A0B09C564E1653D5C9CD7 /* SafeUnzip.swift */; };
@@ -110,11 +114,16 @@
 		5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuButtonPlace.swift; sourceTree = "<group>"; };
 		661EF2D16CB92E30DD75247E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		6A09005EDDC989FBC2219268 /* Thermometer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thermometer.swift; sourceTree = "<group>"; };
+		6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveCounter.swift; sourceTree = "<group>"; };
+		7C42938298781D2E35741C26 /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
 		7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSkin.swift; sourceTree = "<group>"; };
 		8895E843068FA01C56BEC359 /* SkinPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinPicker.swift; sourceTree = "<group>"; };
 		8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RumbleSet.swift; sourceTree = "<group>"; };
 		93A4FDE53502C75F063E7580 /* Dish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dish.swift; sourceTree = "<group>"; };
 		94869721A2A46AE8698BB186 /* Bingsu.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Bingsu.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		96FAEB8CE0AF31876BC807AC /* DriveTicket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTicket.swift; sourceTree = "<group>"; };
+		989577B7C6251DD25703E9D4 /* IglooSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IglooSelfTest.swift; sourceTree = "<group>"; };
+		9B86D0248C95E21AE4C56C2F /* DriveShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveShelf.swift; sourceTree = "<group>"; };
 		9D9A4C8786BBFE3221D36278 /* SampleGame */ = {isa = PBXFileReference; lastKnownFileType = folder; name = SampleGame; path = Bingsu/Resources/SampleGame; sourceTree = SOURCE_ROOT; };
 		A2253E1CC5483C9EF25653A7 /* AuthPopupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthPopupView.swift; sourceTree = "<group>"; };
 		AC4912066674E48192C0479A /* AsarArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsarArchive.swift; sourceTree = "<group>"; };
@@ -190,6 +199,7 @@
 			children = (
 				05530461C9ACF9DF10D9D361 /* LICENSE */,
 				B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */,
+				B0AEC7AFDF6EBE8B46507E02 /* BingsuApp */,
 			);
 			name = Bingsu;
 			path = ..;
@@ -221,6 +231,14 @@
 				94869721A2A46AE8698BB186 /* Bingsu.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B0AEC7AFDF6EBE8B46507E02 /* BingsuApp */ = {
+			isa = PBXGroup;
+			children = (
+				7C42938298781D2E35741C26 /* Bingsu.xcconfig */,
+			);
+			path = BingsuApp;
 			sourceTree = "<group>";
 		};
 		B97A3E7F8EAD4DD6E10871BA /* Bingsu */ = {
@@ -320,9 +338,13 @@
 		EE1C12081FF0CE0DBAE8C7CD /* Freezer */ = {
 			isa = PBXGroup;
 			children = (
+				6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */,
+				9B86D0248C95E21AE4C56C2F /* DriveShelf.swift */,
+				96FAEB8CE0AF31876BC807AC /* DriveTicket.swift */,
 				433D04EF76ACB0C11EC74FCD /* Freezer.swift */,
 				295FCF0A4046752C77CFFBC8 /* IceTray.swift */,
 				FCDF197A6F1466C399E2968D /* Igloo.swift */,
+				989577B7C6251DD25703E9D4 /* IglooSelfTest.swift */,
 			);
 			path = Freezer;
 			sourceTree = "<group>";
@@ -463,6 +485,9 @@
 				C0406834C540F8DD64530C73 /* DishPrefs.swift in Sources */,
 				FB37FC71E46BCD318F9430AC /* DishSettingsView.swift in Sources */,
 				190C528E23B0F5B4D13852DA /* DownloadView.swift in Sources */,
+				68E1194F1E0F81855A7610CC /* DriveCounter.swift in Sources */,
+				0D1D4A8229B22D9E89D1F79B /* DriveShelf.swift in Sources */,
+				973A882430815F6DB7E0DE88 /* DriveTicket.swift in Sources */,
 				C721654EDFD44EF039797864 /* Freezer.swift in Sources */,
 				C6B9109FE6335760F2E98BD0 /* FreezerSection.swift in Sources */,
 				79EF35A85F0FE761724F89C0 /* GamePicker.swift in Sources */,
@@ -470,6 +495,7 @@
 				D401791711BEDF7422DF001B /* GlassBowl.swift in Sources */,
 				0B3E24A5D975669DFE977D19 /* IceTray.swift in Sources */,
 				28A43B4C0978D8D45733FA60 /* Igloo.swift in Sources */,
+				7BAE4F8F89B52ABF21C05DE6 /* IglooSelfTest.swift in Sources */,
 				945A7EDEC7444DF3FDEDBC00 /* LongSpoon.swift in Sources */,
 				E94ED9F9E71A3D4D65EE7699 /* MenuBoardStore.swift in Sources */,
 				F6BE8D5E84C05252738D157A /* MenuBoardView.swift in Sources */,
@@ -508,6 +534,7 @@
 /* Begin XCBuildConfiguration section */
 		5478F49BF9E31A6B2F941D5B /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C42938298781D2E35741C26 /* Bingsu.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Bingsu/Bingsu.entitlements;
@@ -562,7 +589,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -624,7 +651,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 24;
+				CURRENT_PROJECT_VERSION = 25;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -660,6 +687,7 @@
 		};
 		A5FD3328FA9E37F91EACA9FA /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 7C42938298781D2E35741C26 /* Bingsu.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Bingsu/Bingsu.entitlements;

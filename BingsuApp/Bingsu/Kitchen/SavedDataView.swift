@@ -35,7 +35,7 @@ enum FreezerShelf {
         .sorted { ($0.modified ?? .distantPast) > ($1.modified ?? .distantPast) }
     }
 
-    /// 그 폴더의 저장 데이터를 모두 지운다: 이 기기의 Saves/<폴더>, 같은 폴더를 쓰는 게임의 웹 저장소, iCloud 사본.
+    /// 그 폴더의 저장 데이터를 모두 지운다: 이 기기의 Saves/<폴더>, 같은 폴더를 쓰는 게임의 웹 저장소, 클라우드(지금 고른 선반) 사본.
     /// 실행 중인 게임은 부르는 쪽이 먼저 닫는다.
     @MainActor
     static func wipe(folder: String, dishes: [Dish]) async {
@@ -99,7 +99,7 @@ struct SavedDataView: View {
             }
             Button("취소", role: .cancel) {}
         } message: { _ in
-            Text("이 기기와 iCloud 에서 진행 상황과 백업이 모두 지워지고 되돌릴 수 없어요.")
+            Text("\(Igloo.shared.placesText)에서 진행 상황과 백업이 모두 지워지고 되돌릴 수 없어요.")
         }
     }
 

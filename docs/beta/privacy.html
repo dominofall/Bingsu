@@ -51,11 +51,11 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
   <header>
     <div class="eyebrow">빙수 · iPhone·iPad 게임 런처</div>
     <h1>개인정보 처리방침</h1>
-    <p class="meta">시행일 2026년 10월 30일 · 적용 대상: 빙수 앱(TestFlight 베타 포함)</p>
+    <p class="meta">시행일 2026년 11월 1일(Google Drive 동기화 추가) · 적용 대상: 빙수 앱(TestFlight 베타 포함)</p>
   </header>
 
   <div class="summary">
-    <p>빙수는 이용자의 개인정보를 수집하지 않으며, 개발자가 운영하는 서버도 없습니다. 앱에서 만들어지는 모든 데이터는 이용자의 기기와 이용자 본인의 iCloud 안에만 저장됩니다.</p>
+    <p>빙수는 이용자의 개인정보를 수집하지 않으며, 개발자가 운영하는 서버도 없습니다. 앱에서 만들어지는 모든 데이터는 이용자의 기기와, 이용자가 직접 고른 이용자 본인의 iCloud 또는 Google Drive 안에만 저장됩니다.</p>
   </div>
 
   <section>
@@ -78,11 +78,24 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 
   <section>
     <h2>3. iCloud 동기화</h2>
-    <p>설정에서 iCloud 동기화를 켜 두면, 기기에서 가져온 게임의 저장 데이터와 게임별 설정이 이용자 본인 Apple ID 의 iCloud Drive 에 있는 빙수 전용 공간에 복사되어 같은 Apple ID 의 다른 기기와 공유됩니다. 이 데이터는 Apple 이 보관하며 개발자는 볼 수 없습니다. 동기화 파일에는 저장한 기기를 구분하려고 기기 이름이 함께 들어가고, 이 이름은 이용자 본인의 기기 화면에만 표시됩니다. 웹 게임의 로그인 정보는 iCloud 로 보내지 않습니다. 동기화는 설정에서 언제든 끌 수 있습니다.</p>
+    <p>설정 › 클라우드 동기화에서 iCloud 를 고르면, 기기에서 가져온 게임의 저장 데이터와 게임별 설정이 이용자 본인 Apple ID 의 iCloud Drive 에 있는 빙수 전용 공간에 복사되어 같은 Apple ID 의 다른 기기와 공유됩니다. 이 데이터는 Apple 이 보관하며 개발자는 볼 수 없습니다. 동기화 파일에는 저장한 기기를 구분하려고 기기 이름이 함께 들어가고, 이 이름은 이용자 본인의 기기 화면에만 표시됩니다. 웹 게임의 로그인 정보는 iCloud 로 보내지 않습니다. 동기화는 설정에서 언제든 끌 수 있습니다.</p>
   </section>
 
   <section>
-    <h2>4. 외부 사이트와 내려받기</h2>
+    <h2>4. Google Drive 동기화</h2>
+    <p>설정 › 클라우드 동기화에서 Google Drive 를 고르고 "Google Drive 연결"을 눌러 Google 화면에서 직접 허용한 경우에만 동작합니다. iCloud 와 Google Drive 는 한 번에 하나만 쓸 수 있습니다.</p>
+    <dl class="rows">
+      <div class="row"><dt>저장 위치</dt><dd>이용자 본인 Google 계정의 Google Drive 에 있는 숨은 앱 전용 공간(appDataFolder). Drive 목록에는 보이지 않고, 빙수 말고는 읽을 수 없습니다. 빙수도 이 공간 밖의 Drive 파일은 볼 수 없습니다.</dd></div>
+      <div class="row"><dt>보내는 것</dt><dd>가져온 게임의 저장 데이터와 백업, 게임별 설정, 표지 이미지. 저장한 기기를 구분하려고 기기 이름·모델명·저장 시각이 함께 들어가며, 이용자 본인의 기기 화면에만 표시됩니다. 웹 게임의 로그인 정보는 보내지 않습니다.</dd></div>
+      <div class="row"><dt>받는 권한</dt><dd>앱 전용 공간에 대한 접근(drive.appdata) 하나뿐입니다. 이메일 주소, 이름, 프로필, 다른 Drive 파일에 대한 권한은 요청하지 않습니다.</dd></div>
+      <div class="row"><dt>연결 정보</dt><dd>Google 이 발급한 접근 토큰은 이 기기의 키체인에만 저장되고 다른 기기나 백업으로 옮겨지지 않습니다. 빙수와 Google 사이에 개발자의 서버는 없으며, 개발자는 이용자의 Drive 데이터를 볼 수 없습니다.</dd></div>
+      <div class="row"><dt>보관</dt><dd>Drive 에 올라간 데이터는 Google 이 보관하며 <a href="https://policies.google.com/privacy">Google 개인정보처리방침</a>을 따릅니다. 빙수가 Google API 에서 받은 정보의 사용은 제한적 사용(Limited Use) 요건을 포함한 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 서비스 사용자 데이터 정책</a>을 따르며, 동기화 말고 다른 용도로 쓰거나 다른 곳에 넘기지 않습니다.</dd></div>
+      <div class="row"><dt>해제와 삭제</dt><dd>설정 › 클라우드 동기화 › "연결 해제"를 누르면 빙수가 Google 에 접근 권한 철회를 요청하고 기기의 토큰을 지웁니다. Drive 에 이미 올라간 데이터는 Google Drive 웹 › 설정 › 앱 관리에서 빙수의 "숨겨진 앱 데이터 삭제"로 직접 지울 수 있고, Google 계정 › 보안 › 타사 연결에서도 접근을 끊을 수 있습니다. 앱 안의 "저장 데이터 관리"에서 게임의 진행 상황을 지우면 연결된 Drive 쪽 사본도 함께 지워집니다.</dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <h2>5. 외부 사이트와 내려받기</h2>
     <ul>
       <li>이용자가 주소로 추가한 웹 게임은 앱 안 브라우저로 그 사이트를 엽니다. 그 사이트가 수집하는 정보는 각 사이트의 운영자와 개인정보 처리방침을 따릅니다.</li>
       <li>"주소로 zip 내려받기"는 이용자가 직접 입력한 https 주소에서만 파일을 받습니다. 빙수는 주소를 추천하거나 앱에 넣어 두지 않습니다.</li>
@@ -90,7 +103,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
   </section>
 
   <section>
-    <h2>5. 기기 권한</h2>
+    <h2>6. 기기 권한</h2>
     <dl class="rows">
       <div class="row"><dt>사진</dt><dd>게임 표지 이미지를 고를 때만, 이용자가 고른 사진 한 장을 읽습니다.</dd></div>
       <div class="row"><dt>게임 컨트롤러</dt><dd>연결된 컨트롤러의 버튼 입력과 진동만 사용합니다.</dd></div>
@@ -99,12 +112,12 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
   </section>
 
   <section>
-    <h2>6. 어린이의 개인정보</h2>
+    <h2>7. 어린이의 개인정보</h2>
     <p>빙수는 누구의 개인정보도 수집하지 않으므로 어린이의 개인정보도 수집하지 않습니다.</p>
   </section>
 
   <section>
-    <h2>7. 문의와 변경</h2>
+    <h2>8. 문의와 변경</h2>
     <p>베타 기간의 문의는 TestFlight 앱에서 빙수를 고른 뒤 "베타 피드백 보내기"로 보내 주세요. 이 방침이 바뀌면 이 페이지에 바뀐 내용과 시행일을 먼저 알립니다.</p>
   </section>
 

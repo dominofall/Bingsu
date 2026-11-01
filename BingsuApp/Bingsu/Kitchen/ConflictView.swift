@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 동기화 충돌: "어느 저장 데이터로 할까요?". 게임을 열 때 이 기기와 iCloud 쪽이 둘 다 바뀌었으면 뜬다.
+/// 동기화 충돌: "어느 저장 데이터로 할까요?". 게임을 열 때 이 기기와 클라우드(iCloud·Google Drive) 쪽이 둘 다 바뀌었으면 뜬다.
 /// 고르지 않은 쪽은 백업에 남는다.
 struct ConflictView: View {
     let conflict: IglooConflict
@@ -12,13 +12,13 @@ struct ConflictView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
-                    Text("이 기기와 iCloud 에 서로 다른 저장 데이터가 있어요. 이어서 할 것을 골라 주세요.")
+                    Text("이 기기와 \(conflict.shelfName) 에 서로 다른 저장 데이터가 있어요. 이어서 할 것을 골라 주세요.")
                         .font(.subheadline).foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     card(title: "이 기기", side: conflict.local, systemImage: UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone") {
                         onChoose(true); dismiss()
                     }
-                    card(title: "iCloud", side: conflict.cloud, systemImage: "icloud") {
+                    card(title: conflict.shelfName, side: conflict.cloud, systemImage: conflict.shelfSymbol) {
                         onChoose(false); dismiss()
                     }
                     Text("고르지 않은 저장 데이터는 이 게임 설정 › 백업에 남겨 둬요.")

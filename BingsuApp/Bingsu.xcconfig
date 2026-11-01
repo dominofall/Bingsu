@@ -1,0 +1,8 @@
+// 빙수 타깃 빌드 설정 (project.yml configFiles). 커밋하는 파일 — 비밀값은 넣지 않는다.
+// Google Drive OAuth 클라이언트 ID 는 같은 폴더의 Secrets.xcconfig(gitignore) 에서 읽는다. 없으면 빈 값으로 빌드되고
+// 설정의 Google Drive 선택지가 "준비 중" 이 된다. 만드는 법: Secrets.example.xcconfig 를 복사해 값을 채운다.
+BINGSU_GOOGLE_CLIENT_ID =
+// 빈 스킴은 Info.plist 검증에 걸릴 수 있어 아무도 쓰지 않는 자리 값을 둔다
+BINGSU_GOOGLE_REVERSED_CLIENT_ID = bingsu-drive-unset
+
+#include? "Secrets.xcconfig"

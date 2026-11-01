@@ -63,6 +63,10 @@ struct BingsuApp: App {
                     // Files 앱 "다음으로 열기" / 공유 시트로 받은 zip. LSSupportsOpeningDocumentsInPlace 라서
                     // Files 의 원본을 가리키는 security-scoped URL 이 올 수 있다 → Delivery.start 가 접근을 열고 닫는다.
                     // 다른 앱이 보낸 사본은 Documents/Inbox 에 오며 가져온 뒤 지운다.
+                    // Google Drive 동의 화면의 되돌림 주소는 ASWebAuthenticationSession 이 받는다. 여기로 오면(진행 중인 연결 없음) 버린다
+                    if let s = url.scheme, s == DriveTicket.config?.redirectScheme {
+                        NSLog("[Drive] 되돌림 주소 받음 — 진행 중인 연결이 없어 무시"); return
+                    }
                     guard url.isFileURL else { return }
                     NSLog("[Delivery] open url received (\(url.pathExtension))")
                     menu.pendingImport = url
@@ -70,7 +74,13 @@ struct BingsuApp: App {
                 .task {
                     #if DEBUG
                     // 디버그 자가 테스트: 가상 패드 배치 왕복·예전 설정 호환 (게임 쪽 자가 테스트는 GlassBowl)
-                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run() }
+                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run() }
+                    // 디버그: BINGSU_DRIVE_CONNECT=1 이면 켤 때 "Google Drive 연결" 을 누른 것처럼 (흉내 서버 동의 화면 → 토큰, 결과는 로그)
+                    if ProcessInfo.processInfo.environment["BINGSU_DRIVE_CONNECT"] == "1" {
+                        try? await Task.sleep(for: .seconds(2))
+                        let err = await Igloo.shared.connectDrive()
+                        NSLog("[Drive] 자동 연결 \(err == nil ? "끝" : "실패: \(err!)") · \(Igloo.shared.statusText)")
+                    }
                     #endif
                     // 디버그: BINGSU_ADDWEB="이름|https://..." 로 웹 게임 추가 경로 실행 (시뮬레이터 검증용; 결과는 로그)
                     if let spec = ProcessInfo.processInfo.environment["BINGSU_ADDWEB"], let bar = spec.firstIndex(of: "|") {

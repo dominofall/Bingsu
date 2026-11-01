@@ -71,17 +71,16 @@ final class FreezerModel: ObservableObject {
 struct FreezerSection: View {
     @ObservedObject var model: FreezerModel
     @ObservedObject private var igloo = Igloo.shared
-    @AppStorage(Igloo.enabledKey) private var icloudSync = true
 
     var body: some View {
         Section {
             LabeledContent("마지막 저장") {
                 Text(model.lastSaved.map { $0.formatted(date: .abbreviated, time: .shortened) } ?? "아직 없음")
             }
-            LabeledContent("iCloud 동기화") {
-                if !icloudSync { Text("꺼져 있어요") }
-                else if let d = igloo.lastSynced(model.freezer.dish) { Text(Igloo.relative(d)) }
-                else { Text("아직 안 했어요") }
+            LabeledContent("클라우드 동기화") {
+                if !igloo.enabled { Text("꺼져 있어요") }
+                else if let d = igloo.lastSynced(model.freezer.dish) { Text("\(igloo.backend.label) · \(Igloo.relative(d))") }
+                else { Text("\(igloo.backend.label) · 아직 안 했어요") }
             }
             Button { model.prepareExport() } label: { Label("백업 파일 내보내기", systemImage: "square.and.arrow.up") }
                 .disabled(model.lastSaved == nil)

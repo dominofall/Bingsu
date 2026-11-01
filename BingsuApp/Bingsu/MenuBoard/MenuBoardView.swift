@@ -109,7 +109,7 @@ struct MenuBoardView: View {
         return false
     }
 
-    /// 게임 열기. 멈춰 둔 게임은 바로 이어 하고, 새로 열 때는 iCloud 에 더 새 저장이 있는지 먼저 본다.
+    /// 게임 열기. 멈춰 둔 게임은 바로 이어 하고, 새로 열 때는 클라우드(iCloud·Google Drive)에 더 새 저장이 있는지 먼저 본다.
     private func serve(_ dish: Dish) {
         guard dish.recipe.servable else { return }
         if running?.id == dish.id {
@@ -390,7 +390,7 @@ struct MenuBoardView: View {
     private func deleteNote(for dish: Dish) -> String {
         MenuBoardStore.isCustomWeb(dish)
             ? "이 웹 게임의 로그인 정보와 진행도도 함께 지워져요."
-            : "\"삭제\"는 게임 파일만 지워요. 저장 데이터는 남아 있어 다시 가져오면 이어서 할 수 있고, 설정 › 저장 데이터 관리에서 따로 지울 수 있어요. \"저장 데이터까지 삭제\"는 iCloud 사본과 백업까지 모두 지워요."
+            : "\"삭제\"는 게임 파일만 지워요. 저장 데이터는 남아 있어 다시 가져오면 이어서 할 수 있고, 설정 › 저장 데이터 관리에서 따로 지울 수 있어요. \"저장 데이터까지 삭제\"는 \(Igloo.shared.enabled ? Igloo.shared.backend.label + " 사본과 " : "")백업까지 모두 지워요."
     }
 
     private func delete(_ dish: Dish, saves: Bool = false) {

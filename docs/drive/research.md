@@ -106,7 +106,7 @@ protocol IglooShelf {
 
 **OAuth 클라이언트.** Google Cloud 콘솔 › Google Auth Platform › Clients 에서 **iOS 종류**로 만든다. 입력: 이름, 번들 ID(`com.minwoo.bingsu`), App Store ID(출시 뒤 선택), Team ID(선택, App Check 쓸 때 필수) ([OAuth 2.0 for iOS & Desktop Apps](https://developers.google.com/accounts/docs/OAuth2InstalledApp)). iOS 클라이언트에는 시크릿이 없고 토큰 요청에 `client_secret` 을 보내지 않는다 ([native-app](https://developers.google.com/identity/protocols/oauth2/native-app)). 플랫폼마다 따로 클라이언트를 만들고, 네이티브 앱에 "웹" 종류를 쓰지 말라는 정책이 있다 ([OAuth 정책](https://developers.google.com/identity/protocols/oauth2/policies)).
 
-**되돌림 URL.** 뒤집은 클라이언트 ID 스킴 `com.googleusercontent.apps.<id>:/oauth2redirect`. native-app 문서에 "Custom URI schemes are no longer supported due to the risk of app impersonation" 라는 경고가 있으나 구체 문장은 **Android·Chrome 앱**을 가리키고, Google Sign-In iOS 설정 문서는 지금도 `CFBundleURLTypes` 에 뒤집은 클라이언트 ID 스킴을 넣으라고 한다 ([start-integrating](https://developers.google.com/identity/sign-in/ios/start-integrating)). 즉 **iOS 클라이언트는 이 스킴을 그대로 쓴다**고 보되, SDK 없이 쓸 때도 거부되지 않는지는 PoC 1단계에서 확인(미확인). 루프백(`127.0.0.1`) 은 iOS 에서 지원 중단 ([native-app](https://developers.google.com/identity/protocols/oauth2/native-app)).
+**되돌림 URL.** 뒤집은 클라이언트 ID 스킴 `com.googleusercontent.apps.<id>:/oauth2redirect`. native-app 문서에 "Custom URI schemes are no longer supported due to the risk of app impersonation" 라는 경고가 있으나 구체 문장은 **Android·Chrome 앱**을 가리키고, Google Sign-In iOS 설정 문서는 지금도 `CFBundleURLTypes` 에 뒤집은 클라이언트 ID 스킴을 넣으라고 한다 ([start-integrating](https://developers.google.com/identity/sign-in/ios/start-integrating)). 즉 **iOS 클라이언트는 이 스킴을 그대로 쓴다**고 보되, SDK 없이 쓸 때도 거부되지 않는지는 PoC 1단계에서 확인(미확인). → **인증 요청까지는 확인(2026-11-01, §7)**: 이 스킴의 `redirect_uri` 로 보낸 요청에 Google 이 오류 없이 계정 입력 화면을 띄움. 토큰 교환은 실제 계정 연결 때 확인. 루프백(`127.0.0.1`) 은 iOS 에서 지원 중단 ([native-app](https://developers.google.com/identity/protocols/oauth2/native-app)).
 
 **브라우저.** 내장 웹뷰(WKWebView) 는 `disallowed_useragent` 로 차단된다. Google 이 권하는 iOS 라이브러리는 Google Sign-In 과 **AppAuth-iOS** 인데, AppAuth-iOS 가 하는 일이 바로 `ASWebAuthenticationSession` + PKCE 이므로 ([AppAuth-iOS](https://github.com/openid/AppAuth-iOS), Apache-2.0, iOS 15+) 같은 방식을 직접 쓰는 것은 정책상 문제없다. `ASWebAuthenticationSession` 은 `presentationContextProvider` 가 필요하고 전경에서만 시작할 수 있으며, `prefersEphemeralWebBrowserSession = true` 면 Safari 쿠키를 공유하지 않는다(빙수처럼 "계정 고르기"를 매번 보여 주는 쪽이 안전) ([Apple 문서](https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession)). iOS 17.4+ 는 `.https(host:path:)` 콜백도 되지만 Google iOS 클라이언트가 https 되돌림을 받는지는 미확인 → 스킴 방식 유지.
 
@@ -192,7 +192,7 @@ protocol IglooShelf {
 | 시각 | `modifiedTime` 은 쓰기 가능(설정하면 `modifiedByMeTime` 도 갱신), `createdTime`·`version`·`headRevisionId`·`md5Checksum`·`sha256Checksum` 은 출력 전용. `version` 은 서버 쪽 변경마다 단조 증가 | [files](https://developers.google.com/workspace/drive/api/reference/rest/v3/files) |
 | 변경 감지 | `changes.getStartPageToken` → `changes.list(pageToken, spaces=appDataFolder, includeRemoved=true)`. 토큰은 만료되지 않음. 변경 항목은 `fileId`·`time`·`removed`·`file` | [changes.list](https://developers.google.com/workspace/drive/api/reference/rest/v3/changes/list), [changes](https://developers.google.com/workspace/drive/api/reference/rest/v3/changes) |
 | 조건부 쓰기 | v3 `files.update` 에 `If-Match`/etag 전제 조건이 **문서화돼 있지 않다**(v3 File 리소스에 etag 필드 없음). 서드파티 구현은 v2 etag 로 우회 | [files.update](https://developers.google.com/workspace/drive/api/reference/rest/v3/files/update), [gogcli PR](https://github.com/openclaw/gogcli/pull/929) |
-| 폴더 | appDataFolder 아래 하위 폴더를 만들 수 있다는 사례가 흔하지만 공식 문서에서 명시를 못 찾음(**미확인**) | — |
+| 폴더 | appDataFolder 아래 하위 폴더를 만들 수 있다는 사례가 흔하지만 공식 문서에서 명시를 못 찾음(**미확인**). 구현은 평평한 배치라 이 문제를 피함(§7) | — |
 
 **설계에 반영할 것**
 
@@ -363,3 +363,19 @@ Dropbox 를 할 때: [App Console](https://www.dropbox.com/developers/apps) 에�
 - HTTP 레퍼런스: https://www.dropbox.com/developers/documentation/http/documentation , content_hash: https://docs.dropboxapi.com/dropbox-api/docs/technical-reference/content-hash
 - SwiftyDropbox: https://github.com/dropbox/swiftydropbox
 - Files 앱 통합 한계: https://help.dropbox.com/ko-kr/integrations/ios-files-app
+
+## 7. 구현 뒤 갱신 (2026-11-01, 빌드 25 구현 세션)
+
+구현과 시뮬레이터 확인으로 알게 된 것. 실제 Google 계정은 연결하지 않았으므로(사용자 몫) 토큰·Drive 서버 동작에 관한 미확인은 그대로 둔다. 자세한 확인 결과는 [`IMPLEMENTATION.md`](IMPLEMENTATION.md) 끝.
+
+| 항목(앞 절) | 결과 |
+|---|---|
+| 뒤집은 클라이언트 ID 스킴을 SDK 없이 써도 되나(§3.1) | **인증 요청은 통과.** 시뮬레이터에서 `ASWebAuthenticationSession`(ephemeral) 으로 `accounts.google.com/o/oauth2/v2/auth`(PKCE S256, `drive.appdata`, `redirect_uri=<스킴>:/oauth2redirect`) 를 열면 `redirect_uri`·클라이언트 오류 없이 "Google 계정으로 로그인 · 빙수(으)로 이동" 화면이 뜬다. 코드 → 토큰 교환과 갱신 토큰 발급은 **미확인**(계정 필요) |
+| 스킴 등록·되돌림 수신 | `CFBundleURLTypes` 에 xcconfig 변수로 등록한 스킴을 `simctl openurl` 로 열면 iOS 가 "'빙수'에서 열겠습니까?" 를 묻고 앱이 받는다. 진행 중인 연결이 없을 때는 앱이 버린다(가져오기 경로와 섞이지 않음). 연결 중의 되돌림은 `ASWebAuthenticationSession` 이 받는 것을 흉내 서버로 끝까지 확인(PKCE·`state` 검사 포함) |
+| 디버그 흉내 서버 `http://127.0.0.1` 과 ATS(§3.5 네트워크) | iOS 26 시뮬레이터에서 ATS 예외·`NSAllowsLocalNetworking`·`URLSessionDelegate` 없이 된다. 그래서 릴리스 Info.plist 는 그대로 |
+| appDataFolder 하위 폴더(§3.6) | 평평한 배치(`Saves__<게임>__save.json` + `appProperties.path`) 로 구현해 확인할 필요가 없어짐. 여전히 **미확인** |
+| appProperties 124바이트(§3.6) | 키+값 UTF-8 기준으로 잘라 넣음(`DriveShelf.fit`). 실제 Drive 가 거부하는 경계는 **미확인**(흉내 서버는 검사 안 함) |
+| appData 용량이 `usage`/`usageInDrive` 어디에 잡히나(§3.6) | **미확인** (흉내 서버로는 알 수 없음). `DriveCounter.freeBytes()` 는 만들어 두었으나 화면에 쓰지 않음 |
+| Production 전환 뒤 미검증 경고(§3.1 동의 화면) | **미확인** (Testing 상태 그대로) |
+| Testing 7일 갱신 토큰 만료 | **미확인**. 만료 시 앱 동작(`invalid_grant` → 키체인 비움 → "Google Drive 연결이 끊겼어요 · 다시 연결해 주세요", 로컬 그대로, 다시 연결하면 밀린 올리기 이어서) 은 흉내 서버로 확인 |
+

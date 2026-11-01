@@ -138,3 +138,43 @@ Dropbox, `drive.file`(보이는 폴더, PC 공유), `changes.list`, 백그라운
 - `docs/beta/testflight-info.md` §3 심사 메모에 4.8 선제 설명 한 단락, §2 에 빌드 25 테스트 문안 초안(Testing 상태라 7일마다 다시 연결 안내 포함), `docs/beta/guide.md` 에 Drive 연결 안내.
 - PLAN.md 로드맵 "저장 데이터 클라우드 동기화 2차" 항목을 `[x]` 로 바꾸고 요약·확인 결과 기록. `research.md` 의 "미확인" 중 구현에서 확인된 것(스킴 되돌림 동작 등 시뮬레이터에서 알 수 있는 것) 을 갱신.
 - 빌드 번호는 부모 세션이 올린다.
+
+## 구현 중 바뀐 것 (2026-11-01, 구현 세션)
+
+1. **빌드 설정은 감싸는 xcconfig 하나로.** 타깃 `configFiles` 는 커밋하는 `BingsuApp/Bingsu.xcconfig` 를 가리키고, 그 안에서 두 변수의 기본값(`BINGSU_GOOGLE_CLIENT_ID` 빈 값, `BINGSU_GOOGLE_REVERSED_CLIENT_ID = bingsu-drive-unset`) 을 정한 뒤 `#include? "Secrets.xcconfig"` 로 덮는다. `project.yml` settings 에 기본값을 두면 타깃 xcconfig 보다 우선해 비밀값을 가려 버리기 때문. `Secrets.xcconfig` 가 없어도 빌드되고, 되돌림 스킴은 더미로 등록된다(빈 스킴 문제를 피함).
+2. **선반에 `refresh()` 추가.** Drive 목록은 선반을 만들 때 한 번이 아니라 **동기화를 시작할 때마다**(`IglooEngine.begin`) 다시 읽는다. 선반·엔진을 앱이 켜져 있는 동안 재사용하므로, 한 번만 읽으면 다른 기기가 올린 것을 못 본다. iCloud 는 기본 구현(아무것도 안 함).
+3. **엔진에 붙인 것(판단 로직은 그대로).** `isOutOfSpace` 호출을 `note(error)`(→ `shelf.classify`) 로 바꾸고 `quotaFull`·`signedOut`·`offline` 깃발, `begin()`(깃발 초기화 + `refresh`), `halted`(연결 끊김·오프라인이면 남은 게임·백업·설정을 건너뜀), `snapshot(listed:)` 를 더했다. 상태는 큐 안에서 찍은 `Snapshot` 으로 메인에 넘긴다(동시에 도는 동기화가 깃발을 먼저 지워 첫 로그가 옛 상태를 보이던 경합 수정). `.offline` 도 `.signedOut` 처럼 그 동기화를 멈춘다(조용히 다음 게임으로 넘어가면 게임마다 60초 타임아웃을 기다리게 됨).
+4. **철회 토큰은 쿼리 대신 POST 본문**(`token=…`, form). 주소에 토큰을 남기지 않기 위해. Google 은 둘 다 받는다.
+5. **백업 상한은 `DriveShelf` 안에서.** `write` 가 백업을 올린 뒤 `trimBackups` 로 20개 넘는 오래된 것을 클라우드에서만 지우고, 이미 남긴 20개보다 오래된 백업은 올리지 않는다(지우고 다시 올리는 반복 방지). 엔진은 그대로라 건너뛴 것도 로그에 "백업 올림" 으로 찍힌다(동작은 맞고 로그만 부정확).
+6. **같은 경로가 둘이면**: `modifiedTime` 큰 쪽을 쓰고, 진 `save.json` 사본은 지우기 전에 클라우드 백업(`backups/<시각>-cN.json`) 으로 남긴다(두 기기가 동시에 처음 올린 경우 한쪽 진행을 잃지 않게). 그 밖의 경로는 지운다.
+7. **디스크 캐시는 `Saves/` 만.** `Library/Caches/Drive/<id>-<md5>`. 설정·표지는 작아서 캐시하지 않는다.
+8. **디버그 스위치 더함.** `BINGSU_DRIVE_CONNECT=1`(켤 때 "Google Drive 연결" 을 누른 것처럼). 흉내 서버는 동의 화면 주소(`/o/oauth2/v2/auth`) 도 흉내 내 PKCE·`state` 를 끝까지 탄다. 흉내 서버를 쓸 때 키체인 계정은 `mock`(실제 연결 `default` 와 섞이지 않게), 클라이언트 ID 가 없으면 `bingsu.mock`.
+9. **`about()` 은 `freeBytes()` 로 두었지만 화면에는 아직 안 쓴다.** 상태 줄은 "공간이 부족해요" 만(올리기 403 으로 안다).
+10. **ID 가 없으면 Drive 칸을 숨긴다**(비활성 대신). 세그먼트 칸 하나만 비활성화하는 모양이 어색해서, 끔/iCloud 만 보이고 꼬리말에 "Google Drive 는 준비 중이에요." 를 붙인다.
+11. **연결 해제 확인 창은 버튼에 붙인다.** Section 에 붙이면 창이 엉뚱한 자리에 뜨고, 바깥을 누른 탭이 피커로 새어 iCloud 로 바뀌었다.
+12. **ATS 예외·`URLSessionDelegate` 없이 `http://127.0.0.1` 이 된다**(iOS 26 시뮬레이터, 디버그 `BINGSU_ALLOW_HTTP=1` 일 때만 흉내 주소를 받음). 그래서 §6 의 대안(127.0.0.1 만 허용하는 delegate) 은 만들지 않았다.
+13. **토스트 앞에 선반 이름**: "Google Drive 에서 iPhone 의 저장 데이터를 불러왔어요(…)".
+14. **상태 줄 문구 확정**: "Google Drive 를 연결해 주세요"(처음) / "Google Drive 연결이 끊겼어요 · 다시 연결해 주세요"(`invalid_grant` 뒤) / "오프라인 · 다음에 다시 맞춰요" / "Google Drive 공간이 부족해요" / "Google Drive 는 준비 중이에요".
+15. **`appProperties.path` 는 120바이트를 넘으면 넣지 않는다**(키 포함 124바이트 한도). 그때는 이름(`/`→`__`) 에서 경로를 되살린다. 다른 값은 `fit` 으로 UTF-8 경계에서 자른다.
+16. **`accountLabel` 은 날짜만**: "연결됨 · 11월 1일"(이메일 범위를 받지 않음).
+17. **이어 올리기 세션은 메모리에 경로+md5 로 기억**한다. 조각이 끊기면(오프라인·429) 최대 4번 백오프하며 `bytes */N` 으로 위치를 묻고 이어 간다. 앱을 끄면 세션은 잊고 다음에 처음부터 올린다(세션 URI 를 디스크에 남기지 않음).
+18. **흉내 모드 바꾸기는 헤더·환경 변수 대신 `POST /mock/mode?set=…`**(서버를 끄지 않고 바꾸려고). 목록은 `tools/drive-mock/README.md`.
+19. **공개본 검사는 "실제 모양" 만 막는다.** `apps.googleusercontent.com` 글자 자체를 막으면 문서·예시의 `<n>-<x>` 자리표시자와 코드 주석까지 걸려서, `[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com` 모양 + `Keys/LOCAL_NOTES.md` 8행의 실제 값 + `Secrets.xcconfig` 파일 자체를 막는다(값은 출력하지 않음).
+
+## 확인 결과 (2026-11-01, iPhone 17 Pro · iPad Pro 13 시뮬레이터)
+
+- 자가 테스트: `[Igloo] selftest ok (46개)`, Spoon 자가 테스트 모두 통과(두 대).
+- 호환: `main`(빌드 24) 을 따로 빌드해 가짜 iCloud 로 `state.json` 을 만든 뒤 새 빌드 → `state-icloud.json` 으로 옮김(B 값 같음), `syncBackend = icloud`, L=C=B 라 바뀐 것 없음. `icloudSync` false → `off`(동기화 안 함), true → `icloud`. iCloud 쪽이 새로우면 그대로 내려받음.
+- (a) 흉내 서버 자동 연결(PKCE 끝까지) → `Saves__pokemon-resonance__save.json`, appProperties(`device`·`model`·`path`·`savedAt`·`uploadedAt`), 부모 `appDataFolder`. 레조넌스를 실제로 열고 닫아 "올림".
+- (b) iPad 연결 → 레조넌스·백업 내려받음(키 규칙에 어긋난 iPhone 쪽 테스트 백업 하나는 거부) → 게임 열면 이어하기 화면.
+- (c) 양쪽에서 다르게 저장 → ConflictView 에 "Google Drive" 카드. iPad "이 기기" → 로컬 유지·클라우드 쪽 백업, iPhone "Google Drive" → 내려받고 로컬 쪽 백업.
+- (d) `quota` → "올리기 실패 Drive 공간 부족", 상태 줄 "Google Drive 공간이 부족해요", 로컬 그대로(iPhone). iPad 에서도 충돌 해결 올리기가 403 → "충돌 해결 올리기 실패 Drive 공간 부족", 게임은 로컬로 열림.
+- (e) `invalid_grant` → 401 → 갱신 400 → 키체인 비움, "Google Drive 연결이 끊겼어요 · 다시 연결해 주세요", 동기화 멈춤. 다시 연결하면 밀린 올리기 이어서. `expire` → "액세스 토큰 갱신" 뒤 성공.
+- (f) 서버 끔 → -1004 → "오프라인 · 다음에 다시 맞춰요"(두 대). 서버를 다시 띄우고 앱이 활성화되면 올림.
+- (g) 6.5MB 저장 → resumable. `drop_chunk` → "조각 끊김 — 위치 확인 (1)" → 완료. `die_chunk` + 2초 뒤 서버 재시작 → 재시도 → 308 → 완료. iPad 는 6MB 를 한 번 내려받고 다음 맞추기는 디스크 캐시.
+- (h) 로컬 백업 25개 → 클라우드 20개(가장 오래된 남은 것 10-06), 로컬 25개 그대로. 그 뒤 동기화는 목록 요청만.
+- (i) 연결 해제 → `[Drive] 철회 200`, 서버 `POST /revoke`, `state-drive.json` 삭제(`state-icloud.json` 은 그대로), 피커는 Google Drive 그대로 + "Google Drive 연결" 버튼, 상태 줄 "Google Drive 를 연결해 주세요".
+- 실제 동의 화면: 흉내 서버 없이 "Google Drive 연결" → `accounts.google.com` 시트("빙수(으)로 이동") 가 뜸. 계정은 넣지 않고 닫음 → 오류 창 없이 원래 화면.
+- 되돌림 스킴: `simctl openurl "<스킴>:/oauth2redirect?code=x&state=y"` → iOS 확인 창 "'빙수'에서 열겠습니까?" → 열기 → `[Drive] 되돌림 주소 받음 — 진행 중인 연결이 없어 무시`(가져오기 경로로 가지 않음).
+- 비밀값: 실제 ID 모양·실제 값은 작업 폴더 전체에서 `BingsuApp/Secrets.xcconfig`(gitignore) 에만 있음. `git grep apps.googleusercontent.com` 은 문서 자리표시자와 코드 주석뿐.
+- 못 한 것: 실제 Google 계정으로 연결(사용자 몫), Testing 상태의 7일 갱신 토큰 만료, 실기기 백그라운드 30초 안 16MB 올리기, 메모리·발열 측정(네트워크가 열기 전·종료 뒤에만 돌아 영향이 없다고 판단만 함).

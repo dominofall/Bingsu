@@ -42,6 +42,14 @@ for k in "$ROOT"/Keys/AuthKey_*.p8; do
     kid=$(basename "$k" .p8 | sed 's/AuthKey_//')
     ! grep -rqF "$kid" "$DEST" || { echo "API 키 ID 가 든 파일이 있어요"; fail=1; }
 done
+# Google OAuth 클라이언트 ID: 로컬 Secrets.xcconfig(gitignore)에만 둔다. 사본에 그 파일이나 실제 모양의 ID 가 있으면 멈춘다
+# (예시 파일의 <숫자>-<문자> 자리표시는 통과). 값은 출력하지 않는다
+[ ! -e "$DEST/BingsuApp/Secrets.xcconfig" ] || { echo "Secrets.xcconfig 가 들어 있어요"; fail=1; }
+if grep -rIqE '[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com' "$DEST"; then echo "Google 클라이언트 ID 모양의 값이 든 파일이 있어요"; fail=1; fi
+if [ -f "$ROOT/Keys/LOCAL_NOTES.md" ]; then
+    cid=$(sed -n '8p' "$ROOT/Keys/LOCAL_NOTES.md" | grep -oE '[0-9]+-[a-z0-9]+' | head -1 || true)
+    [ -z "$cid" ] || ! grep -rqF "$cid" "$DEST" || { echo "Google 클라이언트 ID 가 든 파일이 있어요"; fail=1; }
+fi
 if [ "$fail" -ne 0 ]; then echo "공개본을 만들지 않았어요. $DEST 를 지우고 고친 뒤 다시"; exit 1; fi
 
 git -C "$DEST" init -q -b main

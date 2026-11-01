@@ -8,7 +8,7 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "24"
+    CURRENT_PROJECT_VERSION: "25"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
@@ -58,6 +58,11 @@ targets:
       - name: BrassBowl 넣기
         script: sh "$SRCROOT/BrassBowl/embed-framework.sh"
         basedOnDependencyAnalysis: false
+    # Google Drive OAuth 클라이언트 ID: Bingsu.xcconfig(커밋, 빈 기본값) 가 Secrets.xcconfig(gitignore) 를 `#include?` 로 읽는다.
+    # Secrets.xcconfig 가 없어도 빌드되고 Drive 선택지만 "준비 중" (docs/drive/IMPLEMENTATION.md §6)
+    configFiles:
+      Debug: Bingsu.xcconfig
+      Release: Bingsu.xcconfig
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.minwoo.bingsu
@@ -99,6 +104,12 @@ targets:
           - CFBundleTypeName: "빙수 패드 스킨"
             LSHandlerRank: Owner
             LSItemContentTypes: [com.minwoo.bingsu.skin]
+        # Google Drive 연결 (Freezer/DriveTicket.swift). 값은 xcconfig 변수 — 클라이언트 ID 는 저장소에 두지 않는다 (PLAN 8.1)
+        BINGSU_GOOGLE_CLIENT_ID: "$(BINGSU_GOOGLE_CLIENT_ID)"
+        # 동의 화면의 되돌림 주소 스킴 (클라이언트 ID 를 뒤집은 것). ASWebAuthenticationSession 이 받으며, 그 밖에 열리면 무시한다
+        CFBundleURLTypes:
+          - CFBundleURLName: com.minwoo.bingsu.drive
+            CFBundleURLSchemes: ["$(BINGSU_GOOGLE_REVERSED_CLIENT_ID)"]
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: com.minwoo.bingsu.skin
             UTTypeDescription: "빙수 패드 스킨"

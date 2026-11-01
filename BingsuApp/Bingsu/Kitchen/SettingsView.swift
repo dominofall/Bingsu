@@ -27,7 +27,6 @@ struct SettingsView: View {
     @AppStorage(BingsuApp.playInSilentKey) private var playInSilent = true
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
-    @AppStorage(Igloo.enabledKey) private var icloudSync = true
     @ObservedObject private var igloo = Igloo.shared
     /// 지금 연결된 실제 컨트롤러 제품명 (식별자 없이)
     @State private var controllers = LongSpoon.connectedNames()
@@ -121,22 +120,10 @@ struct SettingsView: View {
 
                 PerfSettingsSection(showPerformance: $showPerformance)
 
-                Section {
+                Section("저장 데이터") {
                     NavigationLink("저장 데이터 관리") { SavedDataView(dishes: dishes, onWillWipe: onWillWipe) }
-                    Toggle(isOn: $icloudSync) {
-                        Text("iCloud 동기화")
-                        Text(igloo.statusText)
-                    }
-                    .onChange(of: icloudSync) { _, on in if on { Task { await igloo.syncAll() } } }
-                    if icloudSync {
-                        Button("지금 동기화") { Task { await igloo.syncAll() } }
-                            .disabled(igloo.syncing || igloo.availability == .noAccount || igloo.availability == .unavailable)
-                    }
-                } header: {
-                    Text("저장 데이터")
-                } footer: {
-                    Text("같은 Apple ID 의 iPhone·iPad 에서 PC용 게임 저장 데이터와 게임별 설정을 이어서 써요. 브라우저 게임은 각 사이트 계정으로 이어져요.")
                 }
+                CloudSyncSection(igloo: igloo)
 
                 Section("정보") {
                     LabeledContent("버전", value: Self.versionText)
@@ -440,5 +427,75 @@ struct BundledTextView: View {
         guard let url = Bundle.main.url(forResource: file, withExtension: nil),
               let s = try? String(contentsOf: url, encoding: .utf8) else { return "\(file) 를 찾지 못했어요. \(LicensesView.sourceURL.absoluteString) 에서 볼 수 있어요." }
         return s
+    }
+}
+
+/// 설정 › 클라우드 동기화: 끔 / iCloud / Google Drive 중 하나. Drive 면 연결·해제 버튼과 연결 표시.
+/// 화면에는 "연결"만 쓴다 ("로그인" 아님 — 앱 계정이 아니라 저장소 연결, 심사 4.8)
+struct CloudSyncSection: View {
+    @ObservedObject var igloo: Igloo
+    @State private var changed = false
+    @State private var confirmDisconnect = false
+    @State private var connectError: String?
+
+    private var choices: [IglooShelfKind] { igloo.drive.isConfigured || igloo.backend == .drive ? IglooShelfKind.allCases : [.off, .icloud] }
+
+    var body: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("클라우드 동기화")
+                    Text(igloo.statusText).font(.footnote).foregroundStyle(.secondary)
+                }
+                Picker("클라우드 동기화", selection: Binding(get: { igloo.backend }, set: { k in changed = true; igloo.setBackend(k) })) {
+                    ForEach(choices, id: \.self) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            if igloo.backend == .drive {
+                if igloo.drive.isConnected, let label = igloo.accountLabel ?? igloo.drive.accountLabel {
+                    LabeledContent("Google Drive", value: label)
+                    Button("연결 해제", role: .destructive) { confirmDisconnect = true }
+                        .tint(.red)
+                        // 확인 창은 이 버튼에 붙인다 (Section 에 붙이면 행마다 퍼지고 엉뚱한 자리에 뜬다)
+                        .confirmationDialog("Google Drive 연결을 해제할까요?", isPresented: $confirmDisconnect, titleVisibility: .visible) {
+                            Button("연결 해제", role: .destructive) { Task { await igloo.disconnectDrive() } }
+                            Button("취소", role: .cancel) {}
+                        } message: {
+                            Text("이 기기의 연결 정보만 지워요. 이 기기와 Google Drive 의 저장 데이터는 그대로 남아요. Drive 에 둔 사본은 Google Drive 설정 › 앱 관리에서 지울 수 있어요.")
+                        }
+                } else {
+                    Button { Task { connectError = await igloo.connectDrive() } } label: {
+                        HStack {
+                            Label("Google Drive 연결", systemImage: "link")
+                            if igloo.connecting { Spacer(); ProgressView() }
+                        }
+                    }
+                    .disabled(igloo.connecting)
+                    .alert("Google Drive 를 연결하지 못했어요", isPresented: Binding(get: { connectError != nil }, set: { if !$0 { connectError = nil } })) {
+                        Button("확인", role: .cancel) {}
+                    } message: { Text(connectError ?? "") }
+                }
+            }
+            if igloo.enabled {
+                Button("지금 동기화") { Task { await igloo.syncAll() } }
+                    .disabled(igloo.syncing || [.noAccount, .unavailable].contains(igloo.availability))
+            }
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(footer)
+                if !igloo.drive.isConfigured && igloo.backend != .drive { Text("Google Drive 는 준비 중이에요.") }
+                if changed { Text("다른 저장소로 바꾸면 처음 맞출 때 양쪽이 다르면 물어봐요.") }
+            }
+        }
+    }
+
+    private var footer: String {
+        switch igloo.backend {
+        case .off: return "켜면 PC용 게임 저장 데이터와 게임별 설정을 다른 iPhone·iPad 와 이어서 써요. 브라우저 게임은 각 사이트 계정으로 이어져요."
+        case .icloud: return "같은 Apple ID 의 iPhone·iPad 에서 PC용 게임 저장 데이터와 게임별 설정을 이어서 써요. 브라우저 게임은 각 사이트 계정으로 이어져요."
+        case .drive: return "같은 Google 계정을 연결한 iPhone·iPad 에서 PC용 게임 저장 데이터와 게임별 설정을 이어서 써요. Google Drive 의 앱 전용 공간에 두어 Drive 목록에는 보이지 않고, 빙수 말고는 읽을 수 없어요."
+        }
     }
 }
