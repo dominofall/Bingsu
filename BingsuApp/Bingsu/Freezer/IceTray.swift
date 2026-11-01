@@ -1,7 +1,7 @@
 import Foundation
 import CryptoKit
 
-/// 얼음틀: 파일로 저장하는 게임(RPG Maker XP — `Game.rxdata` 등)의 저장 파일 ↔ save.json.
+/// 얼음틀: 파일로 저장하는 게임(RPG Maker XP — `Game.rxdata` 등, MV·MZ — `file1.rpgsave`·`file1.rmmzsave`)의 저장 파일 ↔ save.json.
 ///
 /// 엔진은 PC 와 똑같이 `Saves/<dataPathApp>/Game.rxdata` 를 읽고 쓴다(PC 세이브와 같은 파일).
 /// 백업·되돌리기·iCloud 이어하기(`Freezer`·`Igloo`)는 save.json 하나를 다루므로, 저장 파일들을 base64 로 save.json 에 담아 둔다
@@ -16,6 +16,10 @@ import CryptoKit
 enum IceTray {
     /// 저장 파일로 보는 확장자. 그 밖의 파일(로그 등)은 묶지 않는다
     static let saveExtensions: Set<String> = ["rxdata", "rvdata", "rvdata2", "dat", "sav", "bak", "ini", "txt", "json5"]
+    /// MV·MZ 의 저장 파일. 저장 중 임시 파일(끝 `_`)과 MV 백업(`.bak`)은 묶지 않는다
+    static let mvmzExtensions: Set<String> = ["rpgsave", "rmmzsave"]
+
+    static func extensions(for recipe: Dish.Recipe) -> Set<String> { recipe == .rpgMakerMV ? mvmzExtensions : saveExtensions }
 
     struct Mark: Codable, Equatable {
         var savedAt: Double
@@ -53,7 +57,7 @@ enum IceTray {
             let name = u.lastPathComponent
             guard name != fz.localStorageFile.lastPathComponent, (try? u.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             else { return false }
-            return safeName(name)
+            return safeName(name, recipe: fz.dish.recipe)
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
@@ -73,7 +77,7 @@ enum IceTray {
     /// 두 쪽 맞추기. `allowUnpack == false`(게임이 켜져 있음)면 파일은 건드리지 않고 묶기만 한다.
     @discardableResult
     static func sync(_ dish: Dish, allowUnpack: Bool) -> Result {
-        guard dish.recipe == .mkxp, !dish.isRemote else { return .nothing }
+        guard dish.recipe == .mkxp || dish.recipe == .rpgMakerMV, !dish.isRemote else { return .nothing }
         lock.lock(); defer { lock.unlock() }
         let fz = Freezer(dish: dish)
         let mark = loadMark(dish)
@@ -110,10 +114,10 @@ enum IceTray {
     }
 
     /// 저장 파일로 받아들이는 이름: 숨김·경로 구분자·`..` 없음, 허용 확장자, 200바이트 이하
-    static func safeName(_ name: String) -> Bool {
+    static func safeName(_ name: String, recipe: Dish.Recipe = .mkxp) -> Bool {
         guard !name.isEmpty, name.utf8.count <= 200, !name.hasPrefix("."), !name.contains("/"), !name.contains("\u{0}"),
               !name.contains(".."), !name.hasSuffix(".tmp") else { return false }
-        return saveExtensions.contains((name as NSString).pathExtension.lowercased())
+        return extensions(for: recipe).contains((name as NSString).pathExtension.lowercased())
     }
 
     static func key(_ name: String, fz: Freezer) -> String {
@@ -159,7 +163,7 @@ enum IceTray {
     private static func unpack(_ snap: Freezer.Snapshot, fz: Freezer) -> Bool {
         var ok = true
         for (k, v) in snap.entries {
-            guard fz.isValidKey(k), let name = Self.name(fromKey: k, fz: fz), safeName(name), name != fz.localStorageFile.lastPathComponent,
+            guard fz.isValidKey(k), let name = Self.name(fromKey: k, fz: fz), safeName(name, recipe: fz.dish.recipe), name != fz.localStorageFile.lastPathComponent,
                   let data = Data(base64Encoded: v) else { continue }
             let dest = fz.directory.appendingPathComponent(name)
             guard dest.deletingLastPathComponent().standardizedFileURL == fz.directory.standardizedFileURL else { continue }

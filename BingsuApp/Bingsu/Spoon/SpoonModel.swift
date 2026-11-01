@@ -557,6 +557,7 @@ struct CutlerySet {
         if dish.dataPathApp == "bingsu-rumble-lab" { return .pokebonk }
         if dish.id == MenuBoardStore.sampleID { return .sampleGame }
         if dish.recipe == .mkxp { return .rpgMaker(dish) }   // BrassBowl/CutlerySet+XP.swift (XP·VX 판별)
+        if dish.recipe == .rpgMakerMV { return .rpgMakerMV }  // Bowl/CutlerySet+MV.swift
         if dish.isRemote { return CutlerySet(transport: .keyboard, labels: [:], keys: [:], stickKeys: [:]) }
         return .keyboardDefault
     }

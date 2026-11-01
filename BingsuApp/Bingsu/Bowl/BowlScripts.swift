@@ -6,7 +6,7 @@ enum BowlScripts {
     /// 문서 시작 전: 냉동실 복원 + 공용 브리지
     /// `freezer == false`(원격 웹 게임)면 localStorage 를 읽지도, 파일로 보내지도 않는다 — 로그인 토큰이 파일로 새는 것을 막기 위해.
     static func atDocumentStart(restore: Freezer.Snapshot?, keyPrefix: String, freezer: Bool, desktopSpoof: Bool,
-                                renderScale: Double? = nil, fpsCap: Int? = nil, volume: Double = 1) -> String {
+                                renderScale: Double? = nil, fpsCap: Int? = nil, volume: Double = 1, keysToDocument: Bool = false) -> String {
         let restoreJSON: String
         if let restore, let data = try? JSONSerialization.data(withJSONObject: ["at": restore.savedAt, "data": restore.entries] as [String: Any]),
            let s = String(data: data, encoding: .utf8) {
@@ -17,6 +17,8 @@ enum BowlScripts {
           const PREFIX = \(jsString(keyPrefix));
           const FREEZER = \(freezer ? "true" : "false");
           const DESKTOP = \(desktopSpoof ? "true" : "false");
+          // RPG Maker MV·MZ 는 document 에서 키를 듣는다 (window 에 보낸 이벤트는 document 로 내려가지 않음)
+          const KEYS_TO_DOCUMENT = \(keysToDocument ? "true" : "false");
           const restore = FREEZER ? \(restoreJSON) : null;
           // 냉동실 → localStorage (앱 파일이 진실의 원천: 5초마다 갱신되므로 최대 5초 손실)
           // MARK 는 네이티브가 save.json 을 쓴 시각. 파일 시각과 다르면 파일이 바뀐 것(되돌리기·가져오기)이라 파일로 덮는다.
@@ -156,6 +158,8 @@ enum BowlScripts {
           };
           const resume = () => {
             if (!PAUSED) return; PAUSED = false; resumedGap = true;
+            // 게임별 재개 처리 (MV·MZ: 멈춘 시간 따라잡기 막기, BowlScripts.nwShim)
+            try { if (window.__bingsuResumeHook) window.__bingsuResumeHook(); } catch (e) {}
             for (const c of contexts) { try { if (c.state === "suspended") c.resume(); } catch (e) {} }
             const cbs = pendingRAF.splice(0); for (const cb of cbs) window.requestAnimationFrame(cb);
           };
@@ -276,9 +280,9 @@ enum BowlScripts {
               const ev = new KeyboardEvent(down ? "keydown" : "keyup", { code, key, keyCode, which: keyCode, bubbles: true, cancelable: true });
               // keyCode/which 는 생성자 옵션으로는 안 박히는 브라우저가 있어 직접 덮어쓴다 (Phaser 는 keyCode 를 본다)
               try { Object.defineProperty(ev, "keyCode", { get: () => keyCode }); Object.defineProperty(ev, "which", { get: () => keyCode }); } catch (e) {}
-              const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : window;
+              const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : (KEYS_TO_DOCUMENT ? document : window);
               target.dispatchEvent(ev);
-              if (down && window.__bingsuKeyDebug) post("bowl", { event: "key", msg: code + " keyCode=" + ev.keyCode + " prevented=" + ev.defaultPrevented + " target=" + (target === window ? "window" : target.tagName) });
+              if (down && window.__bingsuKeyDebug) post("bowl", { event: "key", msg: code + " keyCode=" + ev.keyCode + " prevented=" + ev.defaultPrevented + " target=" + (target === window ? "window" : target === document ? "document" : target.tagName) });
             },
             flush, pause, resume, kickAudio, restartAudio, setFpsCap, setVolume,
           };

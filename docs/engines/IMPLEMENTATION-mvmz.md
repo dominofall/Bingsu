@@ -90,3 +90,43 @@ research §2.2 B 의 모양을 빙수가 직접 구현한다(약 300줄, 옮겨 
 ## 10. 끝낼 때
 
 PLAN.md 로드맵 "RPG Maker MV/MZ(NW.js) 지원" 항목 `[x]` + 요약·확인 결과, PLAN 8.2 에 예외 한 줄, `docs/beta/testflight-info.md` §2 빌드 27 테스트 문안 초안, `docs/beta/guide.md` 에 "RPG Maker MV·MZ 게임" 절(zip 모양, 저장 위치, PC 세이브), `research.md` [미확인] 갱신. 빌드 번호는 부모 세션이 올린다.
+
+## 11. 구현 중 바뀐 것 (2026-11-01, 구현 세션)
+
+- **본문 수신: `httpBody` 로 온다.** 동기 XHR PUT 본문이 `WKURLSchemeTask.request.httpBody` 에 그대로 왔다(iPhone 17 Pro·iPad Pro 13 시뮬레이터, MZ 3939B·MV 7056B, 로그 `[Bowl] mv put body via=httpBody`). 헤더 조각(`X-Bingsu-Body-<n>`) 대안은 만들지 않았다. 핸들러는 `httpBody` 가 없으면 `httpBodyStream` 을 읽고, 둘 다 없으면 빈 본문으로 본다(어느 길이었는지 첫 PUT 때 한 번 로그).
+- **흉내 스크립트 자리:** `BowlScripts.swift` 가 이미 길어 `Bowl/BowlScripts+NW.swift` 의 `extension BowlScripts { nwShim(engine:), pixelatedCSS }` 로 따로 뒀다.
+- **`process.versions` 는 빈 객체.** 명세의 `{ node: "0" }` 대신 `{}`. `versions.node` 가 있으면 흔한 라이브러리(압축·저장 플러그인 등)가 Node 환경으로 보고 브라우저에 없는 모듈(`buffer`·`zlib` 등)을 `require` 하기 때문. 엔진 판단(`Utils.isNwjs`)은 `require`·`process` 존재만 보므로 영향 없음.
+- **`dataPathApp`:** MV 배포본의 `package.json` `name` 은 편집기 기본값("KADOKAWA/RPGMV", "rmmz-game" 등)인 경우가 많아 그런 이름(`MVMZProbe.genericPackageNames`)과 빈 이름은 건너뛰고 `System.json` `gameTitle` 로 간다. 시험한 MV 게임은 `name` 이 비어 `Adventure`, MZ 데모는 `gameId` 로 `mz-23209317`.
+- **재개 때 시각 맞추기:** MV 는 `SceneManager._currentTime` 을 `performance.now()` 로(로그 `mv resume _currentTime gap=…`), MZ 는 `_currentTime` 이 없고 PIXI 틱커의 `deltaTime` 을 쓰므로 `_smoothDeltaTime = 1`·`_elapsedTime = 0` 으로 되돌린다(로그 `mv resume smoothDelta reset`). 빙수 재개 경로(`resume()`)가 `window.__bingsuResumeHook` 을 부른다.
+- **`SceneManager.reloadGame`(F5) 은 `location.reload()`.** NW.js 의 `chrome.runtime.reload` 가 없어서.
+- **소리:** MV 는 명세대로 `canPlayOgg = () => true`(로그 `via=polyfill`). MZ 는 건드리지 않았는데, 시뮬레이터는 `canPlayOgg` 가 참이라 `via=native` 로 고른 뒤 `decodeAudioData` 가 실패해 빙수 Ogg 폴리필(WASM 워커)이 푼다(`ogg native decode unsupported` → `ogg decoded …(worker)`). 게임 자체 `VorbisDecoder` 길은 시뮬레이터에선 안 탐. 실기기는 [미확인].
+- **키 경로:** 키보드 전송 배치는 화면 설정 없이 디버그 환경 변수 `BINGSU_MV_KEYBOARD=1` 로만 고른다(기본은 게임패드). 키 대상은 `KEYS_TO_DOCUMENT` 일 때 `document`.
+- **핸들러가 `save/` 읽기도 저장 폴더에서 한다:** `save/` 의 GET·HEAD·폴더 목록은 게임 폴더가 아니라 `Saves/<dataPathApp>/` 를 보고, 목록은 저장 이름 규칙에 맞는 것만. `MKCOL save` 는 폴더가 이미 있으니 201 만 돌려준다. 그 밖에 `.wasm` 은 `application/wasm`.
+- **Windows 배포 찌꺼기 정리:** 가져올 때 맨 위의 `nw.pak`·`nw_100/200_percent.pak`·`natives_blob.bin`·`credits.html` 과, 안에 pak·dll 등만 있는 `locales`·`swiftshader`·`pnacl` 을 지운다(`Delivery.pruneWindowsBinaries`). 실행 파일에 묶인 게임은 `DeliveryError.packedInExe`.
+- **업데이트 화면의 버전:** MV·MZ 는 `package.json` `version` 을 읽는다. 없으면 "버전 알 수 없음"(시험한 두 게임 모두 그랬다).
+- **자가 테스트:** `GreenTeaSelfTest`(앱 시작, 33개: 쓰기 규칙 표 20줄·경로 거르기·분류·다른 호스트·암호 풀기 왕복·기본 이름·저장 이름) + `GlassBowl` 이 MV·MZ 를 열 때 웹뷰 안에서 `fs` 로 `save/` 밖 쓰기 8가지(`/index.html`·`/data/System.json`·`/save/../js/main.js`·`/save/notes.txt`·`/SAVE/x/file1.rpgsave`·`mkdir /img/new`·`unlink /js/main.js`·`rename → /data/System.json`)를 시도해 모두 거부되는지(`selftest mv write guard OK tried=8 leaked=[]`). 둘 다 `BINGSU_SELFTEST=1` 일 때만.
+- **테스트 게임:** 암호화 배포본은 찾지 못해, MV 게임을 편집기와 같은 방식(헤더 16바이트 + 앞 16바이트 XOR)으로 직접 암호화한 시험본을 만들었다(실제 배포본 아님). MZ 암호화(`.png_`·`.ogg_`)는 시험하지 못했다.
+
+## 12. 확인 결과 (2026-11-01, 시뮬레이터)
+
+iPhone 17 Pro (iOS 26) 와 iPad Pro 13 (M5).
+
+| 항목 | 결과 |
+|---|---|
+| MZ 가져오기·실행 (iPhone·iPad) | `recipe=rpgMakerMV engine=mz root=. saves=mz-23209317`, 타이틀 → 새 게임 → 맵, 패드 A 확인·Y 메뉴·십자키 이동. UA 데스크톱(`mobile=false nwjs=true`) |
+| MV 가져오기·실행 (iPhone, Windows 배포 모양 `Adventure-win/www/`) | `engine=mv root=www dataPathApp=Adventure`, `Game.exe`·`nw.pak`·`locales` 정리됨, `require fs·path·nw.gui`, 소리 `ext=.ogg via=polyfill` |
+| 저장 (MZ) | 첫 저장 PUT `file1.rmmzsave`·`global.rmmzsave`, 덮어쓰기 MOVE→`_` · PUT · DELETE `_` 순서. 파일은 `Saves/mz-23209317/` 에만, 게임 폴더엔 `save/` 없음 |
+| 저장 (MV) | PUT `file1.rpgsave`·`global.rpgsave`, 덮어쓰기 PUT `.bak` → PUT → DELETE `.bak`. `Saves/Adventure/` 에만 |
+| 이어하기 | MZ·MV 모두 재실행 → 이어하기에 파일 1(플레이 시간·파티) → 맵 |
+| `save/` 밖 쓰기 | 8가지 모두 403 + `mv write denied` 로그(iPhone MZ·MV, iPad MZ) |
+| PC 세이브 | `Adventure-enc/save/file1.rpgsave` 를 넣은 zip → "저장 파일 2개를 저장 데이터 폴더로 옮김" → 이어하기 바로 됨 |
+| 업데이트 | 같은 zip 다시 가져오기(업데이트) → 저장 파일 해시 그대로, 업데이트 전 백업 생김 |
+| 얼음틀 | 백그라운드·재실행 때 `파일 2개 → save.json`, iCloud 에서 받은 save.json → 파일 2개 |
+| 가짜 iCloud | iPhone 저장 → iPad 에서 같은 zip 가져온 뒤 열기 → 내려받아 파일로 풀고 이어하기, iPad 에서 다시 저장 → iPhone 이 내려받음(3937B) |
+| 재개 | MV `_currentTime gap=259ms`, MZ `smoothDelta reset`. 홈에 다녀와도 급가속 없음 |
+| 키보드 경로 | `BINGSU_MV_KEYBOARD=1`: A → `KeyZ`, B → `KeyX`, 대상 `document`, 불러오기 화면 열고 닫힘 |
+| 암호화·대소문자 | 직접 만든 암호화 MV(`.rpgmvp`·`.rpgmvo`, 파일 이름 `castle.rpgmvp`·`ACTOR1.rpgmvp` 로 대소문자 바꿈): 게임칩 표지가 풀린 타이틀 그림, 타이틀·맵·캐릭터 그림 정상 |
+| 회귀 | 레조넌스 타이틀·저장 복원(`restore=file-changed`), 포켓로그 로딩·패드 표시·로그인 화면까지(로그인 뒤는 확인 못 함). XP·VX 게임은 실행해 보지 않음(바뀐 곳은 `IceTray` 확장자 고르기뿐이고 XP·VX 값은 그대로) |
+| 자가 테스트 | `[GreenTea] selftest OK 33/33`, Spoon·Igloo 자가 테스트 그대로 통과 |
+| 메모리 (iPad, MZ 맵에 세워 두고 8분, 호스트에서 `ps` RSS 1분마다) | 앱 276→142MB, 웹 콘텐츠 프로세스 249→137MB 로 줄어든 뒤 4분부터 평평(137~145MB). 쌓임 없음. 배경음악이 한 곡뿐인 작은 데모라 큰 게임·실기기는 따로 봐야 함. `audiomix` 로그는 이 경로에서 안 나옴 |
+| 하지 못한 것 | MV 를 iPad 에서 실행(iPhone 만), 실기기, 실제 암호화 배포본, MZ 암호화 |

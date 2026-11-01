@@ -66,6 +66,8 @@ final class Delivery: ObservableObject {
         let sourceName: String
         /// RPG Maker 게임(.mkxp)이면 RGSSProbe 결과
         var rgss: RGSSProbe.Result? = nil
+        /// RPG Maker MV·MZ 게임(.rpgMakerMV)이면 MVMZProbe 결과
+        var mvmz: MVMZProbe.Result? = nil
     }
 
     /// 1~4단계 결과: 등록할 게임, 또는 바로 넣은 패드 스킨
@@ -243,6 +245,23 @@ final class Delivery: ObservableObject {
             root = unpacked
         }
 
+        // 3-1) package.nw 풀기 (NW.js 게임을 zip 하나로 묶은 것. MV·MZ 게임이 그 안에 있다)
+        let nw = root.appendingPathComponent("package.nw")
+        if (try? nw.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true, MVMZProbe.findRoot(root) == nil {
+            report(.unpacking(0))
+            let unpacked = work.appendingPathComponent("nw", isDirectory: true)
+            try SafeUnzip.unzip(nw, to: unpacked, progress: { report(.unpacking($0)) }, isCancelled: isCancelled)
+            // PC 에서 하던 저장(게임 폴더의 save/)은 새 루트로 옮겨 아래에서 저장 데이터 폴더로 보낸다
+            for rel in ["save", "www/save"] {
+                let src = root.appendingPathComponent(rel)
+                let dst = unpacked.appendingPathComponent("save")
+                if fm.fileExists(atPath: src.path), !fm.fileExists(atPath: dst.path) { try? fm.moveItem(at: src, to: dst) }
+            }
+            try fm.removeItem(at: root)
+            root = unpacked
+            NSLog("[Delivery] package.nw 풀어서 게임 루트로 씀")
+        }
+
         // 4) 게임 확인
         report(.checking)
         let recipe = RecipeDetector.detect(folder: root)
@@ -252,16 +271,21 @@ final class Delivery: ObservableObject {
             return .rtp(name)
         }
         guard recipe != .unknown else {
+            if MVMZProbe.looksPackedInExe(root) { throw DeliveryError.packedInExe }
             throw DeliveryError.unsupported(found: visibleItems(root).map(\.lastPathComponent).sorted())
         }
         let desc = RecipeDetector.describe(folder: root, recipe: recipe)
         let version = Self.readVersion(folder: root, recipe: recipe)
         // RGSS 판·RTP 는 exe·dll 을 지우기 전에 본다 (ini 의 Library= 는 지워진 dll 이름이라 상관없지만 순서를 지킨다)
         let rgss = recipe == .mkxp ? RGSSProbe.probe(folder: root) : nil
+        let mvmz = recipe == .rpgMakerMV ? MVMZProbe.probe(folder: root) : nil
+        if let m = mvmz {
+            NSLog("[Delivery] recipe=rpgMakerMV engine=\(m.engine.rawValue) root=\(m.root.isEmpty ? "." : m.root) dataPathApp=\(m.dataPathApp) encrypted=\(m.encryptedImages ? "img" : "-")/\(m.encryptedAudio ? "audio" : "-")")
+        }
         if removeWindowsBinaries { Self.pruneWindowsBinaries(in: root, recipe: recipe) }
         ok = true
         return .game(Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
-                            version: version, sourceName: source.lastPathComponent, rgss: rgss))
+                            version: version, sourceName: source.lastPathComponent, rgss: rgss, mvmz: mvmz))
     }
 
     /// 5단계: 등록. 업데이트는 기존 폴더를 옆으로 옮긴 뒤 새 폴더를 그 자리로 옮긴다 (같은 볼륨이라 이름 바꾸기 = 원자적).
@@ -290,6 +314,7 @@ final class Delivery: ObservableObject {
             if let rtp = r.rtp { manifest["rtp"] = rtp }
             manifest["needsRTP"] = r.needsRTP
         }
+        if let m = s.mvmz { manifest["mvmz"] = m.info.manifest }
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
             .write(to: s.root.appendingPathComponent(manifestName))
 
@@ -320,7 +345,8 @@ final class Delivery: ObservableObject {
         }
 
         let dish = Dish(id: id, title: title, recipe: s.recipe, location: final, dataPathApp: s.dataPathApp,
-                        rgss: s.rgss.map { $0.version ?? .xp }, rtp: s.rgss?.rtp, needsRTP: s.rgss?.needsRTP ?? false)
+                        rgss: s.rgss.map { $0.version ?? .xp }, rtp: s.rgss?.rtp, needsRTP: s.rgss?.needsRTP ?? false,
+                        mvmz: s.mvmz?.info)
         var result = Result(dish: dish, version: s.version, bytes: folderSize(final), updatedExisting: { if case .update = mode { return true }; return false }())
         result.backedUp = backedUp
         result.keptOld = keptOld
@@ -331,16 +357,28 @@ final class Delivery: ObservableObject {
     /// VX·VX Ace 는 저장 파일을 게임 폴더에 쓴다. 빙수는 엔진 쪽 preload(BrassBowlEngine.savesScript)로 저장 데이터 폴더에 쓰게 하므로,
     /// PC 에서 하던 게임을 저장 파일째 가져오면 그 파일을 저장 데이터 폴더로 옮긴다. 이미 같은 이름이 있으면 덮어쓰지 않고
     /// 저장 데이터 폴더의 `backups/` 에 넣는다(지금 저장이 이긴다). XP 는 건드리지 않는다(Essentials 는 자기 저장 폴더를 쓴다)
+    /// MV·MZ 는 PC 에서 `<루트>/save/` 에 저장한다(`file1.rpgsave`·`global.rmmzsave` 등). 빙수는 스킴 핸들러가 그 경로를 저장 데이터 폴더로 돌리므로 같은 규칙으로 옮긴다
     nonisolated static func moveGameFolderSaves(_ dish: Dish) -> Int {
-        guard dish.recipe == .mkxp, let v = dish.rgss, v >= .vx else { return 0 }
         let fm = FileManager.default
-        let names = ((try? fm.contentsOfDirectory(atPath: dish.location.path)) ?? []).filter(isGameFolderSave)
+        let folder: URL
+        let names: [String]
+        if dish.recipe == .rpgMakerMV, dish.mvmz != nil {
+            // save 폴더 이름은 대소문자가 다를 수 있다 (Windows 에서 만든 게임)
+            let rootItems = (try? fm.contentsOfDirectory(atPath: dish.gameRoot.path)) ?? []
+            guard let saveDir = rootItems.first(where: { $0.lowercased() == "save" }) else { return 0 }
+            folder = dish.gameRoot.appendingPathComponent(saveDir, isDirectory: true)
+            names = ((try? fm.contentsOfDirectory(atPath: folder.path)) ?? []).filter(isMVMZSave)
+        } else {
+            guard dish.recipe == .mkxp, let v = dish.rgss, v >= .vx else { return 0 }
+            folder = dish.location
+            names = ((try? fm.contentsOfDirectory(atPath: dish.location.path)) ?? []).filter(isGameFolderSave)
+        }
         guard !names.isEmpty else { return 0 }
         let fz = Freezer(dish: dish)
         let saves = fz.directory
         var moved = 0
         for name in names.sorted() {
-            let src = dish.location.appendingPathComponent(name)
+            let src = folder.appendingPathComponent(name)
             var dest = saves.appendingPathComponent(name)
             if fm.fileExists(atPath: dest.path) {
                 let backups = fz.backupsDirectory
@@ -357,6 +395,11 @@ final class Delivery: ObservableObject {
     /// `Save1.rvdata`·`Save01.rvdata2` 모양 (엔진 preload 가 돌리는 이름과 같은 규칙)
     nonisolated static func isGameFolderSave(_ name: String) -> Bool {
         name.range(of: #"^Save\d*\.(rvdata2|rvdata)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// `file1.rpgsave`·`global.rmmzsave` 모양 (스킴 핸들러가 받는 저장 이름에서 임시 `_`·`.bak` 를 뺀 것)
+    nonisolated static func isMVMZSave(_ name: String) -> Bool {
+        name.range(of: #"^[A-Za-z0-9_.-]{1,64}\.(rpgsave|rmmzsave)$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// 같은 게임 찾기: 저장 폴더 이름(dataPathApp)이 같거나, 그게 없으면 제목이 같은 것.
@@ -466,6 +509,7 @@ final class Delivery: ObservableObject {
         case unsupported(found: [String])
         case cannotReplace
         case cannotRead(String)
+        case packedInExe
         var errorDescription: String? {
             switch self {
             case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
@@ -474,11 +518,13 @@ final class Delivery: ObservableObject {
                 let shown = found.prefix(6).joined(separator: ", ")
                 return "지원하지 않는 게임이에요 · 발견한 파일: \(shown)\(found.count > 6 ? " 외 \(found.count - 6)개" : "")"
             case .cannotReplace: return "기존 게임 폴더를 바꿀 수 없어요."
+            case .packedInExe: return "이 게임은 파일이 실행 파일 안에 묶여 있어 열 수 없어요"
             }
         }
     }
 
     nonisolated static func readVersion(folder: URL, recipe: Dish.Recipe) -> String? {
+        if recipe == .rpgMakerMV { return MVMZProbe.probe(folder: folder)?.packageVersion.flatMap { $0.isEmpty ? nil : $0 } }
         if recipe == .electron,
            let data = try? Data(contentsOf: folder.appendingPathComponent("package.json")),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
@@ -510,6 +556,16 @@ final class Delivery: ObservableObject {
             if ext == "exe" || ext == "dll" { try? fm.removeItem(at: f); continue }
             if recipe == .electron, (electronJunk.contains(name) || name == "locales" || (exts.contains(ext) && name != "soundfont.sf2")) {
                 try? fm.removeItem(at: f)
+            }
+            // MV·MZ: 맨 위의 NW.js 런타임(nw.pak·icudtl.dat·locales 등). 게임 데이터(www/·img/·data/…)는 이름이 달라 건드리지 않는다
+            // locales·swiftshader 는 안에 NW.js 파일(.pak·.dll)만 있을 때만 (게임이 번역 폴더를 locales 로 둘 수 있다)
+            if recipe == .rpgMakerMV {
+                let lower = name.lowercased()
+                let runtimeDir = ["locales", "swiftshader", "pnacl"].contains(lower)
+                    && ((try? fm.contentsOfDirectory(atPath: f.path)) ?? ["?"]).allSatisfy { ["pak", "dll", "so", "nexe", "json", "info"].contains(($0 as NSString).pathExtension.lowercased()) }
+                if runtimeDir || electronJunk.contains(name) || ["nw.pak", "nw_100_percent.pak", "nw_200_percent.pak", "natives_blob.bin", "credits.html"].contains(lower) {
+                    try? fm.removeItem(at: f)
+                }
             }
         }
     }

@@ -100,7 +100,7 @@ struct BowlContainerView: View {
                 let page = pageSize(geo.size, rect: r)
                 let k = page.width > 0 ? r.width / page.width : 1
                 GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
-                          paused: !visible, onRestart: restarted)
+                          paused: !visible, onRestart: restarted, onQuit: { flush(); onClose() })
                     .frame(width: page.width, height: page.height - refitNudge)
                     .clipShape(RoundedRectangle(cornerRadius: Self.corner / k, style: .continuous))
                     .scaleEffect(k)
@@ -208,6 +208,7 @@ struct BowlContainerView: View {
         .onDisappear {
             recorder.setActive(false)
             // 게임 종료(또는 다른 게임으로 바꿈): 마지막 스냅샷이 파일에 닿은 뒤 iCloud 로 올린다
+            packSaveFiles()
             Igloo.shared.afterPlay(dish, stillRunning: false)
         }
         .onReceive(thermometer.$thermal) { t in
@@ -566,13 +567,22 @@ struct BowlContainerView: View {
 
     private func flush() {
         webView?.evaluateJavaScript("window.__bingsu && __bingsu.flush()", completionHandler: nil)
+        packSaveFiles()
+    }
+
+    /// MV·MZ 는 게임이 저장 데이터 폴더에 파일로 바로 쓴다(동기 쓰기라 이미 디스크에 있다) → save.json 으로 묶어
+    /// 백업·iCloud 가 XP 와 같은 길을 타게 한다. 게임이 켜져 있으니 파일은 건드리지 않고 묶기만 한다
+    private func packSaveFiles() {
+        guard dish.recipe == .rpgMakerMV else { return }
+        IceTray.sync(dish, allowUnpack: false)
     }
 
     /// 지금 상태를 먼저 파일로 보낸 뒤(메시지가 비동기라 잠깐 기다림) 복사본을 만든다
     private func backup() {
         flush()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            showToast(freezer.freeze() != nil ? "백업했어요" : "아직 저장된 데이터가 없어요")
+            let none = dish.recipe == .rpgMakerMV ? "아직 게임 안에서 저장한 데이터가 없어요" : "아직 저장된 데이터가 없어요"
+            showToast(freezer.freeze() != nil ? "백업했어요" : none)
             lastBackup = freezer.backups().first?.date
         }
     }

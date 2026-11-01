@@ -108,6 +108,17 @@ struct DishSettingsView: View {
                          + (dish.recipe == .mkxp ? " MIDI 배경음악은 사운드폰트가 있어야 소리가 나요. 넣은 사운드폰트는 이런 게임 모두가 같이 쓰고, 게임에 들어 있는 사운드폰트가 먼저예요. 게임을 처음 켤 때 적용돼요." : ""))
                 }
 
+                if dish.recipe == .rpgMakerMV {
+                    Section {
+                        Toggle("픽셀 선명하게", isOn: Binding(get: { prefs.pixelSharp != false },
+                                                         set: { on in store.update(dish.id) { $0.pixelSharp = on ? nil : false } }))
+                    } header: {
+                        Text("화면")
+                    } footer: {
+                        Text("켜면 도트 그림을 흐리지 않고 또렷하게 키워요. 끄면 부드럽게 보여요. 게임을 다시 켜면 적용돼요.")
+                    }
+                }
+
                 if dish.recipe == .mkxp {
                     Section {
                         Toggle("온라인 접속 허용", isOn: Binding(get: { prefs.allowOnline != false },

@@ -18,6 +18,8 @@ struct GlassBowl: UIViewRepresentable {
     var paused = false
     /// 게임이 처음부터 다시 떴을 때 (기록·안내용)
     var onRestart: (PerfRestart.Kind) -> Void = { _ in }
+    /// 게임이 스스로 끝냄 (MV·MZ 의 nw.App.quit·window.close → 일시정지 화면의 "게임 종료"와 같게)
+    var onQuit: () -> Void = {}
 
     func makeCoordinator() -> Coordinator { Coordinator(dish: dish, thermometer: thermometer, freezer: freezer) }
 
@@ -30,17 +32,25 @@ struct GlassBowl: UIViewRepresentable {
         // 게임별 영구 저장소 (웹 게임 로그인·세이브 유지)
         config.websiteDataStore = WKWebsiteDataStore(forIdentifier: Self.storeID(for: dish))
 
-        let handler: PokemonSchemeHandler?
+        let handler: WKURLSchemeHandler?
+        let mvmz = dish.recipe == .rpgMakerMV ? dish.mvmz : nil
         if dish.recipe == .electron {
             let h = PokemonSchemeHandler(gameRoot: dish.location)
             config.setURLSchemeHandler(h, forURLScheme: PokemonSchemeHandler.scheme)
+            handler = h
+        } else if dish.recipe == .rpgMakerMV {
+            // RPG Maker MV·MZ: 게임 루트 읽기 + save/ 만 저장 데이터 폴더로 쓰기. 켜기 전에 save.json(iCloud·백업 되돌리기)을 파일로 풀어 둔다
+            IceTray.sync(dish, allowUnpack: true)
+            let h = GreenTeaSchemeHandler(gameRoot: dish.gameRoot, saves: freezer.directory, label: dish.id)
+            config.setURLSchemeHandler(h, forURLScheme: GreenTeaSchemeHandler.scheme)
             handler = h
         } else { handler = nil }
         context.coordinator.handler = handler
 
         let ucc = config.userContentController
         let prefix = freezer.keyPrefix
-        let freezerEnabled = !dish.isRemote
+        // MV·MZ 는 저장을 파일(save/ → Saves/)로 하므로 localStorage 스냅샷을 쓰지 않는다 (얼음틀이 save.json 에 묶는다)
+        let freezerEnabled = !dish.isRemote && dish.recipe != .rpgMakerMV
         if dish.knownWeb == .pokerogue {
             // 배경음악을 낮은 표본율로 풀어 메모리 쌓임을 줄인다 (BowlScripts.musicDiet, 다른 소리 스크립트보다 먼저)
             let rate = (DishPrefsStore.shared.prefs(for: dish.id).musicRate ?? .default).rawValue
@@ -56,8 +66,16 @@ struct GlassBowl: UIViewRepresentable {
                                                                            keyPrefix: prefix, freezer: freezerEnabled,
                                                                            desktopSpoof: !dish.isRemote,
                                                                            renderScale: quality.renderScale, fpsCap: fpsCap,
-                                                                           volume: BingsuApp.gameVolume),
+                                                                           volume: BingsuApp.gameVolume, keysToDocument: mvmz != nil),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        if let mvmz {
+            // NW.js 흉내: 엔진이 PC 처럼 save/ 에 파일로 저장하게 (BowlScripts.nwShim)
+            ucc.addUserScript(WKUserScript(source: BowlScripts.nwShim(engine: mvmz.engine), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            if DishPrefsStore.shared.prefs(for: dish.id).pixelSharp != false {
+                ucc.addUserScript(WKUserScript(source: BowlScripts.pixelatedCSS, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
+            }
+            ucc.add(context.coordinator, name: "mv")
+        }
         ucc.addUserScript(WKUserScript(source: BowlScripts.sfxWatch, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         // 웹 소리(Web Audio)는 WebKit 이 앱 오디오 세션과 따로 정해 무음 스위치를 따른다. 페이지의 Audio Session API 와
         // 무음 <audio> 로 "무음 모드에서도 소리 재생"(게임별 → 전역)과 같게 맞춘다 (BowlScripts.silentMode)
@@ -77,7 +95,7 @@ struct GlassBowl: UIViewRepresentable {
         for name in ["freezer", "thermometer", "bowl", "rumble", "sfx"] { ucc.add(context.coordinator, name: name) }
         #if DEBUG
         // 디버그 빌드: 포켓로그 멈춤·다시 불러옴 측정 (Documents/Diag)
-        if dish.knownWeb == .pokerogue, let log = DiagLog(dishID: dish.id) {
+        if dish.knownWeb == .pokerogue || mvmz != nil, let log = DiagLog(dishID: dish.id) {
             ucc.addUserScript(WKUserScript(source: BowlScripts.diag, injectionTime: .atDocumentStart, forMainFrameOnly: true))
             ucc.add(context.coordinator, name: "diag")
             context.coordinator.startDiag(log)
@@ -86,6 +104,8 @@ struct GlassBowl: UIViewRepresentable {
 
         let wv = WKWebView(frame: .zero, configuration: config)
         if dish.isRemote { wv.customUserAgent = Self.safariUserAgent }
+        // MV·MZ: 휴대폰 UA 면 MV 는 .m4a 를 찾고(PC 판엔 없는 일이 많다) 고정 갱신 간격을 버리며, MZ 는 화면 높이의 90%만 쓴다 → 데스크톱 Safari
+        if mvmz != nil { wv.customUserAgent = Self.desktopSafariUserAgent }
         wv.navigationDelegate = context.coordinator
         wv.uiDelegate = context.coordinator
         wv.scrollView.bounces = false
@@ -103,6 +123,9 @@ struct GlassBowl: UIViewRepresentable {
             // 레조넌스는 ?mobile=0 으로 띄워 자체 터치 UI 대신 게임패드 경로를 쓰게 한다 (7.4)
             let query = dish.dataPathApp == "pokemon-resonance" ? "?mobile=0" : ""
             wv.load(URLRequest(url: URL(string: "\(PokemonSchemeHandler.origin)/index.html\(query)")!))
+        } else if let mvmz {
+            NSLog("[Bowl] recipe=rpgMakerMV engine=\(mvmz.engine.rawValue) root=\(mvmz.root.isEmpty ? "." : mvmz.root) saves=\(dish.dataPathApp)")
+            wv.load(URLRequest(url: URL(string: "\(GreenTeaSchemeHandler.origin)/index.html")!))
         } else {
             wv.load(URLRequest(url: dish.location))
         }
@@ -117,6 +140,7 @@ struct GlassBowl: UIViewRepresentable {
         #endif
         context.coordinator.paused = paused
         context.coordinator.onRestart = onRestart
+        context.coordinator.onQuit = onQuit
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -129,6 +153,12 @@ struct GlassBowl: UIViewRepresentable {
         let major = UIDevice.current.systemVersion.split(separator: ".").first.map(String.init) ?? "26"
         let device = UIDevice.current.userInterfaceIdiom == .pad ? "iPad; CPU OS \(v) like Mac OS X" : "iPhone; CPU iPhone OS \(v) like Mac OS X"
         return "Mozilla/5.0 (\(device)) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(major).0 Mobile/15E148 Safari/604.1"
+    }
+
+    /// 같은 iOS 판의 Mac Safari UA (MV·MZ 가 휴대폰으로 보지 않게)
+    static var desktopSafariUserAgent: String {
+        let major = UIDevice.current.systemVersion.split(separator: ".").first.map(String.init) ?? "26"
+        return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(major).0 Safari/605.1.15"
     }
 
     static func storeID(for dish: Dish) -> UUID {
@@ -145,11 +175,12 @@ struct GlassBowl: UIViewRepresentable {
         let dish: Dish
         let thermometer: Thermometer
         let freezer: Freezer
-        var handler: PokemonSchemeHandler?
+        var handler: WKURLSchemeHandler?
         var keyPrefix = ""
         var freezerEnabled = false
         var onExternal: ((URL) -> Void)?
         var onRestart: ((PerfRestart.Kind) -> Void)?
+        var onQuit: (() -> Void)?
         var paused = false
         /// 웹 프로세스가 죽어 우리가 reload() 한 직후: 그 새로고침은 "게임이 스스로"로 세지 않는다
         private var crashReloadPending = false
@@ -244,7 +275,7 @@ struct GlassBowl: UIViewRepresentable {
         }
 
         /// 빙수 주입 스크립트(BowlScripts)가 보내는 사건 이름. 릴리스 로그에는 이것만 적는다
-        static let bowlEvents: Set<String> = ["audio", "dpr", "error", "fps", "key", "ogg", "pad", "prkey", "ready", "sfxdbg", "stall"]
+        static let bowlEvents: Set<String> = ["audio", "dpr", "error", "fps", "key", "mv", "ogg", "pad", "prkey", "ready", "sfxdbg", "stall"]
 
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             // 게임 본 화면에서 온 것만 받는다 (광고·임베드 같은 다른 프레임은 무시)
@@ -317,7 +348,28 @@ struct GlassBowl: UIViewRepresentable {
                             + "localStorage.setItem('\(p)bingsu-selftest', String(Date.now())); __bingsu.flush(); "
                             + "return 'keys=' + ks.length + ' selftest=' + prev; })()"
                         message.webView?.evaluateJavaScript(probe) { r, _ in NSLog("[Bowl] selftest \(r ?? "nil")") }
+                        // MV·MZ: 웹뷰 안에서 save/ 밖 쓰기가 실제로 거부되는지 (모두 EACCES·ENOENT 로 던져야 통과)
+                        if dish.recipe == .rpgMakerMV {
+                            let mvProbe = "(() => { const fs = require('fs'); const bad = []; "
+                                + "const tries = [['w','/index.html'],['w','/data/System.json'],['w','/save/../js/main.js'],['w','/save/notes.txt'],"
+                                + "['w','/SAVE/x/file1.rpgsave'],['m','/img'],['u','/js/main.js'],['r','/save/../data/System.json']]; "
+                                + "for (const [op, p] of tries) { try { if (op === 'w') fs.writeFileSync(p, 'x'); else if (op === 'm') fs.mkdirSync(p + '/new'); "
+                                + "else if (op === 'u') fs.unlinkSync(p); else fs.renameSync('/save/file1.rmmzsave', p); bad.push(op + ' ' + p); } catch (e) {} } "
+                                + "const ok = fs.existsSync('/data/System.json') && fs.existsSync('/DATA/system.json'); "
+                                + "return 'mv write guard ' + (bad.length === 0 && ok ? 'OK' : 'FAIL') + ' tried=' + tries.length + ' leaked=' + JSON.stringify(bad) + ' ci=' + ok; })()"
+                            message.webView?.evaluateJavaScript(mvProbe) { r, e in NSLog("[Bowl] selftest \(r ?? e.map { "\($0)" } ?? "nil")") }
+                        }
                     }
+                }
+            case "mv":
+                // NW.js 흉내(신뢰하지 않음)가 보낸 요청: 종료와 외부 링크(http·https 만, 사파리로)
+                guard dish.recipe == .rpgMakerMV, let d = message.body as? [String: Any], let op = d["op"] as? String else { return }
+                if op == "quit" {
+                    NSLog("[Bowl] mv quit requested")
+                    onQuit?()
+                } else if op == "open", let raw = d["url"] as? String, raw.count <= 2000, let url = URL(string: raw),
+                          ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
+                    UIApplication.shared.open(url)
                 }
             #if DEBUG
             case "diag":
@@ -342,6 +394,13 @@ struct GlassBowl: UIViewRepresentable {
             }
             if dish.recipe == .electron {
                 return decisionHandler(url.scheme == PokemonSchemeHandler.scheme ? .allow : .cancel)
+            }
+            if dish.recipe == .rpgMakerMV {
+                // 게임 출처만. 누른 링크(http·https)는 사파리로, 하위 프레임의 about:blank 는 둔다
+                if url.scheme == GreenTeaSchemeHandler.scheme { return decisionHandler(.allow) }
+                if url.scheme == "about", !(action.targetFrame?.isMainFrame ?? true) { return decisionHandler(.allow) }
+                if action.navigationType == .linkActivated, ["http", "https"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }
+                return decisionHandler(.cancel)
             }
             // 다른 사이트로의 이동: 링크 클릭은 사파리로, 그 외(로그인 리다이렉트 등 메인 프레임)는 팝업 시트로
             if url.host != dish.location.host, action.targetFrame?.isMainFrame ?? true, url.scheme?.hasPrefix("http") == true {

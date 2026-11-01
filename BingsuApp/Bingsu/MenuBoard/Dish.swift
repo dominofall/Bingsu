@@ -21,7 +21,7 @@ struct Dish: Identifiable, Hashable {
 
         var servable: Bool {
             switch self {
-            case .electron, .webURL: return true
+            case .electron, .webURL, .rpgMakerMV: return true
             case .mkxp: return BrassBowlEngine.availability == .ready
             default: return false
             }
@@ -48,12 +48,20 @@ struct Dish: Identifiable, Hashable {
     var rtp: String?
     /// RTP 를 쓰는데 게임에 기본 그림이 없다 → RTP 를 넣어야 제대로 보인다
     var needsRTP = false
+    /// RPG Maker MV·MZ 게임(.rpgMakerMV)의 엔진·게임 루트. 가져올 때 MVMZProbe 로 정해 bingsu.json 에 적는다. 그 밖의 게임은 nil
+    var mvmz: MVMZInfo?
 
     init(id: String, title: String, recipe: Recipe, location: URL, dataPathApp: String,
-         rgss: RGSSVersion? = nil, rtp: String? = nil, needsRTP: Bool = false) {
+         rgss: RGSSVersion? = nil, rtp: String? = nil, needsRTP: Bool = false, mvmz: MVMZInfo? = nil) {
         self.id = id; self.title = title; self.recipe = recipe; self.location = location
         self.dataPathApp = Self.folderName(dataPathApp, fallback: id)
-        self.rgss = rgss; self.rtp = rtp; self.needsRTP = needsRTP
+        self.rgss = rgss; self.rtp = rtp; self.needsRTP = needsRTP; self.mvmz = mvmz
+    }
+
+    /// MV·MZ 게임의 루트 폴더 (`index.html` 이 있는 곳). 그 밖의 게임은 게임 폴더
+    var gameRoot: URL {
+        guard let r = mvmz?.root, !r.isEmpty else { return location }
+        return location.appendingPathComponent(r, isDirectory: true)
     }
 
     /// RPG Maker 게임의 판 (모르면 XP — 예전 가져오기는 XP 만 받았다)

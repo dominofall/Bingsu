@@ -132,6 +132,9 @@ final class MenuBoardStore: ObservableObject {
                     Self.applyProbe(&dish)
                 }
             }
+            if recipe == .rpgMakerMV {
+                dish.mvmz = (m["mvmz"] as? [String: Any]).flatMap(MVMZInfo.init(manifest:)) ?? MVMZProbe.probe(folder: folder)?.info
+            }
             return dish
         }
         let recipe = RecipeDetector.detect(folder: folder)
@@ -139,6 +142,7 @@ final class MenuBoardStore: ObservableObject {
         let d = RecipeDetector.describe(folder: folder, recipe: recipe)
         var dish = Dish(id: id, title: d.title, recipe: recipe, location: folder, dataPathApp: d.dataPathApp)
         if recipe == .mkxp { Self.applyProbe(&dish) }
+        if recipe == .rpgMakerMV { dish.mvmz = MVMZProbe.probe(folder: folder)?.info }
         return dish
     }
 

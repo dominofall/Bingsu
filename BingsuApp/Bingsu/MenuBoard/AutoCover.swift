@@ -3,15 +3,17 @@ import UIKit
 
 /// 사용자가 표지를 고르지 않은 RPG Maker 게임의 기본 표지 (2026-10-31 사용자 결정: 타이틀 이미지 먼저).
 /// 1. Graphics/Titles 의 타이틀 이미지  2. Game.exe 아이콘(에센셜 기본 몬스터볼이면 건너뜀)  3. 없으면 nil → 기본 칩.
+/// MV·MZ 는 `System.json` 의 `title1Name` → `img/titles1/<이름>.png`(암호화면 `.rpgmvp`·`.png_` 를 풀어서).
 /// 게임 폴더에는 아무것도 쓰지 않고, 한 번 찾은 결과는 실행 동안 메모리에 둔다.
 enum AutoCover {
     @MainActor private static var cache: [String: UIImage?] = [:]
 
     @MainActor static func image(for dish: Dish) -> UIImage? {
-        guard dish.recipe == .mkxp, !dish.isRemote else { return nil }
+        guard dish.recipe == .mkxp || dish.recipe == .rpgMakerMV, !dish.isRemote else { return nil }
         let key = dish.location.path
         if let hit = cache[key] { return hit }
-        let found = titleImage(in: dish.location) ?? exeIcon(in: dish.location)
+        let found = dish.recipe == .rpgMakerMV ? mvTitle(in: dish.gameRoot)
+            : titleImage(in: dish.location) ?? exeIcon(in: dish.location)
         cache[key] = found
         return found
     }
@@ -28,6 +30,29 @@ enum AutoCover {
         let pick = images.first { base($0) == "title" }
             ?? images.sorted().first { n in !skip.contains { base(n).hasPrefix($0) } }
         return pick.flatMap { UIImage(contentsOfFile: dir.appendingPathComponent($0).path) }
+    }
+
+    // MARK: MV·MZ 타이틀
+
+    private static func mvTitle(in root: URL) -> UIImage? {
+        guard let system = MVMZProbe.json(root, "data/System.json"), let name = system["title1Name"] as? String, !name.isEmpty,
+              !name.contains("/"), !name.contains(".."), !name.hasPrefix(".") else { return nil }
+        let fm = FileManager.default
+        // 폴더·파일 이름 대소문자가 다를 수 있다 (Windows 에서 만든 게임)
+        func child(_ dir: URL, _ n: String) -> URL? {
+            let exact = dir.appendingPathComponent(n)
+            if fm.fileExists(atPath: exact.path) { return exact }
+            return ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).first { $0.lowercased() == n.lowercased() }.map { dir.appendingPathComponent($0) }
+        }
+        guard let img = child(root, "img"), let dir = child(img, "titles1") else { return nil }
+        if let f = child(dir, name + ".png"), let ui = UIImage(contentsOfFile: f.path) { return ui }
+        // 암호화 배포본: MV .rpgmvp, MZ .png_
+        guard let key = system["encryptionKey"] as? String else { return nil }
+        for ext in [".rpgmvp", ".png_"] {
+            if let f = child(dir, name + ext), let d = try? Data(contentsOf: f, options: .mappedIfSafe),
+               let plain = RPGMakerCrypt.decrypt(d, keyHex: key.lowercased()), let ui = UIImage(data: plain) { return ui }
+        }
+        return nil
     }
 
     // MARK: Game.exe 아이콘

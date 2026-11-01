@@ -13,8 +13,10 @@ enum RecipeDetector {
         if has("mkxp.json") { return .mkxp }
         let rgss = RGSSProbe.probe(folder: folder)
         if rgss.version != nil && rgss.hasScripts { return .mkxp }
-        // RPG Maker MV/MZ (NW.js)
-        if has("package.nw") || has("nw.pak") || has("www/index.html") { return .rpgMakerMV }
+        // RPG Maker MV/MZ (NW.js): package.json main · www/ · 맨 위 index.html + 엔진 코어 (MVMZProbe).
+        // package.nw 는 Delivery 가 먼저 풀어 둔다. NW.js 흔적만 있고 MV/MZ 가 아니면 지원하지 않음
+        if MVMZProbe.findRoot(folder) != nil { return .rpgMakerMV }
+        if has("package.nw") || has("nw.pak") { return .unknown }
         if has("index.html") { return .electron }
         return .unknown
     }
@@ -44,6 +46,9 @@ enum RecipeDetector {
                 if !t.isEmpty { return (String(t.prefix(200)), dataPath) }
             }
             return (dataPath, dataPath)
+        case .rpgMakerMV:
+            guard let p = MVMZProbe.probe(folder: folder) else { return (fallback, fallback) }
+            return (p.gameTitle, p.dataPathApp)
         default:
             return (fallback, fallback)
         }

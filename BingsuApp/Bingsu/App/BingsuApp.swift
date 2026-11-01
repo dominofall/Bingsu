@@ -74,7 +74,7 @@ struct BingsuApp: App {
                 .task {
                     #if DEBUG
                     // 디버그 자가 테스트: 가상 패드 배치 왕복·예전 설정 호환 (게임 쪽 자가 테스트는 GlassBowl)
-                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run() }
+                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run(); GreenTeaSelfTest.run() }
                     // 디버그: BINGSU_DRIVE_CONNECT=1 이면 켤 때 "Google Drive 연결" 을 누른 것처럼 (흉내 서버 동의 화면 → 토큰, 결과는 로그)
                     if ProcessInfo.processInfo.environment["BINGSU_DRIVE_CONNECT"] == "1" {
                         try? await Task.sleep(for: .seconds(2))

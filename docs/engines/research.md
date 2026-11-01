@@ -209,7 +209,7 @@ empo `MkxpCore.isGameRoot`(`*.ini` 의 `Scripts=` 또는 아카이브)·`MkxpPro
 | 출처 | MV corescript `js/rpg_managers/AudioManager.js:392-398`, `js/rpg_core/WebAudio.js:66-71, 123-129` | MZ `js/rmmz_core/WebAudio.js:388-420` |
 
 - PC 판 MV 게임에는 `.m4a` 가 없는 경우가 많다(mvmz 주석) → **데스크톱 UA 로 `isMobileDevice` 를 거짓으로** 만들어야 `.ogg` 를 고른다. 그다음 `canPlayType('audio/ogg')` 가 iOS 에서 빈 문자열이면 다시 `.m4a` 로 가므로, 빙수 폴리필(`BowlScripts.oggVorbisPolyfill`, "OggS" 면 WASM 으로 풂)이 있는 한 `WebAudio.canPlayOgg = () => true` 로 덮는 것이 맞다 [추정 — 실기기 확인 필요].
-- 반대로 mvmz 는 **시뮬레이터에서만** `canPlayOgg` 를 거짓으로 만든다: "The simulator says that it plays Ogg, then fails to decode it" (`runtime.js` runFrame). 실기기 WebKit 이 Ogg 를 직접 푸는지는 빙수 폴리필 주석("iOS WebKit 은 decodeAudioData 로 .ogg 를 못 풀기 때문에")과 엇갈림 → **[미확인]**, PoC 에서 실기기로 볼 것. 빙수 폴리필은 "기본 디코딩 먼저 → 실패하면 WASM" 순서라 어느 쪽이든 동작한다.
+- 반대로 mvmz 는 **시뮬레이터에서만** `canPlayOgg` 를 거짓으로 만든다: "The simulator says that it plays Ogg, then fails to decode it" (`runtime.js` runFrame). 실기기 WebKit 이 Ogg 를 직접 푸는지는 빙수 폴리필 주석("iOS WebKit 은 decodeAudioData 로 .ogg 를 못 풀기 때문에")과 엇갈림 → **[미확인]**, PoC 에서 실기기로 볼 것. 빙수 폴리필은 "기본 디코딩 먼저 → 실패하면 WASM" 순서라 어느 쪽이든 동작한다. **[확인, 시뮬레이터 2026-11-01]** 시뮬레이터(iOS 26)는 mvmz 주석대로 `canPlayType("audio/ogg")` 는 참이지만 `decodeAudioData` 가 실패하고, 빙수 폴리필 워커가 풀어 MZ·MV 모두 소리가 났다. 실기기 Ogg 직접 디코딩은 여전히 [미확인].
 - MZ 는 `canPlayOgg` 가 거짓이면 자체 디코더를 쓰므로 빙수 폴리필과 겹칠 일이 적다. 참이면 `decodeAudioData` → 빙수 폴리필이 받는다.
 - 암호화 소리(`.rpgmvo`, `.ogg_`)는 게임이 풀어 `decodeAudioData` 에 넘기므로 폴리필은 "OggS" 를 보게 된다 [추정].
 - 포켓로그에서 겪은 배경음악 메모리 쌓임(빌드 23 `musicDiet`)은 MV 도 곡 전체를 `AudioBuffer` 로 푸는 구조라 같은 문제가 생길 수 있다 [추정] → 큰 게임에서 메모리 측정 필요.
@@ -316,10 +316,10 @@ empo `MkxpCore.isGameRoot`(`*.ini` 의 `Scripts=` 또는 아카이브)·`MkxpPro
 | **M4** 표지·암호화 | 암호화 게임 표지 풀기, 대소문자 무시 경로 | 암호화 게임 목록 표지·실행 |
 
 **막힐 위험이 큰 곳**
-- 동기 XHR 로 PUT 본문을 스킴 핸들러가 받는 부분: mvmz 가 동작하는 것으로 보아 되지만 빙수 핸들러로 직접 확인 필요 [추정].
+- 동기 XHR 로 PUT 본문을 스킴 핸들러가 받는 부분: **[확인, 2026-11-01]** `request.httpBody` 로 온다(iPhone·iPad 시뮬레이터, MV·MZ).
 - 플러그인 Node 의존(2.8)은 게임을 돌려 봐야 안다.
 - 큰 게임의 웹 프로세스 메모리(배경음악 `AudioBuffer`, 텍스처).
-- MV 의 `.m4a` / `.ogg` 고르기가 실기기에서 어떻게 나오는지 [미확인].
+- MV 의 `.m4a` / `.ogg` 고르기가 실기기에서 어떻게 나오는지 [미확인]. 시뮬레이터는 데스크톱 UA + `canPlayOgg` 덮기로 `.ogg` 를 골랐다(`mv audio ext=.ogg via=polyfill`, 2026-11-01).
 
 ### 4.3 테스트에 쓸 게임 (저작권 문제 없는 것만)
 
@@ -339,6 +339,15 @@ empo `MkxpCore.isGameRoot`(`*.ini` 의 `Scripts=` 또는 아카이브)·`MkxpPro
 | Hello? Hell... o? | https://vgperson.com/games/hellohello.htm | 3 (VX Ace, Ruby 1.9) | `Game.rgss3a` | 필요(`RPGVXAce`) | 메뉴를 막고 진행 중 `DataManager.save_game(0)` 으로 저장. 조명 스크립트(HN_Light)가 맵을 떠날 때 오류 |
 | The Witch's House 1.09a | https://vgperson.com/games/witchhouse.htm | 2 (VX, Ruby 1.8) | `Game.rgss2a` | 필요 없음 | 저장을 `Save/N.rvdata`·`PublicData.rvdata` 로 함(표준 이름 아님) |
 | RPG Maker VX Ace RTP | https://assets.rpgmakerweb.com/RPGVXAce_RTP.zip | — | — | — | zip 안이 Windows 설치 파일이라 innoextract 로 풀어 폴더째 다시 zip |
+
+
+**빌드 27 구현 때 실제로 쓴 게임 (2026-11-01, 로컬 `Games/mvmz-test/` 에만, 저장소·앱에 넣지 않음)** — 둘 다 공개 저장소에 오픈소스 라이선스로 올라온 작은 프로젝트다. 암호화 배포본은 찾지 못해 직접 만든 시험본을 썼다.
+
+| 게임 | 출처 | 엔진 | 암호화 | 비고 |
+|---|---|---|---|---|
+| RPG Maker MZ 데모 ("Project1") | https://github.com/unacro/rpgmaker-mz-demo (GPL-3.0) | MZ | 없음 | 맨 위 모양(`index.html`·`js/rmmz_core.js`), `package.json` name "rmmz-game"(기본값), `gameId` 23209317, 소리 `.ogg` 만, 중국어 텍스트 |
+| Adventure | https://github.com/amirisback/adventure-rpg (Apache-2.0) | MV | 없음 | 웹 배포 폴더. 시험용으로 Windows 배포 모양(`Adventure-win/package.json` main `www/index.html`, 가짜 `Game.exe`·`nw.pak`·`locales/`)으로 다시 묶고 `.m4a` 를 뺐다 |
+| Adventure 암호화 시험본 | 위 MV 게임을 편집기 방식(헤더 16바이트 + 앞 16바이트 XOR, 키는 `System.json` `encryptionKey`)으로 직접 암호화 | MV | 그림 `.rpgmvp`·소리 `.rpgmvo` | 실제 배포본 아님. `castle.rpgmvp`·`ACTOR1.rpgmvp` 로 이름 대소문자를 바꿔 대소문자 무시 경로도 시험. `save/` 를 넣은 변형으로 PC 세이브 옮기기 시험 |
 
 ---
 

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		01C4C2BA757511098D92A29F /* SkinShelf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 001477F31C2902EBE1C62873 /* SkinShelf.swift */; };
+		03C9E6D6E2590A033F906494 /* MVMZProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01B71C2BBEE0E1E2C20B5425 /* MVMZProbe.swift */; };
 		0563AF6B27623408F2DA753D /* SkinDesigner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 002CC1D61D8D83F6C6CBF4C9 /* SkinDesigner.swift */; };
 		075CD23E7FDA85BB037A5849 /* IceBowl in Resources */ = {isa = PBXBuildFile; fileRef = 3617925A02610223A49BE51D /* IceBowl */; };
 		094080A02037DAA432ED4741 /* BrassBowlEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D21C1CC71DE7C6BC818538A /* BrassBowlEngine.swift */; };
@@ -15,15 +16,18 @@
 		0D1D4A8229B22D9E89D1F79B /* DriveShelf.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B86D0248C95E21AE4C56C2F /* DriveShelf.swift */; };
 		1123EBA1909EAEDFC37B4265 /* SpoonSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */; };
 		137F44E8983CD6401E9EB8B6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCE4B25C91A30226FA7CE67 /* Glass.swift */; };
+		15E6003FB9A7E03FFB29F33B /* RPGMakerCrypt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */; };
 		175CF3F1248AA510C122057F /* WebGames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DE1AD2F52844D2C74FB12B /* WebGames.swift */; };
 		190C528E23B0F5B4D13852DA /* DownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5139AB857871D3CC678B92 /* DownloadView.swift */; };
 		19C1BD6F3A5FBB9B20AD2C97 /* BrassShelves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396F3A801DC4567F234ACF3 /* BrassShelves.swift */; };
+		1DEAFC19F9916ACFEE639F28 /* CutlerySet+MV.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47F5AE906F2777AED2075B5 /* CutlerySet+MV.swift */; };
 		1E99712AB9DE67B7C4EBC318 /* SkinPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8895E843068FA01C56BEC359 /* SkinPicker.swift */; };
 		21ABF4514382A8BC12365874 /* BingsuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26660F721EB6692A526F0AA /* BingsuApp.swift */; };
 		28A43B4C0978D8D45733FA60 /* Igloo.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCDF197A6F1466C399E2968D /* Igloo.swift */; };
 		2A10E61D0F247E19D80A998A /* Delivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0A5681130D849ACDF5A87A /* Delivery.swift */; };
 		35B8B8BC3B7AA9D6BF34D6A9 /* Rumble.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC288489930339F81A0B372 /* Rumble.swift */; };
 		3B53B501F15EC7F4D16A9060 /* MenuButtonPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */; };
+		3C7E2F82BAABEABCA42266AC /* SchemeFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */; };
 		3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */ = {isa = PBXBuildFile; fileRef = B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */; };
 		3F9C8B08153A870F7027FB42 /* AutoCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1232002CDDA6ED63239D5416 /* AutoCover.swift */; };
 		410C7737C27BE2F7DF30857F /* SpoonModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4513AC995966A91F9C712E4 /* SpoonModel.swift */; };
@@ -34,6 +38,7 @@
 		52966682F2BD98257537291F /* Palette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F10797A0398F1BA51C5ADAF /* Palette.swift */; };
 		52EC196FE7CD52FFAE1F6702 /* MenuPadNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C0227D72374A629D33F563 /* MenuPadNavigator.swift */; };
 		68E1194F1E0F81855A7610CC /* DriveCounter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */; };
+		6EB085C01E88924942A73FD4 /* GreenTeaSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B0758967469219BAF81DE3D /* GreenTeaSelfTest.swift */; };
 		70D9400070111AD5E199DF46 /* PerfLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37105115927CA826EDF1F164 /* PerfLog.swift */; };
 		79EF35A85F0FE761724F89C0 /* GamePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09F035B0C3E611B20D88C77C /* GamePicker.swift */; };
 		7BAE4F8F89B52ABF21C05DE6 /* IglooSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 989577B7C6251DD25703E9D4 /* IglooSelfTest.swift */; };
@@ -53,6 +58,7 @@
 		9E8F059C4857832F188B63EC /* Skins in Resources */ = {isa = PBXBuildFile; fileRef = 48BB60E7EE47E4EFE608E71C /* Skins */; };
 		9FF8B2874685DD0CF7022BD8 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 05530461C9ACF9DF10D9D361 /* LICENSE */; };
 		A9E689EDF40590A4FF89777E /* PauseBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B34393F506CCC8FEC90F58EC /* PauseBoard.swift */; };
+		AD18AD784AD7D6EAB9099C5F /* BowlScripts+NW.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D38BD9C92C1A38B995564F /* BowlScripts+NW.swift */; };
 		AE30282DD65A172A596FEF2F /* ConflictView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D3073133203D9C91045254 /* ConflictView.swift */; };
 		B3D599383F692E0883D91430 /* SpoonTouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F12E3A1FC5BEED10D08AC0 /* SpoonTouchView.swift */; };
 		B68AF8EC6BEF1C3B7672C023 /* ogg-vorbis-decoder.min.js in Resources */ = {isa = PBXBuildFile; fileRef = 5583607EAB8FDED18CFB625C /* ogg-vorbis-decoder.min.js */; };
@@ -67,6 +73,7 @@
 		C90E8C11C3038613DCEF2D5B /* BrassBowlContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E008BDF8B5048BDF74686502 /* BrassBowlContainerView.swift */; };
 		D057C3EDBACA16E4EBA495C2 /* SpoonSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */; };
 		D26C3971FB856CC93AB73DBD /* RumbleSet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */; };
+		D2763C7D5559F81F9CC98234 /* GreenTeaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBBFF73EC8EDD93FAA0AA15 /* GreenTeaSchemeHandler.swift */; };
 		D2E7584993AA67ADD5538980 /* Dish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A4FDE53502C75F063E7580 /* Dish.swift */; };
 		D401791711BEDF7422DF001B /* GlassBowl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7DF0C151691866EEB6446A /* GlassBowl.swift */; };
 		D4A5AB6D1320F0EFEA465084 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5EE0ADB93C88F0A0601CBAE5 /* Assets.xcassets */; };
@@ -84,6 +91,7 @@
 /* Begin PBXFileReference section */
 		001477F31C2902EBE1C62873 /* SkinShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinShelf.swift; sourceTree = "<group>"; };
 		002CC1D61D8D83F6C6CBF4C9 /* SkinDesigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinDesigner.swift; sourceTree = "<group>"; };
+		01B71C2BBEE0E1E2C20B5425 /* MVMZProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MVMZProbe.swift; sourceTree = "<group>"; };
 		05530461C9ACF9DF10D9D361 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		05EF5CD301B2AA261E35A61F /* MenuBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBoardView.swift; sourceTree = "<group>"; };
 		06835BD01F64601441316486 /* BowlScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlScripts.swift; sourceTree = "<group>"; };
@@ -99,9 +107,11 @@
 		30DE1AD2F52844D2C74FB12B /* WebGames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebGames.swift; sourceTree = "<group>"; };
 		31C2DDE5D213694E1AD89A9C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3355B376BCB5F7BECEA19761 /* SpoonController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonController.swift; sourceTree = "<group>"; };
+		33D38BD9C92C1A38B995564F /* BowlScripts+NW.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BowlScripts+NW.swift"; sourceTree = "<group>"; };
 		345AA05D99D2919B652C1806 /* CutlerySet+XP.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CutlerySet+XP.swift"; sourceTree = "<group>"; };
 		3617925A02610223A49BE51D /* IceBowl */ = {isa = PBXFileReference; lastKnownFileType = folder; name = IceBowl; path = Bingsu/Resources/IceBowl; sourceTree = SOURCE_ROOT; };
 		37105115927CA826EDF1F164 /* PerfLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfLog.swift; sourceTree = "<group>"; };
+		3B0758967469219BAF81DE3D /* GreenTeaSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenTeaSelfTest.swift; sourceTree = "<group>"; };
 		3BCE4B25C91A30226FA7CE67 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
 		433D04EF76ACB0C11EC74FCD /* Freezer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Freezer.swift; sourceTree = "<group>"; };
 		48BB60E7EE47E4EFE608E71C /* Skins */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Skins; path = Bingsu/Resources/Skins; sourceTree = SOURCE_ROOT; };
@@ -118,7 +128,9 @@
 		6A09005EDDC989FBC2219268 /* Thermometer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thermometer.swift; sourceTree = "<group>"; };
 		6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveCounter.swift; sourceTree = "<group>"; };
 		7C42938298781D2E35741C26 /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
+		7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemeFile.swift; sourceTree = "<group>"; };
 		7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSkin.swift; sourceTree = "<group>"; };
+		8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPGMakerCrypt.swift; sourceTree = "<group>"; };
 		8396F3A801DC4567F234ACF3 /* BrassShelves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrassShelves.swift; sourceTree = "<group>"; };
 		8895E843068FA01C56BEC359 /* SkinPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinPicker.swift; sourceTree = "<group>"; };
 		8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RumbleSet.swift; sourceTree = "<group>"; };
@@ -144,6 +156,7 @@
 		C7102FD38D1EF51048ED8E2F /* DishPrefs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DishPrefs.swift; sourceTree = "<group>"; };
 		C72A0868389022A39B2B41DE /* LongSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LongSpoon.swift; sourceTree = "<group>"; };
 		C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RGSSProbe.swift; sourceTree = "<group>"; };
+		CCBBFF73EC8EDD93FAA0AA15 /* GreenTeaSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenTeaSchemeHandler.swift; sourceTree = "<group>"; };
 		D44A9111A0EFCB4E6077F87B /* SpoonLayoutEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonLayoutEditor.swift; sourceTree = "<group>"; };
 		D57FFEAD0C4B5982C0DBC2AF /* Courier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Courier.swift; sourceTree = "<group>"; };
 		D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokemonSchemeHandler.swift; sourceTree = "<group>"; };
@@ -151,6 +164,7 @@
 		DE9937FB5BFFACDD23793D55 /* SavedDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedDataView.swift; sourceTree = "<group>"; };
 		E008BDF8B5048BDF74686502 /* BrassBowlContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrassBowlContainerView.swift; sourceTree = "<group>"; };
 		E2983C24C173522B3B218825 /* DiagLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagLog.swift; sourceTree = "<group>"; };
+		E47F5AE906F2777AED2075B5 /* CutlerySet+MV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CutlerySet+MV.swift"; sourceTree = "<group>"; };
 		E645865C8AC6975E8AB7712A /* MenuBoardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBoardStore.swift; sourceTree = "<group>"; };
 		F2D3073133203D9C91045254 /* ConflictView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictView.swift; sourceTree = "<group>"; };
 		F77A15AFF28F0839031D49F7 /* SpoonFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonFace.swift; sourceTree = "<group>"; };
@@ -191,9 +205,15 @@
 				A2253E1CC5483C9EF25653A7 /* AuthPopupView.swift */,
 				C4FE01E2A220C5F817EA754F /* BowlContainerView.swift */,
 				06835BD01F64601441316486 /* BowlScripts.swift */,
+				33D38BD9C92C1A38B995564F /* BowlScripts+NW.swift */,
+				E47F5AE906F2777AED2075B5 /* CutlerySet+MV.swift */,
 				4C7DF0C151691866EEB6446A /* GlassBowl.swift */,
+				CCBBFF73EC8EDD93FAA0AA15 /* GreenTeaSchemeHandler.swift */,
+				3B0758967469219BAF81DE3D /* GreenTeaSelfTest.swift */,
+				01B71C2BBEE0E1E2C20B5425 /* MVMZProbe.swift */,
 				B34393F506CCC8FEC90F58EC /* PauseBoard.swift */,
 				D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */,
+				7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */,
 			);
 			path = Bowl;
 			sourceTree = "<group>";
@@ -326,6 +346,7 @@
 				2C21A849703554258828BC24 /* DeliveryView.swift */,
 				09F035B0C3E611B20D88C77C /* GamePicker.swift */,
 				BF71D97A8C5CCC358C42466C /* RecipeDetector.swift */,
+				8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */,
 				0A7A0B09C564E1653D5C9CD7 /* SafeUnzip.swift */,
 			);
 			path = Shaver;
@@ -478,12 +499,14 @@
 				3F9C8B08153A870F7027FB42 /* AutoCover.swift in Sources */,
 				21ABF4514382A8BC12365874 /* BingsuApp.swift in Sources */,
 				C13D0F2FACFAB5F2F2DAF7BB /* BowlContainerView.swift in Sources */,
+				AD18AD784AD7D6EAB9099C5F /* BowlScripts+NW.swift in Sources */,
 				4D166909B14201F76C0EE963 /* BowlScripts.swift in Sources */,
 				C90E8C11C3038613DCEF2D5B /* BrassBowlContainerView.swift in Sources */,
 				094080A02037DAA432ED4741 /* BrassBowlEngine.swift in Sources */,
 				19C1BD6F3A5FBB9B20AD2C97 /* BrassShelves.swift in Sources */,
 				AE30282DD65A172A596FEF2F /* ConflictView.swift in Sources */,
 				8C4B3BFB49AA7F692CA82984 /* Courier.swift in Sources */,
+				1DEAFC19F9916ACFEE639F28 /* CutlerySet+MV.swift in Sources */,
 				E2E71BE164BFFF57F4A9243A /* CutlerySet+XP.swift in Sources */,
 				2A10E61D0F247E19D80A998A /* Delivery.swift in Sources */,
 				4F7D8AD32BA29499CEAD7EF1 /* DeliveryView.swift in Sources */,
@@ -500,10 +523,13 @@
 				79EF35A85F0FE761724F89C0 /* GamePicker.swift in Sources */,
 				137F44E8983CD6401E9EB8B6 /* Glass.swift in Sources */,
 				D401791711BEDF7422DF001B /* GlassBowl.swift in Sources */,
+				D2763C7D5559F81F9CC98234 /* GreenTeaSchemeHandler.swift in Sources */,
+				6EB085C01E88924942A73FD4 /* GreenTeaSelfTest.swift in Sources */,
 				0B3E24A5D975669DFE977D19 /* IceTray.swift in Sources */,
 				28A43B4C0978D8D45733FA60 /* Igloo.swift in Sources */,
 				7BAE4F8F89B52ABF21C05DE6 /* IglooSelfTest.swift in Sources */,
 				945A7EDEC7444DF3FDEDBC00 /* LongSpoon.swift in Sources */,
+				03C9E6D6E2590A033F906494 /* MVMZProbe.swift in Sources */,
 				E94ED9F9E71A3D4D65EE7699 /* MenuBoardStore.swift in Sources */,
 				F6BE8D5E84C05252738D157A /* MenuBoardView.swift in Sources */,
 				3B53B501F15EC7F4D16A9060 /* MenuButtonPlace.swift in Sources */,
@@ -515,11 +541,13 @@
 				C54A8C7260B1548399E5D5CB /* PerfSection.swift in Sources */,
 				9AA55B7BBFF66C1D869D0EBF /* PokemonSchemeHandler.swift in Sources */,
 				D53D0922DAEB3E7909346C17 /* RGSSProbe.swift in Sources */,
+				15E6003FB9A7E03FFB29F33B /* RPGMakerCrypt.swift in Sources */,
 				8616F3FC74E026DF0C7D538D /* RecipeDetector.swift in Sources */,
 				35B8B8BC3B7AA9D6BF34D6A9 /* Rumble.swift in Sources */,
 				D26C3971FB856CC93AB73DBD /* RumbleSet.swift in Sources */,
 				9E0A32648E672FFAB3971FA3 /* SafeUnzip.swift in Sources */,
 				DF82236AFFC89454986D18DA /* SavedDataView.swift in Sources */,
+				3C7E2F82BAABEABCA42266AC /* SchemeFile.swift in Sources */,
 				BF1767799ABD0F01E9561C36 /* SettingsView.swift in Sources */,
 				0563AF6B27623408F2DA753D /* SkinDesigner.swift in Sources */,
 				1E99712AB9DE67B7C4EBC318 /* SkinPicker.swift in Sources */,

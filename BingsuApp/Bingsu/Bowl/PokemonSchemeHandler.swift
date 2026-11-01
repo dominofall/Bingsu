@@ -1,10 +1,9 @@
 import Foundation
 import WebKit
-import UniformTypeIdentifiers
 
 /// Electron main.cjs 의 `pokemon://game/...` 프로토콜을 WKWebView 에서 재현한다.
 /// storage.cjs resolveGameFile 규칙: assets/ 는 <game>/assets, 그 외는 <game>/dist.
-/// 미디어 재생을 위해 Range 요청(206)을 지원한다.
+/// 미디어 재생을 위해 Range 요청(206)을 지원한다 (SchemeFile).
 final class PokemonSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "pokemon"
     static let origin = "pokemon://game"
@@ -37,33 +36,8 @@ final class PokemonSchemeHandler: NSObject, WKURLSchemeHandler {
             guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else {
                 respond(HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!, nil); return
             }
-            let mime = Self.mime(for: file)
-            var headers: [String: String] = [
-                "Content-Type": mime,
-                "Accept-Ranges": "bytes",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-cache",
-            ]
-            // Range 처리 (오디오/비디오 스트리밍)
-            if let range = request.value(forHTTPHeaderField: "Range"), range.hasPrefix("bytes=") {
-                let spec = range.dropFirst(6).split(separator: "-", omittingEmptySubsequences: false)
-                let total = data.count
-                let start = Int(spec.first ?? "") ?? 0
-                let end = (spec.count > 1 ? Int(spec[1]) : nil) ?? (total - 1)
-                guard start <= end, start < total else {
-                    headers["Content-Range"] = "bytes */\(total)"
-                    respond(HTTPURLResponse(url: url, statusCode: 416, httpVersion: "HTTP/1.1", headerFields: headers)!, nil); return
-                }
-                let clampedEnd = min(end, total - 1)
-                let slice = data.subdata(in: start..<(clampedEnd + 1))
-                headers["Content-Range"] = "bytes \(start)-\(clampedEnd)/\(total)"
-                headers["Content-Length"] = "\(slice.count)"
-                respond(HTTPURLResponse(url: url, statusCode: 206, httpVersion: "HTTP/1.1", headerFields: headers)!, slice)
-                return
-            }
-            headers["Content-Length"] = "\(data.count)"
-            respond(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!,
-                    request.httpMethod == "HEAD" ? nil : data)
+            let (resp, body) = SchemeFile.response(url: url, data: data, mime: SchemeFile.mime(for: file), request: request)
+            respond(resp, body)
         }
     }
 
@@ -88,19 +62,5 @@ final class PokemonSchemeHandler: NSObject, WKURLSchemeHandler {
             file = base.appendingPathComponent("Graphics/Characters/Followers/000.png")
         }
         return file
-    }
-
-    private static func mime(for file: URL) -> String {
-        switch file.pathExtension.lowercased() {
-        case "js", "mjs": return "text/javascript"
-        case "html": return "text/html; charset=utf-8"
-        case "json": return "application/json"
-        case "ogg": return "audio/ogg"
-        case "wav": return "audio/wav"
-        case "mp3": return "audio/mpeg"
-        case "ttf": return "font/ttf"
-        default:
-            return UTType(filenameExtension: file.pathExtension)?.preferredMIMEType ?? "application/octet-stream"
-        }
     }
 }
