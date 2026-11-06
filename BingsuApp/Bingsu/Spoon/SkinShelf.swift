@@ -88,7 +88,7 @@ enum SkinShelf {
     /// 이 패드 설정에 쓸 스킨. 디버그: `BINGSU_SKIN=<id>` 로 강제
     static func skin(for prefs: PadPrefs) -> SpoonSkin {
         #if DEBUG
-        if let forced = ProcessInfo.processInfo.environment["BINGSU_SKIN"] { return skin(id: forced) }
+        if let forced = DevEnv["BINGSU_SKIN"] { return skin(id: forced) }
         #endif
         return skin(id: prefs.effectiveSkin)
     }

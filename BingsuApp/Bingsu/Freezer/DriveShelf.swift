@@ -274,7 +274,7 @@ final class DriveProvider: IglooShelfProvider {
 
     #if DEBUG
     private var fakeRoot: URL? {
-        ProcessInfo.processInfo.environment["BINGSU_FAKE_DRIVE"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+        DevEnv["BINGSU_FAKE_DRIVE"].flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
     }
     #endif
 

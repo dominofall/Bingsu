@@ -207,6 +207,7 @@ final class Delivery: ObservableObject {
         let local = try coordinatedLocalCopy(of: source, into: work, isCancelled: isCancelled)
         fm.fileExists(atPath: local.path, isDirectory: &isDir)
         if isDir.boolValue {
+            if containsLink(in: local) { throw DeliveryError.linkInFolder }
             if local != staged { try fm.moveItem(at: local, to: staged) }
         } else if SkinShelf.looksLikeSkin(local) {
             // 패드 스킨: 풀기 전에 중앙 디렉터리만 보고 알아본 뒤 스킨 가져오기(자체 검사·SafeUnzip)로 넘긴다. work 는 defer 가 지운다
@@ -402,15 +403,30 @@ final class Delivery: ObservableObject {
         name.range(of: #"^[A-Za-z0-9_.-]{1,64}\.(rpgsave|rmmzsave)$"#, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
-    /// 같은 게임 찾기: 저장 폴더 이름(dataPathApp)이 같거나, 그게 없으면 제목이 같은 것.
+    /// 폴더 안에 심볼릭 링크가 있는가 (zip 은 SafeUnzip 이 거부한다. 폴더 복사는 링크를 그대로 가져온다)
+    nonisolated static func containsLink(in folder: URL) -> Bool {
+        let key = URLResourceKey.isSymbolicLinkKey
+        if (try? folder.resourceValues(forKeys: [key]).isSymbolicLink) == true { return true }
+        guard let items = FileManager.default.enumerator(at: folder, includingPropertiesForKeys: [key]) else { return true }
+        for case let item as URL in items where (try? item.resourceValues(forKeys: [key]).isSymbolicLink) == true { return true }
+        return false
+    }
+
+    /// 가져오는 게임이 실제로 쓸 저장 폴더 이름 (Dish 와 같은 규칙으로 고친 뒤 비교한다. APFS 는 유니코드 정규화만 다른 이름을 같게 본다)
+    nonisolated static func saveFolderKey(dataPathApp: String, title: String) -> String {
+        Dish.folderName(dataPathApp, fallback: slug(dataPathApp.isEmpty ? title : dataPathApp)).precomposedStringWithCanonicalMapping
+    }
+
+    /// 같은 게임 찾기: 저장 폴더가 같거나, 저장 폴더 이름이 없으면 제목이 같은 것.
     nonisolated static func findExisting(title: String, dataPathApp: String, preferring targetID: String?) -> Dish? {
         let fm = FileManager.default
         let folders = ((try? fm.contentsOfDirectory(at: MenuBoardStore.gamesDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? [])
             .filter { !$0.lastPathComponent.hasPrefix(".") && !$0.lastPathComponent.hasSuffix(oldSuffix) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         let dishes = folders.compactMap { MenuBoardStore.dish(forFolder: $0, id: $0.lastPathComponent) }
+        let folder = saveFolderKey(dataPathApp: dataPathApp, title: title)
         let matches = dishes.filter { d in
-            !dataPathApp.isEmpty ? d.dataPathApp == dataPathApp : d.title == title
+            d.dataPathApp.precomposedStringWithCanonicalMapping == folder || (dataPathApp.isEmpty && d.title == title)
         }
         if let targetID, let d = matches.first(where: { $0.id == targetID }) { return d }
         let base = slug(dataPathApp.isEmpty ? title : dataPathApp)
@@ -510,6 +526,7 @@ final class Delivery: ObservableObject {
         case cannotReplace
         case cannotRead(String)
         case packedInExe
+        case linkInFolder
         var errorDescription: String? {
             switch self {
             case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
@@ -519,6 +536,7 @@ final class Delivery: ObservableObject {
                 return "지원하지 않는 게임이에요 · 발견한 파일: \(shown)\(found.count > 6 ? " 외 \(found.count - 6)개" : "")"
             case .cannotReplace: return "기존 게임 폴더를 바꿀 수 없어요."
             case .packedInExe: return "이 게임은 파일이 실행 파일 안에 묶여 있어 열 수 없어요"
+            case .linkInFolder: return "폴더 안에 심볼릭 링크가 있어 가져오지 않았어요"
             }
         }
     }

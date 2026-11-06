@@ -264,9 +264,9 @@ struct MenuBoardView: View {
             nav.count = dishes.isEmpty ? 0 : dishes.count + 1
             if let f = nav.focus, f >= nav.count { nav.focus = nav.count > 0 ? nav.count - 1 : nil }
             // 디버그: BINGSU_OPEN=<게임 id> 면 실행 직후 그 게임을 연다
-            if running == nil, let id = ProcessInfo.processInfo.environment["BINGSU_OPEN"], let d = dishes.first(where: { $0.id == id }) { serve(d) }
+            if running == nil, let id = DevEnv["BINGSU_OPEN"], let d = dishes.first(where: { $0.id == id }) { serve(d) }
             // 디버그: BINGSU_EDIT=<게임 id> 면 그 게임 설정 시트를 연다 (시뮬레이터 확인용)
-            if editing == nil, let id = ProcessInfo.processInfo.environment["BINGSU_EDIT"], let d = dishes.first(where: { $0.id == id }) { editing = d }
+            if editing == nil, let id = DevEnv["BINGSU_EDIT"], let d = dishes.first(where: { $0.id == id }) { editing = d }
         }
         .onChange(of: menu.pendingImport, initial: true) { _, url in
             guard let url else { return }
@@ -440,7 +440,7 @@ struct GameChipCover: View {
 
     var body: some View {
         ZStack {
-            if let coverURL, let ui = UIImage(contentsOfFile: coverURL.path) {
+            if let coverURL, let ui = CoverImage.load(contentsOf: coverURL) {
                 Color.clear.overlay(Image(uiImage: ui).resizable().scaledToFill())
             } else if MenuBoardStore.isBuiltIn(dish),
                       let ui = UIImage(contentsOfFile: dish.location.appendingPathComponent("cover.png").path) {

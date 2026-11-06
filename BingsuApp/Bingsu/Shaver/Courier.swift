@@ -78,7 +78,7 @@ final class Courier: NSObject, ObservableObject {
     /// 디버그 빌드에서 `BINGSU_ALLOW_HTTP=1` 일 때만 http·localhost·사설 주소 허용 (로컬 서버 검증용)
     nonisolated static var allowLocal: Bool {
         #if DEBUG
-        return ProcessInfo.processInfo.environment["BINGSU_ALLOW_HTTP"] == "1"
+        return DevEnv["BINGSU_ALLOW_HTTP"] == "1"
         #else
         return false
         #endif

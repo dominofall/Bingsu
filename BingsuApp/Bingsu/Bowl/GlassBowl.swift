@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 import AVFoundation
+import CryptoKit
 
 /// 유리그릇: WKWebView 러너. Electron(로컬) 게임과 배달(웹 URL) 게임을 담는다.
 struct GlassBowl: UIViewRepresentable {
@@ -55,7 +56,7 @@ struct GlassBowl: UIViewRepresentable {
             // 배경음악을 낮은 표본율로 풀어 메모리 쌓임을 줄인다 (BowlScripts.musicDiet, 다른 소리 스크립트보다 먼저)
             let rate = (DishPrefsStore.shared.prefs(for: dish.id).musicRate ?? .default).rawValue
             ucc.addUserScript(WKUserScript(source: BowlScripts.musicDiet(rate: rate), injectionTime: .atDocumentStart, forMainFrameOnly: true))
-            // 들었던 배경음악·울음소리를 다시 받지 않게 저장해 둔다 (BowlScripts.audioCache, 이 게임 설정에서 끌 수 있음)
+            // 한 번 받은 소리·그림·JSON 을 다시 받지 않게 저장해 둔다 (BowlScripts.audioCache, 이 게임 설정에서 끌 수 있음)
             let cacheOn = DishPrefsStore.shared.prefs(for: dish.id).audioCache != false
             ucc.addUserScript(WKUserScript(source: BowlScripts.audioCache(on: cacheOn), injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
@@ -88,7 +89,7 @@ struct GlassBowl: UIViewRepresentable {
         context.coordinator.keyPrefix = prefix
         context.coordinator.freezerEnabled = freezerEnabled
         ucc.addUserScript(WKUserScript(source: BowlScripts.fullscreenCSS, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
-        if ProcessInfo.processInfo.environment["BINGSU_KEYDEBUG"] == "1" {
+        if DevEnv["BINGSU_KEYDEBUG"] == "1" {
             ucc.addUserScript(WKUserScript(source: "window.__bingsuKeyDebug = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
         if dish.knownWeb == .pokerogue {
@@ -164,15 +165,7 @@ struct GlassBowl: UIViewRepresentable {
         return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/\(major).0 Safari/605.1.15"
     }
 
-    static func storeID(for dish: Dish) -> UUID {
-        // dish.id 에서 안정적인 UUID 생성. 아는 웹 게임은 기본 카드 id 를 써서, 릴리스에서 주소로 다시 넣어도 예전 로그인·진행이 이어진다
-        let key = dish.knownWeb?.rawValue ?? dish.id
-        var bytes = [UInt8](repeating: 0, count: 16)
-        for (i, b) in key.utf8.enumerated() { bytes[i % 16] ^= b &+ UInt8(i & 0xff) }
-        bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80
-        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
-    }
+    static func storeID(for dish: Dish) -> UUID { WebStoreID.id(for: WebStoreID.key(for: dish)) }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
         let dish: Dish
@@ -184,6 +177,8 @@ struct GlassBowl: UIViewRepresentable {
         var onExternal: ((URL) -> Void)?
         var onRestart: ((PerfRestart.Kind) -> Void)?
         var onQuit: (() -> Void)?
+        private var askingOpen = false
+        private var declinedOpens = 0
         var paused = false
         /// 웹 프로세스가 죽어 우리가 reload() 한 직후: 그 새로고침은 "게임이 스스로"로 세지 않는다
         private var crashReloadPending = false
@@ -321,9 +316,9 @@ struct GlassBowl: UIViewRepresentable {
                 let name = raw.lowercased()
                 Task { @MainActor in
                     if let hit = RumbleSet.forDish(dish).match(name) {
-                        if ProcessInfo.processInfo.environment["BINGSU_KEYDEBUG"] == "1" { NSLog("[Bowl] sfx \(name) -> rumble") }
+                        if DevEnv["BINGSU_KEYDEBUG"] == "1" { NSLog("[Bowl] sfx \(name) -> rumble") }
                         Rumble.shared.play(hit)
-                    } else if ProcessInfo.processInfo.environment["BINGSU_KEYDEBUG"] == "1" { NSLog("[Bowl] sfx \(name)") }
+                    } else if DevEnv["BINGSU_KEYDEBUG"] == "1" { NSLog("[Bowl] sfx \(name)") }
                 }
             case "thermometer":
                 // 게임(신뢰하지 않음)이 보낸 수치: 숫자만 받고 범위 검증
@@ -345,7 +340,7 @@ struct GlassBowl: UIViewRepresentable {
                     NSLog("[Bowl] %@", Self.bowlEvents.contains(ev) ? ev : "other")
                     #endif
                     // 디버그 자가 테스트: 냉동실 경로 검증 (BINGSU_SELFTEST=1)
-                    if (d["event"] as? String) == "ready", ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" {
+                    if (d["event"] as? String) == "ready", DevEnv["BINGSU_SELFTEST"] == "1" {
                         // 덮어쓰기 전에 복원 결과를 먼저 남긴다: 접두사 키 개수와 직전 실행이 남긴 자가 테스트 값
                         let p = keyPrefix
                         let probe = "(() => { const ks = Object.keys(localStorage).filter(k => k.startsWith('\(p)')); "
@@ -372,9 +367,8 @@ struct GlassBowl: UIViewRepresentable {
                 if op == "quit" {
                     NSLog("[Bowl] mv quit requested")
                     onQuit?()
-                } else if op == "open", let raw = d["url"] as? String, raw.count <= 2000, let url = URL(string: raw),
-                          ["http", "https"].contains(url.scheme?.lowercased() ?? "") {
-                    UIApplication.shared.open(url)
+                } else if op == "open", let raw = d["url"] as? String, raw.count <= 2000, let url = URL(string: raw), ExternalLink.isWeb(url) {
+                    askToOpen(url, from: message.webView)
                 }
             #if DEBUG
             case "diag":
@@ -407,18 +401,33 @@ struct GlassBowl: UIViewRepresentable {
                 if action.navigationType == .linkActivated, ["http", "https"].contains(url.scheme ?? "") { UIApplication.shared.open(url) }
                 return decisionHandler(.cancel)
             }
-            // 다른 사이트로의 이동: 링크 클릭은 사파리로, 그 외(로그인 리다이렉트 등 메인 프레임)는 팝업 시트로
-            if url.host != dish.location.host, action.targetFrame?.isMainFrame ?? true, url.scheme?.hasPrefix("http") == true {
-                if action.navigationType == .linkActivated { UIApplication.shared.open(url) } else { onExternal?(url) }
-                return decisionHandler(.cancel)
+            // 다른 사이트로의 이동: 링크 클릭은 사파리로, 로그인 리다이렉트는 팝업 시트로, 그 밖에 게임이 스스로 옮기는 것은 물어본다
+            if action.targetFrame?.isMainFrame ?? true {
+                switch ExternalLink.route(url, gameHost: dish.location.host, clicked: action.navigationType == .linkActivated) {
+                case .stay: break
+                case .safari: UIApplication.shared.open(url); return decisionHandler(.cancel)
+                case .loginSheet: onExternal?(url); return decisionHandler(.cancel)
+                case .ask: askToOpen(url, from: webView); return decisionHandler(.cancel)
+                }
             }
             decisionHandler(.allow)
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                      for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if let url = action.request.url, url.scheme?.hasPrefix("http") == true { UIApplication.shared.open(url) }
+            if let url = action.request.url, ExternalLink.isWeb(url) { UIApplication.shared.open(url) }
             return nil
+        }
+
+        /// 게임이 사용자의 손길 없이 연 외부 주소는 실제 주소를 보여 주고 묻는다. 떠 있는 동안 온 요청과 두 번 거절한 뒤의 요청은 버린다
+        private func askToOpen(_ url: URL, from webView: WKWebView?) {
+            guard !askingOpen, declinedOpens < 2, var top = webView?.window?.rootViewController else { return }
+            while let next = top.presentedViewController { top = next }
+            askingOpen = true
+            let alert = UIAlertController(title: "사파리에서 열까요?", message: url.host ?? url.absoluteString, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "취소", style: .cancel) { [weak self] _ in self?.askingOpen = false; self?.declinedOpens += 1 })
+            alert.addAction(UIAlertAction(title: "열기", style: .default) { [weak self] _ in self?.askingOpen = false; UIApplication.shared.open(url) })
+            top.present(alert, animated: true)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -446,5 +455,87 @@ struct GlassBowl: UIViewRepresentable {
             repauseOnFinish = false
             if paused { webView.evaluateJavaScript("window.__bingsu && __bingsu.pause()", completionHandler: nil) }
         }
+    }
+}
+
+/// 게임 밖 주소를 어디서 열지 정한다. 로그인 시트는 앱 화면처럼 보이므로 실제 로그인 업체와 이 게임 사이트의 하위 주소만 연다.
+enum ExternalLink {
+    enum Route: Equatable { case stay, safari, loginSheet, ask }
+
+    /// 외부 로그인에 쓰는 업체의 로그인 주소 (정확히 같은 호스트만)
+    static let loginHosts: Set<String> = ["accounts.google.com", "discord.com", "appleid.apple.com", "login.microsoftonline.com",
+                                          "login.live.com", "github.com", "www.facebook.com"]
+
+    static func isWeb(_ url: URL) -> Bool { ["http", "https"].contains(url.scheme?.lowercased() ?? "") }
+
+    static func route(_ url: URL, gameHost: String?, clicked: Bool) -> Route {
+        guard isWeb(url), let host = url.host?.lowercased(), !host.isEmpty else { return .stay }
+        let game = gameHost?.lowercased() ?? ""
+        if host == game { return .stay }
+        if clicked { return .safari }
+        let secure = url.scheme?.lowercased() == "https" && (url.port == nil || url.port == 443) && url.user == nil
+        // 하위 주소만 같은 사이트로 친다 (a.github.io 와 b.github.io 는 주인이 다를 수 있다)
+        let trusted = loginHosts.contains(host) || (!game.isEmpty && host.hasSuffix("." + game))
+        return secure && trusted ? .loginSheet : .ask
+    }
+}
+
+/// 게임별 웹 저장소(쿠키·localStorage) 번호. 한 번 정한 번호는 표에 남겨 바꾸지 않는다.
+/// 예전 방식(`legacyID`)은 XOR 이라 `dragon1`·`dragona` 처럼 다른 게임이 같은 번호를 받을 수 있었다. 이미 있던 게임은
+/// 로그인·진행이 이어지도록 예전 번호를 표에 옮겨 두고(`adoptLegacy`), 그 뒤에 처음 보는 게임은 SHA-256 으로 만든다.
+enum WebStoreID {
+    private static let tableKey = "webStoreIDs"
+    private static let adoptedKey = "webStoreIDsAdopted"
+
+    /// 아는 웹 게임은 기본 카드 id 를 써서, 릴리스에서 주소로 다시 넣어도 예전 로그인·진행이 이어진다
+    static func key(for dish: Dish) -> String { dish.knownWeb?.rawValue ?? dish.id }
+
+    static func id(for key: String) -> UUID {
+        var table = UserDefaults.standard.dictionary(forKey: tableKey) as? [String: String] ?? [:]
+        let before = table.count
+        let id = assign(key, table: &table)
+        if table.count != before { UserDefaults.standard.set(table, forKey: tableKey) }
+        return id
+    }
+
+    /// 이 수정 전에 설치된 게임의 번호를 표로 옮긴다. 켤 때 한 번, 게임 목록을 읽은 뒤에
+    static func adoptLegacyOnce(keys: [String]) {
+        guard !UserDefaults.standard.bool(forKey: adoptedKey) else { return }
+        var table = UserDefaults.standard.dictionary(forKey: tableKey) as? [String: String] ?? [:]
+        adoptLegacy(keys, table: &table)
+        UserDefaults.standard.set(table, forKey: tableKey)
+        UserDefaults.standard.set(true, forKey: adoptedKey)
+    }
+
+    static func assign(_ key: String, table: inout [String: String]) -> UUID {
+        if let s = table[key], let id = UUID(uuidString: s) { return id }
+        let id = hashedID(key)
+        table[key] = id.uuidString
+        return id
+    }
+
+    /// 예전 번호가 겹치면 먼저 나온 게임만 그 번호를 갖고, 나머지는 새 번호를 받는다
+    static func adoptLegacy(_ keys: [String], table: inout [String: String]) {
+        for key in keys where table[key] == nil {
+            let id = legacyID(key).uuidString
+            if !table.values.contains(id) { table[key] = id }
+        }
+    }
+
+    static func hashedID(_ key: String) -> UUID {
+        uuid(from: Array(SHA256.hash(data: Data(key.utf8)).prefix(16)))
+    }
+
+    static func legacyID(_ key: String) -> UUID {
+        var bytes = [UInt8](repeating: 0, count: 16)
+        for (i, b) in key.utf8.enumerated() { bytes[i % 16] ^= b &+ UInt8(i & 0xff) }
+        return uuid(from: bytes)
+    }
+
+    private static func uuid(from raw: [UInt8]) -> UUID {
+        var bytes = raw
+        bytes[6] = (bytes[6] & 0x0f) | 0x40; bytes[8] = (bytes[8] & 0x3f) | 0x80
+        return UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                           bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
     }
 }

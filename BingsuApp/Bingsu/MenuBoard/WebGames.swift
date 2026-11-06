@@ -37,7 +37,7 @@ enum WebGames {
         guard let data = try? Data(contentsOf: fileURL),
               let list = try? JSONDecoder().decode([WebGameEntry].self, from: data) else { return [] }
         // 파일이 손으로 고쳐졌을 수 있으니 다시 검증해 통과한 것만
-        return list.filter { (try? normalize($0.url)) != nil && !$0.title.isEmpty && $0.id.hasPrefix(WebGameEntry.idPrefix) }
+        return list.filter { (try? normalize($0.url, allowLocal: DevEnv["BINGSU_ALLOW_HTTP"] == "1")) != nil && !$0.title.isEmpty && $0.id.hasPrefix(WebGameEntry.idPrefix) }
     }
 
     static func save(_ list: [WebGameEntry]) {
@@ -66,7 +66,7 @@ enum WebGames {
     static func makeEntry(title: String, url rawURL: String, existing: [Dish]) throws -> WebGameEntry {
         let t = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !t.isEmpty, t.count <= 40 else { throw AddError.emptyTitle }
-        let url = try normalize(rawURL)
+        let url = try normalize(rawURL, allowLocal: DevEnv["BINGSU_ALLOW_HTTP"] == "1")
         if let dup = existing.first(where: { $0.isRemote && $0.location.host?.lowercased() == url.host?.lowercased() && $0.location.path == url.path }) {
             throw AddError.duplicate(dup.title)
         }

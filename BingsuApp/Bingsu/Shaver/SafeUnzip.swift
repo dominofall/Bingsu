@@ -6,7 +6,33 @@ import ZIPFoundation
 /// - 심볼릭 링크 항목 거부
 /// - 풀기 전에 선언된 크기 합계와 여유 공간 검사 (zip bomb)
 /// - 풀면서 실제로 나온 바이트가 선언 크기를 넘으면 멈추고, 다 푼 뒤 크기·CRC32 를 선언값과 맞춰 본다
+/// - 같은 경로의 파일이 둘이거나 파일과 폴더 이름이 겹치면 거부 (앞 항목을 덮어써 풀린 결과가 목록과 달라진다)
 enum SafeUnzip {
+    /// 항목 경로가 앞 항목과 겹치는지 본다. APFS 는 유니코드 정규화만 다른 이름을 같게 보므로 NFC 로 맞춘다.
+    /// 대소문자는 구분한다: iOS 기기의 파일 시스템이 구분하고, 대소문자만 다른 폴더가 든 게임도 있다
+    struct PathLedger {
+        private var files = Set<String>()
+        private var dirs = Set<String>()
+
+        /// 겹치면 false
+        mutating func add(_ comps: [String], isDirectory: Bool) -> Bool {
+            let names = comps.map(\.precomposedStringWithCanonicalMapping)
+            for n in 1..<max(names.count, 1) {
+                let parent = names[0..<n].joined(separator: "/")
+                if files.contains(parent) { return false }
+                dirs.insert(parent)
+            }
+            let path = names.joined(separator: "/")
+            if isDirectory {
+                if files.contains(path) { return false }
+                dirs.insert(path)
+                return true
+            }
+            if dirs.contains(path) { return false }
+            return files.insert(path).inserted
+        }
+    }
+
     enum UnzipError: LocalizedError {
         case notAZip, truncated(UInt64), corrupted, empty
         case tooLarge(UInt64), tooManyEntries, notEnoughSpace(needed: UInt64, free: UInt64), unsafePath(String)
@@ -44,6 +70,7 @@ enum SafeUnzip {
         // 1) 사전 검사
         var total: UInt64 = 0
         var plan: [(Entry, URL)] = []
+        var ledger = PathLedger()
         var count = 0
         for entry in archive {
             count += 1
@@ -59,6 +86,7 @@ enum SafeUnzip {
             if comps.contains(where: { $0 == "__MACOSX" || $0 == ".DS_Store" }) { continue }
             let target = destBase.appendingPathComponent(comps.joined(separator: "/")).standardizedFileURL
             guard target.path.hasPrefix(destBase.path + "/") else { throw UnzipError.unsafePath(raw) }
+            guard ledger.add(comps, isDirectory: entry.type == .directory) else { throw UnzipError.unsafePath(raw) }
             let (sum, overflow) = total.addingReportingOverflow(entry.uncompressedSize)
             guard !overflow, sum <= maxUncompressedBytes else { throw UnzipError.tooLarge(overflow ? .max : sum) }
             total = sum

@@ -458,7 +458,7 @@ enum BowlScripts {
     """
     }
 
-    /// 포켓로그 소리 파일 저장 (2026-11-01). WebKit 은 XHR 로 받은 오디오 형식(audio/mpeg·audio/x-m4a) 응답을
+    /// 포켓로그 게임 파일 저장 (2026-11-01, 11-04 에 wav·png·json 추가). WebKit 은 XHR 로 받은 오디오 형식(audio/mpeg·audio/x-m4a) 응답을
     /// 스트리밍으로 보고 HTTP 캐시에 넣지 않는다. 그래서 들었던 배경음악도 매번 서버에서 다시 받아 로딩이 길어졌다
     /// (iPad 측정: battle_trainer.mp3 2.6MB 에 34초, 캐시에 mp3·m4a 0개, wav 418개). 서버는 10년 캐시를 허락한다.
     /// 같은 출처 /audio/ 아래 mp3·m4a·ogg 를 처음 받을 때 Cache API 에 복사해 두고, 다음부터는 XHR 을 보내지 않고
@@ -470,14 +470,32 @@ enum BowlScripts {
     (() => {
       let ON = \(on ? "true" : "false");
       const NAME = "bingsu-audio-v1", EXT = /\\.(mp3|m4a|ogg|aac|flac)$/i;
+      // 시작할 때마다 다시 받던 작은 파일도 저장한다 (2026-11-04 iPad 측정). 게임 판을 뜻하는 ?t= 가 있는 것만: 없으면 옛 파일을 계속 쓸 수 있다
+      const MORE = /\\.(wav|png|json)$/i, DIRS = /^\\/(audio|images|battle-anims)\\//;
       const dbg = (m) => { try { window.webkit.messageHandlers.diag.postMessage("acache " + m); } catch (e) {} };
       if (typeof caches === "undefined" || !window.XMLHttpRequest) { dbg("unavailable"); return; }
       let store = null;
       const open = () => store || (store = caches.open(NAME).catch((e) => { dbg("open failed " + e); store = null; return null; }));
       const audioURL = (m, u) => {
         if (String(m).toUpperCase() !== "GET") return null;
-        try { const x = new URL(u, location.href); return x.origin === location.origin && x.pathname.startsWith("/audio/") && EXT.test(x.pathname) ? x.href : null; }
-        catch (e) { return null; }
+        try {
+          const x = new URL(u, location.href);
+          if (x.origin !== location.origin) return null;
+          if (x.pathname.startsWith("/audio/") && EXT.test(x.pathname)) return x.href;
+          return DIRS.test(x.pathname) && MORE.test(x.pathname) && x.searchParams.has("t") ? x.href : null;
+        } catch (e) { return null; }
+      };
+      // 응답 형식별 저장·읽기. 게임은 소리를 arraybuffer, 그림을 blob, JSON 을 text 로 받는다
+      const kinds = { arraybuffer: "arrayBuffer", blob: "blob", text: "text", "": "text" };
+      const sizeOf = (b) => typeof b === "string" ? b.length : (b.byteLength !== undefined ? b.byteLength : b.size);
+      // 파일이 많아 한 줄씩 남기지 않고 2초마다 합계를 남긴다
+      const sum = { hit: 0, hitKB: 0, hitMs: 0, hitMax: 0, put: 0, putKB: 0 }; let sumTimer = 0;
+      const note = () => {
+        if (sumTimer) return;
+        sumTimer = setTimeout(() => {
+          sumTimer = 0;
+          dbg("sum hit=" + sum.hit + " " + (sum.hitKB >> 10) + "KB avg=" + (sum.hit ? (sum.hitMs / sum.hit).toFixed(0) : 0) + "ms max=" + sum.hitMax.toFixed(0) + "ms stored=" + sum.put + " " + (sum.putKB >> 10) + "KB");
+        }, 2000);
       };
       const X = XMLHttpRequest.prototype, xo = X.open, xs = X.send, xa = X.abort;
       X.open = function (m, u) {
@@ -486,15 +504,16 @@ enum BowlScripts {
           this.__acHooked = true;
           // 처음 받은 것을 저장. 게임의 onload(곧바로 디코딩해 버퍼를 분리)보다 먼저 도는 readystatechange 에서 복사한다
           this.addEventListener("readystatechange", () => {
-            if (this.readyState !== 4 || !this.__acUrl || this.__acServed || this.status !== 200 || this.responseType !== "arraybuffer") return;
-            const buf = this.response; if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
-            const url = this.__acUrl, copy = buf.slice(0), type = this.getResponseHeader("content-type") || "application/octet-stream";
+            if (this.readyState !== 4 || !this.__acUrl || this.__acServed || this.status !== 200 || !(this.responseType in kinds)) return;
+            const res = this.response; if (res === null || res === undefined) return;
+            const size = sizeOf(res); if (!size) return;
+            const url = this.__acUrl, copy = res instanceof ArrayBuffer ? res.slice(0) : res, type = this.getResponseHeader("content-type") || "application/octet-stream";
             open().then((c) => {
               if (!c || !ON) return;
               const bare = url.split("?")[0];
               return c.delete(bare, { ignoreSearch: true })   // 예전 판(다른 ?t=)은 지운다
-                .then(() => c.put(url, new Response(copy, { headers: { "content-type": type, "content-length": String(copy.byteLength) } })))
-                .then(() => dbg("stored " + bare.split("/audio/")[1] + " " + (copy.byteLength >> 10) + "KB"));
+                .then(() => c.put(url, new Response(copy, { headers: { "content-type": type } })))
+                .then(() => { sum.put++; sum.putKB += size; note(); });
             }).catch((e) => dbg("store failed " + e));
           });
         }
@@ -502,30 +521,60 @@ enum BowlScripts {
       };
       const finish = (xhr, buf, type, url) => {
         const def = (k, v) => Object.defineProperty(xhr, k, { value: v, configurable: true });
+        const size = sizeOf(buf);
         def("readyState", 4); def("status", 200); def("statusText", "OK"); def("response", buf); def("responseURL", url);
-        def("getResponseHeader", (h) => { const k = String(h).toLowerCase(); return k === "content-type" ? type : k === "content-length" ? String(buf.byteLength) : null; });
-        def("getAllResponseHeaders", () => "content-type: " + type + "\\r\\ncontent-length: " + buf.byteLength + "\\r\\n");
-        const pe = (t) => new ProgressEvent(t, { lengthComputable: true, loaded: buf.byteLength, total: buf.byteLength });
+        if (typeof buf === "string") def("responseText", buf);
+        def("getResponseHeader", (h) => { const k = String(h).toLowerCase(); return k === "content-type" ? type : k === "content-length" ? String(size) : null; });
+        def("getAllResponseHeaders", () => "content-type: " + type + "\\r\\ncontent-length: " + size + "\\r\\n");
+        const pe = (t) => new ProgressEvent(t, { lengthComputable: true, loaded: size, total: size });
         xhr.dispatchEvent(new Event("readystatechange"));
         xhr.dispatchEvent(pe("progress")); xhr.dispatchEvent(pe("load")); xhr.dispatchEvent(pe("loadend"));
       };
       X.send = function () {
         const url = this.__acUrl, args = arguments;
-        if (!url || !ON || this.responseType !== "arraybuffer") return xs.apply(this, args);
-        const t0 = performance.now();
+        if (!url || !ON || !(this.responseType in kinds)) return xs.apply(this, args);
+        const t0 = performance.now(), read = kinds[this.responseType];
         open().then((c) => c ? c.match(url) : null).then((r) => {
           if (this.__acAborted) return;
           if (!r) { xs.apply(this, args); return; }
           const type = r.headers.get("content-type") || "application/octet-stream";
-          return r.arrayBuffer().then((buf) => {
+          return r[read]().then((buf) => {
             if (this.__acAborted) return;
             this.__acServed = true;
-            dbg("hit " + url.split("?")[0].split("/audio/")[1] + " " + (buf.byteLength >> 10) + "KB " + (performance.now() - t0).toFixed(0) + "ms");
+            const ms = performance.now() - t0;
+            sum.hit++; sum.hitKB += sizeOf(buf); sum.hitMs += ms; sum.hitMax = Math.max(sum.hitMax, ms); note();
             finish(this, buf, type, url);
           });
         }).catch((e) => { dbg("read failed " + e); if (!this.__acAborted && !this.__acServed) { try { xs.apply(this, args); } catch (x) {} } });
       };
       X.abort = function () { this.__acAborted = true; return xa.apply(this, arguments); };
+      // 기술 애니메이션 JSON 은 XHR 이 아니라 fetch 로 받는다. 같은 규칙으로 저장한다
+      const fo = window.fetch;
+      if (fo) window.fetch = function (input, init) {
+        const args = arguments, str = typeof input === "string" || input instanceof URL;
+        const url = ON ? audioURL((init && init.method) || (str ? "GET" : input.method), str ? String(input) : input.url) : null;
+        if (!url) return fo.apply(this, args);
+        const t0 = performance.now();
+        return open().then((c) => c ? c.match(url) : null).catch(() => null).then((r) => {
+          if (r) {
+            const ms = performance.now() - t0;
+            sum.hit++; sum.hitKB += Number(r.headers.get("content-length")) || 0; sum.hitMs += ms; sum.hitMax = Math.max(sum.hitMax, ms); note();
+            return r;
+          }
+          return fo.apply(this, args).then((res) => {
+            if (res.status === 200 && ON) {
+              const type = res.headers.get("content-type") || "application/octet-stream";
+              res.clone().blob().then((b) => open().then((c) => {
+                if (!c || !ON || !b.size) return;
+                return c.delete(url.split("?")[0], { ignoreSearch: true })
+                  .then(() => c.put(url, new Response(b, { headers: { "content-type": type, "content-length": String(b.size) } })))
+                  .then(() => { sum.put++; sum.putKB += b.size; note(); });
+              })).catch((e) => dbg("store failed " + e));
+            }
+            return res;
+          });
+        });
+      };
       window.__bingsuAudioCache = (v) => { ON = !!v; if (!ON) { store = null; caches.delete(NAME).catch(() => {}); } };
       if (!ON) { caches.delete(NAME).catch(() => {}); return; }
       // 디버그: 시작할 때 저장된 수와 용량
@@ -777,8 +826,8 @@ enum BowlScripts {
           for (const e of list.getEntries()) {
             resN++; resBytes += e.transferSize || 0;
             res.push({ s: e.startTime, e: e.responseEnd, p: path(e.name), kb: (e.transferSize || 0) >> 10, k: e.initiatorType });
-            // 처음 불러오기(30초)는 빼고 오래 걸린 파일만
-            if (e.duration > 1500 && performance.now() > 30000) post("slow " + e.duration.toFixed(0) + "ms " + e.initiatorType + " " + path(e.name) + " " + ((e.transferSize || 0) >> 10) + "KB");
+            // 오래 걸린 파일만. wait=보내기 전 대기·연결, ttfb=첫 바이트까지(서버·경로), dl=받기, body=풀린 크기
+            if (e.duration > 1500) post("slow " + e.duration.toFixed(0) + "ms " + e.initiatorType + " " + path(e.name) + " " + ((e.transferSize || 0) >> 10) + "KB wait=" + (e.requestStart - e.startTime).toFixed(0) + " ttfb=" + (e.responseStart - e.requestStart).toFixed(0) + " dl=" + (e.responseEnd - e.responseStart).toFixed(0) + " body=" + ((e.decodedBodySize || 0) >> 10) + "KB " + (e.nextHopProtocol || "?") + (document.hidden ? " hidden" : ""));
           }
           if (res.length > 300) res.splice(0, res.length - 300);
           try { performance.clearResourceTimings(); } catch (e) {}

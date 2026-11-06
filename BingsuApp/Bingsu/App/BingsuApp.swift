@@ -81,25 +81,25 @@ struct BingsuApp: App {
                 .task {
                     #if DEBUG
                     // 디버그 자가 테스트: 가상 패드 배치 왕복·예전 설정 호환 (게임 쪽 자가 테스트는 GlassBowl)
-                    if ProcessInfo.processInfo.environment["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run(); GreenTeaSelfTest.run() }
+                    if DevEnv["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run(); GreenTeaSelfTest.run() }
                     // 디버그: BINGSU_DRIVE_CONNECT=1 이면 켤 때 "Google Drive 연결" 을 누른 것처럼 (흉내 서버 동의 화면 → 토큰, 결과는 로그)
-                    if ProcessInfo.processInfo.environment["BINGSU_DRIVE_CONNECT"] == "1" {
+                    if DevEnv["BINGSU_DRIVE_CONNECT"] == "1" {
                         try? await Task.sleep(for: .seconds(2))
                         let err = await Igloo.shared.connectDrive()
                         NSLog("[Drive] 자동 연결 \(err == nil ? "끝" : "실패: \(err!)") · \(Igloo.shared.statusText)")
                     }
                     #endif
                     // 디버그: BINGSU_ADDWEB="이름|https://..." 로 웹 게임 추가 경로 실행 (시뮬레이터 검증용; 결과는 로그)
-                    if let spec = ProcessInfo.processInfo.environment["BINGSU_ADDWEB"], let bar = spec.firstIndex(of: "|") {
+                    if let spec = DevEnv["BINGSU_ADDWEB"], let bar = spec.firstIndex(of: "|") {
                         do { try menu.addWebGame(title: String(spec[..<bar]), url: String(spec[spec.index(after: bar)...])); NSLog("[WebGames] added") }
                         catch { NSLog("[WebGames] rejected: \(error.localizedDescription)") }
                     }
                     // 디버그: BINGSU_DOWNLOAD=<주소> 로 앱 내 다운로드 자동 시작 (로컬 http 는 BINGSU_ALLOW_HTTP=1 도 필요).
                     // BINGSU_DOWNLOAD_PAUSE=<초> 면 그 시간 뒤 일시정지하고 2초 뒤 재개한다 (이어받기 확인용)
-                    if let u = ProcessInfo.processInfo.environment["BINGSU_DOWNLOAD"] {
+                    if let u = DevEnv["BINGSU_DOWNLOAD"] {
                         try? await Task.sleep(for: .seconds(1))
                         do { try Courier.shared.start(u) } catch { NSLog("[Courier] rejected: \(error.localizedDescription)") }
-                        if let s = ProcessInfo.processInfo.environment["BINGSU_DOWNLOAD_PAUSE"].flatMap(Double.init) {
+                        if let s = DevEnv["BINGSU_DOWNLOAD_PAUSE"].flatMap(Double.init) {
                             try? await Task.sleep(for: .seconds(s))
                             Courier.shared.pause()
                             try? await Task.sleep(for: .seconds(2))
@@ -108,12 +108,23 @@ struct BingsuApp: App {
                     }
                     // 디버그: BINGSU_IMPORT=/path/to.zip 로 가져오기 자동 실행 (시뮬레이터 검증용).
                     // 상대 경로면 앱 Documents 기준 (실기기: devicectl 로 Documents 에 넣은 zip)
-                    if let p = ProcessInfo.processInfo.environment["BINGSU_IMPORT"] {
+                    if let p = DevEnv["BINGSU_IMPORT"] {
                         try? await Task.sleep(for: .seconds(1))
                         menu.pendingImport = p.hasPrefix("/") ? URL(fileURLWithPath: p)
                             : URL.documentsDirectory.appendingPathComponent(p)
                     }
                 }
         }
+    }
+}
+
+/// 개발용 환경 변수(`BINGSU_*`)는 모두 여기서 읽는다. Release 에서는 아무것도 돌려주지 않아 자동 실행·로그 같은 개발 기능이 꺼진다
+enum DevEnv {
+    static subscript(_ name: String) -> String? {
+        #if DEBUG
+        ProcessInfo.processInfo.environment[name]
+        #else
+        nil
+        #endif
     }
 }

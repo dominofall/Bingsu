@@ -9,7 +9,7 @@ struct SpoonOverlay: View {
     /// 디버그: `BINGSU_PRESS=a,up,lb` 면 그 버튼을 눌린 모양으로 그린다 (스킨 눌림 표시 스크린샷용, 입력은 보내지 않음)
     static let debugPressed: Set<PadButton> = {
         #if DEBUG
-        let names = ProcessInfo.processInfo.environment["BINGSU_PRESS"]?.split(separator: ",").map(String.init) ?? []
+        let names = DevEnv["BINGSU_PRESS"]?.split(separator: ",").map(String.init) ?? []
         return Set(names.compactMap { PadButton(name: $0) })
         #else
         return []

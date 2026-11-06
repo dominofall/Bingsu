@@ -47,7 +47,7 @@ struct DishSettingsView: View {
                 })
     }
 
-    /// 포켓로그 소리 파일 저장 (BowlScripts.audioCache). 끄면 이 게임 웹 저장소의 Cache API 저장분을 지운다
+    /// 포켓로그 게임 파일 저장 (BowlScripts.audioCache). 끄면 이 게임 웹 저장소의 Cache API 저장분을 지운다
     private var audioCache: Binding<Bool> {
         Binding(get: { prefs.audioCache != false },
                 set: { on in
@@ -136,11 +136,11 @@ struct DishSettingsView: View {
                 if dish.knownWeb == .pokerogue {
                     Section {
                         Toggle(isOn: audioCache) {
-                            Text("음악·울음소리 저장")
-                            Text("들었던 곡은 기다리지 않고 바로 틀어요")
+                            Text("게임 파일 저장")
+                            Text("한 번 받은 파일은 기다리지 않고 바로 써요")
                         }
                     } footer: {
-                        Text("한 번 받은 배경음악과 포켓몬 울음소리를 이 기기에 저장해 두고, 다음부터는 서버에서 다시 받지 않아요. 전부 모이면 300MB 정도예요. 끄면 저장한 파일을 지워요.")
+                        Text("한 번 받은 음악과 효과음, 그림을 이 기기에 저장해 두고, 다음부터는 서버에서 다시 받지 않아요. 오래 플레이할수록 저장 공간을 더 써요. 끄면 저장한 파일을 지워요.")
                     }
                 }
 

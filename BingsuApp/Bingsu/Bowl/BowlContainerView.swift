@@ -36,7 +36,7 @@ struct BowlContainerView: View {
     /// 웹 게임은 자체 터치 UI 를 쓰므로 가상 패드를 기본으로 숨긴다 (일시정지 시트에서 켤 수 있음)
     @State private var showSpoon: Bool
     /// 컨트롤러가 연결돼 있어도 사용자가 "가상 패드 보기"를 고르면 보여준다 (BINGSU_FORCE_PAD=1 로도 켬)
-    @State private var padForced = ProcessInfo.processInfo.environment["BINGSU_FORCE_PAD"] == "1"
+    @State private var padForced = DevEnv["BINGSU_FORCE_PAD"] == "1"
     /// 일시정지 화면 (PauseBoard)
     @State private var showMenu = false
     @State private var pauseFocus: PauseItem?
@@ -48,7 +48,7 @@ struct BowlContainerView: View {
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     private var menuButtonPlace: MenuButtonPlace {
         // 디버그: BINGSU_MENU_BUTTON=topRight|topLeft|pad 로 강제 (스크린샷 자동화)
-        if let e = ProcessInfo.processInfo.environment["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
+        if let e = DevEnv["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
         // 한손 배치는 설정과 상관없이 패드 구역 오른쪽 위에 고정 (2026-10-31 사용자 결정, 자리는 makeOneHand)
         if padPrefs.kind == .oneHand { return .pad }
         return MenuButtonPlace(rawValue: menuButtonRaw) ?? .pad
@@ -183,9 +183,9 @@ struct BowlContainerView: View {
             longSpoon?.enabled = visible
             longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
             // 디버그: BINGSU_PAUSE=1 이면 3초 뒤 일시정지 화면을 연다 (시뮬레이터 확인용)
-            if ProcessInfo.processInfo.environment["BINGSU_PAUSE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { openPause() } }
+            if DevEnv["BINGSU_PAUSE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { openPause() } }
             // 디버그: BINGSU_LAYOUT=1 이면 3초 뒤 배치 편집기를 연다
-            if ProcessInfo.processInfo.environment["BINGSU_LAYOUT"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { editLayout() } }
+            if DevEnv["BINGSU_LAYOUT"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { editLayout() } }
             thermometer.onSample = { [weak recorder] t in
                 recorder?.ingest(fps: t.fps, p95: t.frameP95ms, stutters: t.lastStutters, memoryMB: t.memoryMB, thermal: t.thermal)
             }
@@ -196,12 +196,12 @@ struct BowlContainerView: View {
             // iCloud 에서 다른 기기 저장을 내려받아 열었으면 한 번 알린다
             if let t = Igloo.shared.takeToast(dish.id) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showToast(t) } }
             // 디버그: BINGSU_FAKE_HEAT=<초> 면 그만큼 뒤에 열 상태 serious, 두 배 뒤에 nominal 을 흉내 낸다 (자동 프레임 제한 검증용)
-            if let s = ProcessInfo.processInfo.environment["BINGSU_FAKE_HEAT"].flatMap(Double.init) {
+            if let s = DevEnv["BINGSU_FAKE_HEAT"].flatMap(Double.init) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + s) { coolDown(.serious) }
                 DispatchQueue.main.asyncAfter(deadline: .now() + s * 2) { coolDown(.nominal) }
             }
             // 디버그: BINGSU_CLOSE_AFTER=<초> 면 그만큼 뒤에 "게임 종료" (동기화 업로드 검증용)
-            if let s = ProcessInfo.processInfo.environment["BINGSU_CLOSE_AFTER"].flatMap(Double.init) {
+            if let s = DevEnv["BINGSU_CLOSE_AFTER"].flatMap(Double.init) {
                 DispatchQueue.main.asyncAfter(deadline: .now() + s) { NSLog("[Bowl] debug close"); flush(); onClose() }
             }
         }
@@ -469,7 +469,7 @@ struct BowlContainerView: View {
             return Self.portraitRect(W: W, H: H, top: ins.top, padTop: padLayout(full: geo.size, ins: ins)?.topEdge,
                                      orbInPad: menuButtonPlace == .pad && padShown, padShown: padShown)
         } else {
-            return Self.landscapeRect(W: W, H: H)
+            return Self.landscapeRect(W: W, H: H, padShown: padShown)
         }
     }
 
@@ -481,20 +481,22 @@ struct BowlContainerView: View {
         // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
         let band = orbInPad ? 8 : chrome
         let slack = max(0, padTop - top - band - gameH)
-        // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다. 아래로 치우치면 화면 가운데 아래에 떠 보인다
-        let y = top + band + slack * (padShown ? 0.75 : 0)
+        // 패드가 없으면(컨트롤러 연결 등) 창의 위아래 가운데. 눈송이 줄은 가리지 않는다
+        let y = padShown ? top + band + slack * 0.75 : max(top + band, (H - gameH) / 2)
         return CGRect(x: margin, y: y, width: gameW, height: gameH)
     }
 
-    /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다
-    static func landscapeRect(W: CGFloat, H: CGFloat) -> CGRect {
+    /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다.
+    /// 패드가 없으면(컨트롤러 연결 등) 눈송이 줄을 가리지 않는 한 창의 위아래 가운데에 둔다
+    static func landscapeRect(W: CGFloat, H: CGFloat, padShown: Bool = true) -> CGRect {
         let innerH = H - margin * 2
         let fullW = min(W - margin * 2, innerH * 16 / 9)
         let sideBand = (W - fullW) / 2
         let gameH = sideBand >= chrome ? fullW * 9 / 16 : min(innerH - chrome, (W - margin * 2) * 9 / 16)
         let gameW = gameH * 16 / 9
         let cy = sideBand >= chrome ? H / 2 : chrome + (H - chrome) / 2
-        return CGRect(x: (W - gameW) / 2, y: cy - gameH / 2, width: gameW, height: gameH)
+        let y = padShown || sideBand >= chrome ? cy - gameH / 2 : max(chrome, (H - gameH) / 2)
+        return CGRect(x: (W - gameW) / 2, y: y, width: gameW, height: gameH)
     }
 
     /// 웹뷰가 페이지에 알릴 크기. 기본 게임(Bingsu)은 세로에서도 가로 화면과 같은 크기로 그려 똑같은 모습을 16:9 자리에 맞게 줄인다

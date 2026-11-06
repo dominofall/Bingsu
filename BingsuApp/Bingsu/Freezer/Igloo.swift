@@ -483,6 +483,15 @@ final class IglooEngine {
 
     // MARK: 백업 · 설정 · 표지
 
+    /// 내려받아 둘 백업의 게임당 한도. 넘는 것은 클라우드에만 둔다 (최근 것부터 받는다)
+    static let maxLocalBackups = 100
+    static let maxLocalBackupBytes = 512 * 1024 * 1024
+
+    /// 하나 더 받아도 한도 안인가 (크기는 받기 전에 모르므로 가장 큰 백업으로 친다)
+    static func canDownloadBackup(count: Int, bytes: Int) -> Bool {
+        count < maxLocalBackups && bytes + Freezer.maxBytes <= maxLocalBackupBytes
+    }
+
     /// 백업은 양쪽 합집합. 내려받는 백업도 검증한다
     func syncBackups(_ dish: Dish) {
         guard !dish.isRemote, Self.safeFolder(dish.dataPathApp) else { return }
@@ -491,13 +500,20 @@ final class IglooEngine {
         let localNames = Set(((try? FileManager.default.contentsOfDirectory(atPath: fz.backupsDirectory.path)) ?? [])
             .filter { Self.safeFileName($0, ext: ["json"]) })
         let cloudNames = Set(shelf.list(dir).filter { Self.safeFileName($0, ext: ["json"]) })
-        for n in cloudNames.subtracting(localNames) {
+        var kept = localNames.count
+        var keptBytes = localNames.reduce(0) { $0 + ((try? fz.backupsDirectory.appendingPathComponent($1).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
+        for n in cloudNames.subtracting(localNames).sorted(by: >) {
             if halted { return }
+            guard Self.canDownloadBackup(count: kept, bytes: keptBytes) else {
+                NSLog("[Igloo] \(dish.dataPathApp): 백업 한도, 나머지는 클라우드에 둠")
+                break
+            }
             do {
                 guard let d = try shelf.read("\(dir)/\(n)", maxBytes: Freezer.maxBytes) else { continue }
                 _ = try fz.validate(d)
                 try FileManager.default.createDirectory(at: fz.backupsDirectory, withIntermediateDirectories: true)
                 try d.write(to: fz.backupsDirectory.appendingPathComponent(n), options: .atomic)
+                kept += 1; keptBytes += d.count
                 NSLog("[Igloo] \(dish.dataPathApp): 백업 내려받음 \(n)")
             } catch { note(error); NSLog("[Igloo] \(dish.dataPathApp): 백업 \(n) 거부 (\(Self.reason(error)))") }
         }
@@ -564,7 +580,7 @@ final class IglooEngine {
             catch { note(error) }
         } else if hasCloud && !hasLocal {
             do {
-                guard let img = try shelf.read(cp, maxBytes: Self.maxCoverBytes), UIImage(data: img) != nil else { return }
+                guard let img = try shelf.read(cp, maxBytes: Self.maxCoverBytes), CoverImage.isAcceptable(img) else { return }
                 try FileManager.default.createDirectory(at: DishPrefsStore.coversDir, withIntermediateDirectories: true)
                 try img.write(to: local, options: .atomic)
                 NSLog("[Igloo] 표지 내려받음")
@@ -602,7 +618,7 @@ final class ICloudProvider: IglooShelfProvider {
     private var found: ICloudShelf?
 
     func availability() async -> Igloo.Availability {
-        let fake = ProcessInfo.processInfo.environment["BINGSU_FAKE_ICLOUD"]
+        let fake = DevEnv["BINGSU_FAKE_ICLOUD"]
         let (avail, shelf): (Igloo.Availability, ICloudShelf?) = await withCheckedContinuation { c in
             // url(forUbiquityContainerIdentifier:) 는 오래 걸릴 수 있어 메인 밖에서 부른다
             DispatchQueue.global(qos: .utility).async {

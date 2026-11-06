@@ -16,8 +16,8 @@ if [ -e "$DEST" ]; then echo "이미 있어요: $DEST (지우거나 다른 폴�
 if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then echo "커밋 안 한 변경이 있어요. 먼저 커밋하세요"; exit 1; fi
 
 # 공개하지 않는 것: 계획서·세션 메모(팬게임 분석·내부 결정), 디자인 보드(게임 화면 캡처 포함), 엔진 PoC 기록,
-# TestFlight 제출 메모(심사 메모·내부 링크)
-EXCLUDE="PLAN.md NEXT_SESSION.md design docs/phase3-mkxp-poc.md docs/beta/testflight-info.md"
+# TestFlight 제출 메모(심사 메모·내부 링크), 심사 확인용 게임(기획·제작 메모. 게임은 mino-bingsu 저장소로 따로 배포)
+EXCLUDE="PLAN.md NEXT_SESSION.md design docs/phase3-mkxp-poc.md docs/beta/testflight-info.md docs/review-game tools/review-game"
 
 mkdir -p "$DEST"
 git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$DEST"
@@ -29,6 +29,12 @@ bad=$(cd "$DEST" && find . -type f \( -iname '*.asar' -o -iname '*.exe' -o -inam
       -o -iname '*.rgss*' -o -iname '*.p8' -o -iname '*.p12' -o -iname '*.mobileprovision' -o -iname '*.cer' -o -iname '*.zip' \
       -o -path '*/Games/*' -o -path '*/Saves/*' -o -path '*/Keys/*' -o -iname 'board_server_address.txt' \) | head -20)
 [ -z "$bad" ] || { echo "금지 파일:"; echo "$bad"; fail=1; }
+# 심볼릭 링크는 위 검사(-type f)를 빠져나가고, 저장소 밖을 가리킬 수 있다
+links=$(cd "$DEST" && find . -type l | head -20)
+[ -z "$links" ] || { echo "심볼릭 링크:"; echo "$links"; fail=1; }
+# 토큰 모양의 값 (파일 이름만 출력한다)
+tokens=$(grep -rIlE 'gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}|BEGIN (RSA |OPENSSH )?PRIVATE KEY' "$DEST" | grep -v '/tools/export-public.sh$' || true)
+[ -z "$tokens" ] || { echo "토큰 모양의 값이 든 파일:"; echo "$tokens"; fail=1; }
 if grep -rIl -e '/Users/' -e 'BEGIN PRIVATE KEY' -e 'BEGIN EC PRIVATE KEY' "$DEST" | grep -v '/tools/export-public.sh$' | head -5 | grep -q .; then
     echo "개인 경로·키가 든 파일:"; grep -rIl -e '/Users/' -e 'BEGIN PRIVATE KEY' -e 'BEGIN EC PRIVATE KEY' "$DEST" | grep -v '/tools/export-public.sh$'; fail=1
 fi
@@ -36,6 +42,10 @@ fi
 if [ -f "$ROOT/Keys/LOCAL_NOTES.md" ]; then
     team=$(sed -n '3p' "$ROOT/Keys/LOCAL_NOTES.md" | grep -oE '[A-Z0-9]{10}' | head -1 || true)
     [ -z "$team" ] || ! grep -rqF "$team" "$DEST" || { echo "팀 ID 가 든 파일이 있어요"; fail=1; }
+    # Issuer ID 와 실기기·시뮬레이터 UDID: 메모에 적힌 UUID 모양의 값을 모두 본다 (값은 출력하지 않음)
+    for id in $(grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4,16}(-[0-9A-Fa-f]{4}){0,3}(-[0-9A-Fa-f]{12})?' "$ROOT/Keys/LOCAL_NOTES.md" | sort -u); do
+        ! grep -rqF "$id" "$DEST" || { echo "메모의 식별자(Issuer ID·UDID)가 든 파일이 있어요"; fail=1; break; }
+    done
 fi
 for k in "$ROOT"/Keys/AuthKey_*.p8; do
     [ -f "$k" ] || continue

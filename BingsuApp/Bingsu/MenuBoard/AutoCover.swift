@@ -1,4 +1,5 @@
 import CryptoKit
+import ImageIO
 import UIKit
 
 /// 사용자가 표지를 고르지 않은 RPG Maker 게임의 기본 표지 (2026-10-31 사용자 결정: 타이틀 이미지 먼저).
@@ -29,7 +30,7 @@ enum AutoCover {
         let skip = ["credit", "splash", "start", "logo"]
         let pick = images.first { base($0) == "title" }
             ?? images.sorted().first { n in !skip.contains { base(n).hasPrefix($0) } }
-        return pick.flatMap { UIImage(contentsOfFile: dir.appendingPathComponent($0).path) }
+        return pick.flatMap { CoverImage.load(contentsOf: dir.appendingPathComponent($0)) }
     }
 
     // MARK: MV·MZ 타이틀
@@ -45,12 +46,12 @@ enum AutoCover {
             return ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).first { $0.lowercased() == n.lowercased() }.map { dir.appendingPathComponent($0) }
         }
         guard let img = child(root, "img"), let dir = child(img, "titles1") else { return nil }
-        if let f = child(dir, name + ".png"), let ui = UIImage(contentsOfFile: f.path) { return ui }
+        if let f = child(dir, name + ".png"), let ui = CoverImage.load(contentsOf: f) { return ui }
         // 암호화 배포본: MV .rpgmvp, MZ .png_
         guard let key = system["encryptionKey"] as? String else { return nil }
         for ext in [".rpgmvp", ".png_"] {
             if let f = child(dir, name + ext), let d = try? Data(contentsOf: f, options: .mappedIfSafe),
-               let plain = RPGMakerCrypt.decrypt(d, keyHex: key.lowercased()), let ui = UIImage(data: plain) { return ui }
+               let plain = RPGMakerCrypt.decrypt(d, keyHex: key.lowercased()), let ui = CoverImage.load(data: plain) { return ui }
         }
         return nil
     }
@@ -66,13 +67,13 @@ enum AutoCover {
               let entry = PEIcons.largest(in: d) else { return nil }
         let hash = SHA256.hash(data: entry.bytes).map { String(format: "%02x", $0) }.joined()
         guard !defaultIcons.contains(hash) else { return nil }
-        if entry.bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return UIImage(data: entry.bytes) }
+        if entry.bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return CoverImage.load(data: entry.bytes) }
         // BMP 아이콘은 .ico 한 장짜리로 감싸면 ImageIO 가 읽는다
         var ico = Data([0, 0, 1, 0, 1, 0])
         ico += [UInt8(entry.width % 256), UInt8(entry.height % 256), 0, 0, 1, 0, 32, 0]
         ico += withUnsafeBytes(of: UInt32(entry.bytes.count).littleEndian) { Data($0) }
         ico += withUnsafeBytes(of: UInt32(22).littleEndian) { Data($0) }
-        return UIImage(data: ico + entry.bytes)
+        return CoverImage.load(data: ico + entry.bytes)
     }
 }
 
@@ -133,5 +134,49 @@ enum PEIcons {
             if w > (best?.width ?? 0) { best = Entry(bytes: b, width: w, height: h) }
         }
         return best
+    }
+}
+
+/// 표지 그림 읽기. 게임 파일과 클라우드의 표지는 믿지 않으므로 픽셀을 풀기 전에 크기를 보고, 표지에 필요한 크기로 줄여 읽는다.
+/// 작은 파일이 풀면 몇 GB 가 되는 그림으로 앱이 메모리 부족으로 꺼지는 것을 막는다.
+enum CoverImage {
+    /// 이보다 큰 그림은 읽지 않는다 (8000×8000)
+    static let maxSourcePixels = 64_000_000
+    /// 게임칩·아이패드 큰 칩에 넉넉한 긴 변
+    static let maxSide = 1536
+
+    static func fits(width: Int, height: Int) -> Bool {
+        guard width > 0, height > 0 else { return false }
+        let (pixels, overflow) = width.multipliedReportingOverflow(by: height)
+        return !overflow && pixels <= maxSourcePixels
+    }
+
+    private static func fits(_ source: CGImageSource) -> Bool {
+        guard CGImageSourceGetCount(source) > 0,
+              let p = CGImageSourceCopyPropertiesAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary) as? [CFString: Any],
+              let w = p[kCGImagePropertyPixelWidth] as? Int, let h = p[kCGImagePropertyPixelHeight] as? Int else { return false }
+        return fits(width: w, height: h)
+    }
+
+    private static func load(_ source: CGImageSource?) -> UIImage? {
+        guard let source, fits(source) else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: maxSide, kCGImageSourceShouldCacheImmediately: true]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map { UIImage(cgImage: $0) }
+    }
+
+    static func load(contentsOf url: URL) -> UIImage? {
+        load(CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary))
+    }
+
+    static func load(data: Data) -> UIImage? {
+        load(CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary))
+    }
+
+    /// 클라우드에서 받은 표지 검사: PNG·JPEG 이고 크기가 맞는가 (픽셀은 풀지 않는다)
+    static func isAcceptable(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let type = CGImageSourceGetType(source) as String?, ["public.png", "public.jpeg"].contains(type) else { return false }
+        return fits(source)
     }
 }

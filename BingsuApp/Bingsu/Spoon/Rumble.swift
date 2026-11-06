@@ -114,7 +114,7 @@ final class Rumble {
 
     /// 진동 위치 실험 (개발용 `BINGSU_RUMBLE_LOCALITY`): `default`(기본) · `handles`(양손 묶음) · `split`(왼손·오른손 엔진 따로).
     /// 스위치 모드 IINE 가 "가장 세게 해도 약하다" → `.default` 가 모터 하나만 돌리는지 가리려고 (2026-10-30)
-    static let localityMode = ProcessInfo.processInfo.environment["BINGSU_RUMBLE_LOCALITY"] ?? "default"
+    static let localityMode = DevEnv["BINGSU_RUMBLE_LOCALITY"] ?? "default"
     private static func localities(for h: GCDeviceHaptics) -> [GCHapticsLocality] {
         let has = h.supportedLocalities
         switch localityMode {
@@ -147,7 +147,7 @@ final class Rumble {
     /// (2026-10-30 IINE 스위치 모드: 최대 세기도 약함 → 세기는 더 못 올리니 짧은 진동만 늘린다). 정품 패드엔 거의 티가 안 남.
     /// 개발용 `BINGSU_RUMBLE_MINLEN` 으로 바꿔 비교 (0.05~0.4)
     static let controllerMinLength: Double = {
-        if let v = ProcessInfo.processInfo.environment["BINGSU_RUMBLE_MINLEN"].flatMap(Double.init), v.isFinite { return min(max(v, 0.05), 0.4) }
+        if let v = DevEnv["BINGSU_RUMBLE_MINLEN"].flatMap(Double.init), v.isFinite { return min(max(v, 0.05), 0.4) }
         return 0.2   // 2026-10-30 IINE 스위치 모드에서 0.2초면 짧은 진동도 잘 느껴짐 (사용자 확인)
     }()
 
@@ -228,7 +228,7 @@ final class Rumble {
     /// 블루투스 이어폰 + 설정 켬: 컨트롤러 진동을 펄스 없이 한 덩어리로, 짧게, 드물게 보낸다
     private var lightForBluetooth: Bool { btSafe && Self.bluetoothAudio }
 
-    private static let debug = ProcessInfo.processInfo.environment["BINGSU_KEYDEBUG"] == "1"
+    private static let debug = DevEnv["BINGSU_KEYDEBUG"] == "1"
 
     /// 엔진마다 이벤트를 만든다: 컨트롤러는 `usePulse` 면 펄스(블루투스 보호 중엔 끔), 폰 햅틱은 세기 값 그대로
     private func fire(_ make: (_ controller: Bool, _ pulse: Bool) -> [CHHapticEvent]) {

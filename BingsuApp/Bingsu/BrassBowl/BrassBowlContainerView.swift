@@ -32,7 +32,7 @@ struct BrassBowlContainerView: View {
     @State private var fpsTimer: Timer?
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
     @State private var showSpoon = true
-    @State private var padForced = ProcessInfo.processInfo.environment["BINGSU_FORCE_PAD"] == "1"
+    @State private var padForced = DevEnv["BINGSU_FORCE_PAD"] == "1"
     @AppStorage("bingsu.showPerformance") private var showHUD = false
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     @ObservedObject private var prefsStore = DishPrefsStore.shared
@@ -51,7 +51,7 @@ struct BrassBowlContainerView: View {
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
     private var padShown: Bool { showSpoon && (!controllerConnected || padForced) }
     private var menuButtonPlace: MenuButtonPlace {
-        if let e = ProcessInfo.processInfo.environment["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
+        if let e = DevEnv["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
         // 한손 배치는 설정과 상관없이 패드 구역 오른쪽 위에 고정 (2026-10-31 사용자 결정, 자리는 makeOneHand)
         if padPrefs.kind == .oneHand { return .pad }
         return MenuButtonPlace(rawValue: menuButtonRaw) ?? .pad
@@ -218,7 +218,7 @@ struct BrassBowlContainerView: View {
         spoon.hapticsEnabled = padPrefs.haptics
         spoon.keySink = { code, down in
             guard let sc = BrassKeys.scancode(code) else { return }
-            if ProcessInfo.processInfo.environment["BINGSU_KEYDEBUG"] == "1" { NSLog("[BrassBowl] key \(code)=\(sc) \(down)") }
+            if DevEnv["BINGSU_KEYDEBUG"] == "1" { NSLog("[BrassBowl] key \(code)=\(sc) \(down)") }
             BrassBowlEngine.shared.key(sc, down: down)
         }
         if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }
@@ -264,7 +264,7 @@ struct BrassBowlContainerView: View {
     /// 디버그: BINGSU_KEYS="초:코드,..." 면 그 시각에 키를 짧게 누른다 (예: "12:Enter,15:KeyC"). 시뮬레이터 자동 확인용
     private func debugKeys() {
         // BINGSU_AUTOKEY="코드:간격초:횟수" 면 그 키를 계속 누른다(긴 대사 넘기기). 글자 입력 창이 뜨면 멈춤
-        if let spec = ProcessInfo.processInfo.environment["BINGSU_AUTOKEY"] {
+        if let spec = DevEnv["BINGSU_AUTOKEY"] {
             let p = spec.split(separator: ":")
             if p.count == 3, let sc = BrassKeys.scancode(String(p[0])), let gap = Double(p[1]), let n = Int(p[2]) {
                 for i in 0..<n {
@@ -277,7 +277,7 @@ struct BrassBowlContainerView: View {
                 }
             }
         }
-        guard let spec = ProcessInfo.processInfo.environment["BINGSU_KEYS"] else { return }
+        guard let spec = DevEnv["BINGSU_KEYS"] else { return }
         for pair in spec.split(separator: ",") {
             let p = pair.split(separator: ":")
             guard p.count == 2, let t = Double(p[0]), let sc = BrassKeys.scancode(String(p[1])) else { continue }
@@ -470,8 +470,8 @@ struct BrassBowlContainerView: View {
             let padTop = padShown ? padLayout(size, ins: ins)?.topEdge.map { $0 - 12 } ?? H : H
             let slack = max(0, padTop - top - gameH)
             // 남는 공간에서 패드 쪽으로 치우치게 (위 3 : 아래 1)
-            // 패드가 없으면(컨트롤러 연결 등) 눈송이 줄 바로 아래에 붙인다
-            return CGRect(x: 0, y: top + slack * (padShown ? 0.75 : 0), width: gameW, height: gameH)
+            // 패드가 없으면(컨트롤러 연결 등) 창의 위아래 가운데. 눈송이 줄은 가리지 않는다
+            return CGRect(x: 0, y: padShown ? top + slack * 0.75 : max(top, (H - gameH) / 2), width: gameW, height: gameH)
         }
         let gameH = H, gameW = min(W, H * aspect)
         return CGRect(x: (W - gameW) / 2, y: 0, width: gameW, height: gameH)

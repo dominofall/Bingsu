@@ -41,7 +41,7 @@ final class MenuBoardStore: ObservableObject {
     /// 개발 중에는 시뮬레이터가 호스트 파일시스템을 그대로 읽을 수 있어서 Bingsu/Games 를 바로 쓴다.
     static var devGamesDirs: [URL] {
         var dirs: [URL] = []
-        if let env = ProcessInfo.processInfo.environment["BINGSU_DEV_GAMES"] { dirs.append(URL(fileURLWithPath: env)) }
+        if let env = DevEnv["BINGSU_DEV_GAMES"] { dirs.append(URL(fileURLWithPath: env)) }
         #if targetEnvironment(simulator)
         // 저장소의 Games/ — 이 소스 파일 위치(BingsuApp/Bingsu/MenuBoard/)에서 저장소 루트로 올라가 찾는다
         var repo = URL(fileURLWithPath: #filePath)
@@ -73,7 +73,11 @@ final class MenuBoardStore: ObservableObject {
     }
     nonisolated static func isBuiltIn(_ dish: Dish) -> Bool { dish.id == sampleID }
 
-    init() { refresh(); Self.emptyLeftoverTrash() }
+    init() {
+        refresh()
+        WebStoreID.adoptLegacyOnce(keys: dishes.map(WebStoreID.key(for:)))
+        Self.emptyLeftoverTrash()
+    }
 
     func refresh() {
         var found: [Dish] = []

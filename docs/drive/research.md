@@ -245,7 +245,7 @@ protocol IglooShelfProvider {
     // Drive 전용 (iCloud 는 no-op): 연결·해제
     func connect(presenting: ASPresentationAnchor) async throws
     func disconnect() async                               // Keychain 삭제 + revoke
-    var accountLabel: String? { get }                     // "rhe…@gmail.com" 같은 표시(선택, 토큰에 email 범위를 안 넣으면 nil)
+    var accountLabel: String? { get }                     // "abc…@example.com" 같은 표시(선택, 토큰에 email 범위를 안 넣으면 nil)
 }
 ```
 

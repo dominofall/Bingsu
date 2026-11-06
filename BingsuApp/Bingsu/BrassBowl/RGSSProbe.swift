@@ -45,7 +45,7 @@ enum RGSSProbe {
         if version == nil, let lib = fields["library"]?.lowercased() {
             if lib.contains("rgss3") { version = .vxAce } else if lib.contains("rgss2") { version = .vx } else if lib.contains("rgss1") { version = .xp }
         }
-        if let env = ProcessInfo.processInfo.environment["BINGSU_RGSS"], let n = Int(env), let v = RGSSVersion(rawValue: n) { version = v }
+        if let env = DevEnv["BINGSU_RGSS"], let n = Int(env), let v = RGSSVersion(rawValue: n) { version = v }
 
         // 스크립트가 실제로 있나
         var hasScripts = archive != nil || dataScripts != nil

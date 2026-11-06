@@ -9,10 +9,14 @@ final class PokemonSchemeHandler: NSObject, WKURLSchemeHandler {
     static let origin = "pokemon://game"
 
     private let root: URL
+    private let rootReal: String
     private var stopped: Set<ObjectIdentifier> = []
     private let queue = DispatchQueue(label: "bingsu.scheme", qos: .userInitiated, attributes: .concurrent)
 
-    init(gameRoot: URL) { self.root = gameRoot }
+    init(gameRoot: URL) {
+        self.root = gameRoot
+        rootReal = gameRoot.resolvingSymlinksInPath().standardizedFileURL.path
+    }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         let id = ObjectIdentifier(task)
@@ -61,6 +65,8 @@ final class PokemonSchemeHandler: NSObject, WKURLSchemeHandler {
            rel.range(of: #"^assets/Graphics/Characters/Followers( shiny)?/[^/]+\.png$"#, options: [.regularExpression, .caseInsensitive]) != nil {
             file = base.appendingPathComponent("Graphics/Characters/Followers/000.png")
         }
+        // 게임 폴더 안의 링크가 밖을 가리키면 읽지 않는다
+        guard file.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(rootReal + "/") else { return nil }
         return file
     }
 }

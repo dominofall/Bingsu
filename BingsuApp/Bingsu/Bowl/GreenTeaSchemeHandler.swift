@@ -15,6 +15,10 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
     static let origin = "bingsu-mv://game"
     /// 저장 파일 이름 규칙 (명세 §2). 임시 파일(끝 `_`)·MV 백업(`.bak`)까지
     static let saveNamePattern = #"^[A-Za-z0-9_.-]{1,64}\.(rpgsave|rmmzsave)(_|\.bak)?$"#
+    /// 게임 하나의 저장 파일 한도. 파일마다 `Freezer.maxBytes` 를 지켜도 이름을 바꿔 가며 쓰면 기기 공간을 다 쓸 수 있다.
+    /// 슬롯이 많은 플러그인도 넉넉한 값이다 (슬롯 100개 × 저장·임시·백업 3개)
+    static let maxSaveFiles = 1000
+    static let maxSaveTotalBytes = 512 * 1024 * 1024
 
     private let root: URL
     private let rootReal: String
@@ -82,6 +86,23 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
         case ("PUT", .saveFile), ("DELETE", .saveFile), ("MOVE", .saveFile): return true
         default: return false
         }
+    }
+
+    /// 이 PUT 뒤에도 한도 안인가. 같은 이름을 덮어쓰면 그 파일 크기는 빼고 센다
+    static func fitsQuota(existing: [String: Int], name: String, size: Int) -> Bool {
+        let total = existing.values.reduce(0, +) - (existing[name] ?? 0) + size
+        let count = existing.count + (existing[name] == nil ? 1 : 0)
+        return count <= maxSaveFiles && total <= maxSaveTotalBytes
+    }
+
+    /// 저장 폴더의 저장 파일 이름 → 크기
+    private func saveSizes() -> [String: Int] {
+        var out: [String: Int] = [:]
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: saves.path)) ?? [] where Self.isSaveName(name) {
+            let f = saves.appendingPathComponent(name)
+            out[name] = (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        }
+        return out
     }
 
     // MARK: WKURLSchemeHandler
@@ -233,6 +254,11 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
             guard body.count <= Freezer.maxBytes else {
                 NSLog("[Bowl] mv write PUT \(name) too large \(body.count)")
                 return SchemeFile.status(413, url: url)
+            }
+            // 쓰기는 한 줄 큐에서만 하므로 세고 쓰는 사이에 폴더가 바뀌지 않는다
+            guard Self.fitsQuota(existing: saveSizes(), name: name, size: body.count) else {
+                NSLog("[Bowl] mv write PUT \(name) over quota (\(label))")
+                return SchemeFile.status(507, url: url)
             }
             let dest = saves.appendingPathComponent(name)
             do { try body.write(to: dest, options: .atomic) } catch {

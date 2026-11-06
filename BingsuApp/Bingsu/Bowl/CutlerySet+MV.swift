@@ -19,6 +19,6 @@ extension CutlerySet {
         .up: "ArrowUp", .down: "ArrowDown", .left: "ArrowLeft", .right: "ArrowRight"]
 
     static var rpgMakerMV: CutlerySet {
-        ProcessInfo.processInfo.environment["BINGSU_MV_KEYBOARD"] == "1" ? rpgMakerMVKeyboard : rpgMakerMVPad
+        DevEnv["BINGSU_MV_KEYBOARD"] == "1" ? rpgMakerMVKeyboard : rpgMakerMVPad
     }
 }

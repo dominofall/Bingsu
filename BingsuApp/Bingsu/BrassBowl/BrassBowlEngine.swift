@@ -130,7 +130,7 @@ final class BrassBowlEngine: ObservableObject {
         let game = launch.dish.location
         let rgss = Self.rgss(for: launch.dish)
         let override = DishPrefsStore.shared.prefs(for: launch.dish.id).rubyOverride
-        let profile = RubyProfile.detect(folder: game, rgss: rgss, override: ProcessInfo.processInfo.environment["BINGSU_RUBY"] ?? override)
+        let profile = RubyProfile.detect(folder: game, rgss: rgss, override: DevEnv["BINGSU_RUBY"] ?? override)
         let screen = rgss == .xp ? "auto" : "544x416"
         NSLog("[BrassBowl] 시작 \(launch.dish.id) rgss=\(rgss.rawValue) ruby=\(profile.ruby) syntax=\(profile.syntax) screen=\(screen)")
 
@@ -155,7 +155,7 @@ final class BrassBowlEngine: ObservableObject {
         // 실제 컨트롤러는 빙수(LongSpoon)가 읽어 키로 넣는다 — 엔진이 또 읽으면 두 번 눌림
         sym("mkxp_setGameControllerCaptureEnabled", BoolFn.self)?(false)
         sym("mkxp_setTouchMouseEnabled", BoolFn.self)?(false)
-        if ProcessInfo.processInfo.environment["BINGSU_MKXP_LOG"] == "1" {
+        if DevEnv["BINGSU_MKXP_LOG"] == "1" {
             let log = FileManager.default.temporaryDirectory.appendingPathComponent("brassbowl.log")
             log.withUnsafeFileSystemRepresentation { sym("mkxp_setDebugLogPath", StrFn.self)?($0) }
             NSLog("[BrassBowl] rgss=\(rgss.rawValue) ruby=\(profile.ruby) screen=\(screen)")
@@ -347,7 +347,7 @@ final class BrassBowlEngine: ObservableObject {
 
     /// 실행할 RGSS 판: 디버그 BINGSU_RGSS → 가져올 때 적은 값 → 폴더 판별
     nonisolated static func rgss(for dish: Dish) -> RGSSVersion {
-        if let env = ProcessInfo.processInfo.environment["BINGSU_RGSS"], let n = Int(env), let v = RGSSVersion(rawValue: n) { return v }
+        if let env = DevEnv["BINGSU_RGSS"], let n = Int(env), let v = RGSSVersion(rawValue: n) { return v }
         return dish.rgss ?? RGSSProbe.version(folder: dish.location)
     }
 

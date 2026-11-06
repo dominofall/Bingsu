@@ -145,6 +145,12 @@ struct DeliveryView: View {
             Text("이미 있는 게임이에요").font(.title3.bold())
             Text("\(p.existing.title) · \(Self.versionChange(p.oldVersion, p.staged.version))")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            if p.staged.title != p.existing.title || p.staged.recipe != p.existing.recipe {
+                // 저장 폴더 이름은 게임 파일이 정하므로 다른 게임이 같은 이름을 쓸 수 있다
+                Label("가져오는 파일의 이름은 \u{201C}\(p.staged.title)\u{201D} 예요. 저장 폴더는 같지만 다른 게임일 수 있어요. 업데이트하거나 따로 추가하면 이 파일이 지금 저장 데이터를 읽을 수 있으니, 모르는 파일이면 취소하세요.", systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("업데이트 전 저장 데이터 백업", isOn: $backupFirst)
                 Divider()
