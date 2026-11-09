@@ -36,7 +36,7 @@ struct PauseBoard: View {
     @Binding var focus: PauseItem?
 
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
-    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = true
+    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = false
     @ObservedObject private var prefsStore = DishPrefsStore.shared
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7

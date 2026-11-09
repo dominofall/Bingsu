@@ -13,7 +13,7 @@ struct BingsuApp: App {
         Self.configureAudioSession()
     }
 
-    /// 설정 "무음 모드에서도 소리 재생" (기본 켬). 끄면 무음 스위치를 따르고 다른 앱 소리와 섞인다
+    /// 설정 "무음 모드에서도 소리 재생" (기본 끔, 빌드 31 부터. 30 까지는 기본 켬). 끄면 무음 스위치를 따르고 다른 앱 소리와 섞인다
     static let playInSilentKey = "bingsu.playInSilentMode"
 
     /// 소리 설정("무음 모드에서도 소리 재생"·게임별 소리 크기)이 바뀌었을 때. 켜 둔 게임 화면이 받아 바로 적용한다
@@ -37,7 +37,7 @@ struct BingsuApp: App {
     /// 무음 모드에서도 소리를 낼지: 게임별 설정이 있으면 그것, 없으면 설정 › 게임 중의 값
     @MainActor static func playInSilent(for dishID: String?) -> Bool {
         if let dishID, let own = DishPrefsStore.shared.prefs(for: dishID).playInSilent { return own }
-        return UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? true
+        return UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? false
     }
 
     /// 이 게임만 "무음 모드에서도 소리 재생"을 정하고 바로 적용한다 (일시정지 화면 "다른 앱 소리와 함께 듣기"는 이 값의 반대)

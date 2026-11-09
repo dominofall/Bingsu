@@ -37,7 +37,7 @@ struct DishSettingsView: View {
     }
 
     private enum SilentChoice: Hashable { case global, on, off }
-    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = true
+    @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = false
     private var silentChoice: Binding<SilentChoice> {
         Binding(get: { prefs.playInSilent.map { $0 ? .on : .off } ?? .global },
                 set: { c in

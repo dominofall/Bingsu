@@ -24,7 +24,7 @@ struct SettingsView: View {
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
     @AppStorage(AudioDiagHUD.key) private var audioDiag = false
-    @AppStorage(BingsuApp.playInSilentKey) private var playInSilent = true
+    @AppStorage(BingsuApp.playInSilentKey) private var playInSilent = false
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     @ObservedObject private var igloo = Igloo.shared
@@ -103,7 +103,7 @@ struct SettingsView: View {
                     }
                     Toggle(isOn: $playInSilent) {
                         Text("무음 모드에서도 소리 재생")
-                        Text("끄면 무음 모드일 때 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요")
+                        Text("켜면 무음 모드에서도 게임 소리가 나요. 끄면(기본) 무음 모드일 때 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요")
                     }
                     .onChange(of: playInSilent) { _, _ in
                         BingsuApp.configureAudioSession()
