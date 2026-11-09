@@ -26,6 +26,8 @@ struct BowlContainerView: View {
     @State private var toast: String?
     @State private var webView: WKWebView?
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
+    @ObservedObject private var watch = TeaSpoonLink.shared
+    @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
 
     /// 실제 게임패드(확장 게임패드 프로필)만 "컨트롤러 연결됨"으로 본다. 키보드·마우스·시뮬레이터 장치는 제외.
     static func realGamepadConnected() -> Bool {
@@ -233,6 +235,9 @@ struct BowlContainerView: View {
             controllerConnected = Self.realGamepadConnected()
             showToast("컨트롤러 연결 해제")
         }
+        .onChange(of: watchConnected) { _, on in
+            if on { spoon.releaseAll(); if visible { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
+        }
     }
 
     /// 눈송이 버튼(28pt)+여백이 들어가는 띠 폭. 게임은 항상 이 바깥에 그려진다.
@@ -240,7 +245,10 @@ struct BowlContainerView: View {
     /// 게임 화면과 기기 가장자리 사이 여백, 둥근 모서리
     static let margin: CGFloat = 0
     static let corner: CGFloat = 0
-    private var padShown: Bool { showSpoon && (!controllerConnected || padForced) }
+    /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
+    private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
+    private var anyController: Bool { controllerConnected || watchConnected }
+    private var padShown: Bool { showSpoon && (!anyController || padForced) }
 
     private var padDebugText: String {
         let names = spoon.pressed.sorted { $0.rawValue < $1.rawValue }.map { $0.glyph }.joined(separator: " ")
@@ -284,7 +292,7 @@ struct BowlContainerView: View {
             padFollowsGlobal: prefsStore.prefs(for: dish.id).pad == nil,
             setPad: setPadHere, applyToAllGames: applyPadToAll,
             padShown: Binding(get: { padShown }, set: { on in
-                if on { showSpoon = true; padForced = controllerConnected } else { showSpoon = false; spoon.releaseAll() }
+                if on { showSpoon = true; padForced = anyController } else { showSpoon = false; spoon.releaseAll() }
             }),
             controllerNames: LongSpoon.connectedNames(),
             fpsLimit: Binding(get: { prefsStore.prefs(for: dish.id).fpsLimit }, set: setFpsLimit),
@@ -305,7 +313,7 @@ struct BowlContainerView: View {
         spoon.releaseAll()
         setWebAudioHeld(true)
         lastBackup = dish.isRemote ? nil : freezer.backups().first?.date
-        pauseFocus = controllerConnected ? .resume : nil
+        pauseFocus = anyController ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
         teaSpoon?.menuInput = { b in pauseInput(b) }
         TeaSpoonLink.shared.setContext(game: dish.title, state: .paused)
@@ -404,7 +412,7 @@ struct BowlContainerView: View {
             case .close?: closePause(resume: false); flush(); onClose()
             case .kind(let k)?: p.kind = k; setPadHere(p)
             case .editLayout?: editLayout()
-            case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = controllerConnected }
+            case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = anyController }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
             case .leftHand?: p.leftHanded.toggle(); setPadHere(p)

@@ -43,10 +43,10 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
 
     // MARK: 보내기
 
-    func tap(_ b: TeaWire.Button) { send(b.rawValue, .tap); click() }
+    func tap(_ b: TeaWire.Button) { send(b.rawValue, .tap); click(b) }
 
     func down(_ b: TeaWire.Button) {
-        send(b.rawValue, .down); click()
+        send(b.rawValue, .down); click(b)
         heartbeats[b.rawValue]?.invalidate()
         heartbeats[b.rawValue] = Timer.scheduledTimer(withTimeInterval: TeaWire.heartbeatInterval, repeats: true) { [weak self] _ in
             self?.send(b.rawValue, .heartbeat)
@@ -64,7 +64,20 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
         send(-1, .releaseAll)
     }
 
-    private func click() { WKInterfaceDevice.current().play(.click) }
+    /// 버튼마다 다른 진동: 안 보고 눌러도 무엇을 눌렀는지 손으로 안다 (2026-11-09 피드백). 연달아 100ms 안쪽은 시스템이 합친다
+    static func haptic(for b: TeaWire.Button) -> WKHapticType {
+        switch b {
+        case .up, .down, .left, .right: return .click            // 원반: 짧은 톡 (크라운 디텐트와 비슷한 결)
+        case .a: return .directionUp                              // 확인: 올라가는 톡
+        case .b: return .directionDown                            // 취소: 내려가는 톡
+        case .x: return .start                                    // 두 번 톡
+        case .y: return .stop                                     // 두 번 톡(다른 결)
+        case .view, .menu: return .notification                   // 가장자리 −·+
+        case .home: return .success                               // 길게 눌러 일시정지: 올라가는 세 번
+        }
+    }
+
+    private func click(_ b: TeaWire.Button) { WKInterfaceDevice.current().play(Self.haptic(for: b)) }
 
     private func send(_ button: Int, _ event: TeaWire.Event, done: ((Bool) -> Void)? = nil) {
         let s = WCSession.default

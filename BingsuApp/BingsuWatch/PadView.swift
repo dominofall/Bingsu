@@ -3,7 +3,8 @@ import WatchKit
 
 /// 버튼판 (design/watch-board.html 9차 C-1 "얼음 단색", 2026-11-09 확정).
 /// 208×248pt(46mm) 기준으로 그리고 화면에 맞춰 비율대로 줄인다. 배경은 깊은 남색 라디얼, 버튼은 모두 같은 흰 얼음 유리.
-/// 가운데 원반 십자키(네 부채꼴, 원 안에서 미끄러지면 방향만 바뀜) + 둥근 사각 ABXY 가 귀퉁이를 감쌈 + 좌우 가장자리 세로 −·+.
+/// 가운데 원반 십자키(네 부채꼴, 원 안에서 미끄러지면 방향만 바뀜) + 귀퉁이 ABXY(원반 쪽을 원의 곡률대로 깎은 둥근 사각) + 좌우 가장자리 세로 −·+.
+/// 크라운은 ▲▼: 위로 올리면 ▲, 내리면 ▼ (목록 스크롤과 같은 방향. 실기기에서 반대면 부호 하나만 바꾼다).
 struct PadView: View {
     @ObservedObject var link: WatchLink
     @Environment(\.scenePhase) private var scenePhase
@@ -48,9 +49,9 @@ struct PadView: View {
         }
         .ignoresSafeArea()
         .focusable()
-        .digitalCrownRotation($crown, from: -1000, through: 1000, sensitivity: .medium, isContinuous: true, isHapticFeedbackEnabled: false)
+        .digitalCrownRotation($crown, from: -1000, through: 1000, sensitivity: .medium, isContinuous: true, isHapticFeedbackEnabled: true)
         .onChange(of: crown) { old, new in
-            // 디텐트 한 칸(값 1) 마다 ▲/▼ 한 번. 빨리 돌리면 칸 수만큼 (연구 P6)
+            // 디텐트 한 칸(값 1) 마다 ▲/▼ 한 번. 값이 느는 쪽 = 목록이 아래로 스크롤되는 쪽 = ▼. 빨리 돌리면 칸 수만큼 (연구 P6). 칸마다 시스템 디텐트 톡
             crownAccum += new - old
             while crownAccum >= 1 { crownAccum -= 1; link.tap(.down) }
             while crownAccum <= -1 { crownAccum += 1; link.tap(.up) }
@@ -58,18 +59,25 @@ struct PadView: View {
         .onChange(of: scenePhase) { _, p in if p != .active { link.releaseAll() } }
     }
 
+    /// 원반 중심·반지름, ABXY 한 변, 원반과 ABXY 사이 틈 (설계 pt)
+    static let discCenter = CGPoint(x: 104, y: 134), discRadius: CGFloat = 70, gem: CGFloat = 60, gap: CGFloat = 10
+
     /// 버튼들 (설계 좌표 × s)
     @ViewBuilder private func pad(scale s: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
             DiscPad(link: link, scale: s)
-                .frame(width: 112 * s, height: 112 * s)
-                .position(x: 104 * s, y: 134 * s)
-            ForEach([(TeaWire.Button.y, 38.0, 68.0), (.x, 170, 68), (.b, 38, 200), (.a, 170, 200)], id: \.0) { b, cx, cy in
-                GemButton(button: b, link: link, scale: s)
-                    .frame(width: 60 * s, height: 60 * s)
+                .frame(width: Self.discRadius * 2 * s, height: Self.discRadius * 2 * s)
+                .position(x: Self.discCenter.x * s, y: Self.discCenter.y * s)
+            ForEach([(TeaWire.Button.y, 32.0, 62.0), (.x, 176, 62), (.b, 32, 206), (.a, 176, 206)], id: \.0) { b, cx, cy in
+                // 원반 중심을 이 버튼의 좌표계로 옮기고, 원반 반지름 + 틈 만큼 깎는다
+                GemButton(button: b, link: link, scale: s,
+                          cutCenter: CGPoint(x: Self.discCenter.x - (cx - Self.gem / 2), y: Self.discCenter.y - (cy - Self.gem / 2)),
+                          cutRadius: Self.discRadius + Self.gap)
+                    .frame(width: Self.gem * s, height: Self.gem * s)
                     .position(x: cx * s, y: cy * s)
             }
-            EdgeButton(button: .view, link: link, scale: s).frame(width: 14 * s, height: 44 * s).position(x: 9 * s, y: 134 * s)
+            // 양쪽 다 길게(0.6초) 누르면 일시정지. 실기기에서 − 를 길게 누르는 사람이 있었다
+            EdgeButton(button: .view, link: link, scale: s, longPress: .home).frame(width: 14 * s, height: 44 * s).position(x: 9 * s, y: 134 * s)
             EdgeButton(button: .menu, link: link, scale: s, longPress: .home).frame(width: 14 * s, height: 44 * s).position(x: 199 * s, y: 134 * s)
         }
     }
@@ -165,17 +173,39 @@ struct Chevron: Shape {
     }
 }
 
-/// ABXY: 둥근 사각 얼음 유리. 0.25초 안에 떼면 tap, 넘으면 down → up
+/// 둥근 사각에서 원반(+틈)과 겹치는 귀퉁이를 원의 곡률대로 깎은 모양. `cutCenter`·`cutRadius` 는 이 모양의 좌표계 (pt, 이미 s 를 곱한 값)
+struct GemShape: InsettableShape {
+    var corner: CGFloat
+    var cutCenter: CGPoint
+    var cutRadius: CGFloat
+    var insetAmount: CGFloat = 0
+
+    func path(in rect: CGRect) -> Path {
+        let r = rect.insetBy(dx: insetAmount, dy: insetAmount)
+        let base = Path(roundedRect: r, cornerRadius: max(corner - insetAmount, 0), style: .continuous)
+        let cr = cutRadius + insetAmount
+        let cut = Path(ellipseIn: CGRect(x: cutCenter.x - cr, y: cutCenter.y - cr, width: cr * 2, height: cr * 2))
+        return base.subtracting(cut)
+    }
+
+    func inset(by amount: CGFloat) -> GemShape { var s = self; s.insetAmount += amount; return s }
+}
+
+/// ABXY: 원반 쪽을 깎은 둥근 사각 얼음 유리. 0.25초 안에 떼면 tap, 넘으면 down → up
 struct GemButton: View {
     let button: TeaWire.Button
     @ObservedObject var link: WatchLink
     let scale: CGFloat
+    /// 설계 pt (원반 중심을 이 버튼 좌표계로 옮긴 것, 깎는 반지름)
+    let cutCenter: CGPoint
+    let cutRadius: CGFloat
     @State private var pressing = false
     @State private var sentDown = false
     @State private var holdTimer: Timer?
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 24 * scale, style: .continuous)
+        let shape = GemShape(corner: 22 * scale, cutCenter: CGPoint(x: cutCenter.x * scale, y: cutCenter.y * scale), cutRadius: cutRadius * scale)
+        // 글자는 사각 버튼 때처럼 정가운데 (깎인 만큼 밀지 않는다, 2026-11-09 피드백)
         Ice.dome(shape, pressed: pressing, scale: scale)
             .overlay(Text(button.glyph).font(.system(size: 30 * scale, weight: .bold)).foregroundStyle(pressing ? Color(red: 0.04, green: 0.10, blue: 0.16) : .white))
             .scaleEffect(pressing ? 0.97 : 1)
@@ -194,28 +224,37 @@ struct GemButton: View {
     }
 }
 
-/// −·+ : 화면 좌우 가장자리의 세로 알약. `longPress` 가 있으면 길게 눌러 그 버튼(⌂ = 일시정지)
+/// −·+ : 화면 좌우 가장자리의 세로 알약. 누르는 동안 눌림 표시, 0.6초 전에 떼면 그 버튼, 넘기면 `longPress`(⌂ = 일시정지)를 그 순간 보내고 진동.
+/// (전에는 onTapGesture + onLongPressGesture 였는데 실기기에서 길게 누르기가 안 먹었다. GemButton 처럼 DragGesture 하나로 통일)
 struct EdgeButton: View {
     let button: TeaWire.Button
     @ObservedObject var link: WatchLink
     let scale: CGFloat
     var longPress: TeaWire.Button? = nil
     @State private var pressing = false
+    @State private var fired = false
+    @State private var holdTimer: Timer?
 
     var body: some View {
         let shape = Capsule()
         Ice.dome(shape, pressed: pressing, scale: scale)
             .overlay(Text(button == .view ? "−" : "+").font(.system(size: 13 * scale, weight: .bold)).foregroundStyle(pressing ? Color(red: 0.04, green: 0.10, blue: 0.16) : Ice.text))
             .contentShape(shape.inset(by: -6 * scale))   // 가장자리라 닿는 범위를 조금 넓힌다
-            .onTapGesture { link.tap(button); flash() }
-            .onLongPressGesture(minimumDuration: 0.6) {
-                if let longPress { link.tap(longPress); WKInterfaceDevice.current().play(.directionDown); flash() }
-            }
-    }
-
-    private func flash() {
-        pressing = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { pressing = false }
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    guard !pressing else { return }
+                    pressing = true; fired = false
+                    if let longPress {
+                        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { _ in
+                            fired = true; link.tap(longPress)
+                        }
+                    }
+                }
+                .onEnded { _ in
+                    holdTimer?.invalidate(); holdTimer = nil
+                    pressing = false
+                    if !fired { link.tap(button) }
+                })
     }
 }
 

@@ -32,6 +32,8 @@ struct BrassBowlContainerView: View {
     @State private var textEntry = ""
     @State private var fpsTimer: Timer?
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
+    @ObservedObject private var watch = TeaSpoonLink.shared
+    @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
     @State private var showSpoon = true
     @State private var padForced = DevEnv["BINGSU_FORCE_PAD"] == "1"
     @AppStorage("bingsu.showPerformance") private var showHUD = false
@@ -50,7 +52,10 @@ struct BrassBowlContainerView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
-    private var padShown: Bool { showSpoon && (!controllerConnected || padForced) }
+    /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
+    private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
+    private var anyController: Bool { controllerConnected || watchConnected }
+    private var padShown: Bool { showSpoon && (!anyController || padForced) }
     private var menuButtonPlace: MenuButtonPlace {
         if let e = DevEnv["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
         // 한손 배치는 설정과 상관없이 패드 구역 오른쪽 위에 고정 (2026-10-31 사용자 결정, 자리는 makeOneHand)
@@ -185,6 +190,9 @@ struct BrassBowlContainerView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in
             controllerConnected = BowlContainerView.realGamepadConnected()
+        }
+        .onChange(of: watchConnected) { _, on in
+            if on { spoon.releaseAll(); if isPlaying { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
         }
     }
 
@@ -340,7 +348,7 @@ struct BrassBowlContainerView: View {
             padFollowsGlobal: prefsStore.prefs(for: dish.id).pad == nil,
             setPad: setPadHere, applyToAllGames: applyPadToAll,
             padShown: Binding(get: { padShown }, set: { on in
-                if on { showSpoon = true; padForced = controllerConnected } else { showSpoon = false; spoon.releaseAll() }
+                if on { showSpoon = true; padForced = anyController } else { showSpoon = false; spoon.releaseAll() }
             }),
             controllerNames: LongSpoon.connectedNames(),
             runningQuality: .high, showHUD: $showHUD, lastBackup: lastBackup,
@@ -359,7 +367,7 @@ struct BrassBowlContainerView: View {
         engine.pause()
         IceTray.sync(dish, allowUnpack: false)
         lastBackup = freezer.backups().first?.date
-        pauseFocus = controllerConnected ? .resume : nil
+        pauseFocus = anyController ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
         teaSpoon?.menuInput = { b in pauseInput(b) }
         TeaSpoonLink.shared.setContext(game: dish.title, state: .paused)
@@ -429,7 +437,7 @@ struct BrassBowlContainerView: View {
             case .close?: confirmQuit = true
             case .kind(let k)?: p.kind = k; setPadHere(p)
             case .editLayout?: editLayout()
-            case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = controllerConnected }
+            case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = anyController }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
             case .leftHand?: p.leftHanded.toggle(); setPadHere(p)
