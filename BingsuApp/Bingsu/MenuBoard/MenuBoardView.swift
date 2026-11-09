@@ -18,6 +18,9 @@ struct MenuBoardView: View {
     @StateObject private var delivery = Delivery()
     @State private var showDelivery = false
     @State private var showSettings = false
+    /// 업데이트 뒤 처음 켤 때 "새로운 점" (Kitchen/WhatsNewView.swift)
+    @State private var whatsNew: [WhatsNew.Note] = []
+    @State private var showWhatsNew = false
     @State private var editing: Dish?
     /// 길게 눌러 "게임 삭제"를 고른 게임. 알림으로 한 번 더 묻는다
     @State private var deleting: Dish?
@@ -45,7 +48,7 @@ struct MenuBoardView: View {
     private let chipMin: CGFloat = 150, chipSpacing: CGFloat = 18
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing, alignment: .top)] }
     /// 홈이 보이고 시트가 하나도 없을 때만 컨트롤러 입력을 받는다
-    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && editing == nil && deleting == nil && conflict == nil }
+    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showWhatsNew && editing == nil && deleting == nil && conflict == nil }
     /// 칩 수 = 게임 수 + "게임 추가" 칩
     private var chipCount: Int { menu.dishes.isEmpty ? 0 : menu.dishes.count + 1 }
 
@@ -206,6 +209,18 @@ struct MenuBoardView: View {
             Text("RPG Maker XP·VX·VX Ace·MV·MZ 로 만든 PC용 게임을 zip 으로 넣어요.")
         }
         .sheet(isPresented: $showAddWeb) { AddWebGameView().environmentObject(menu) }
+        .sheet(isPresented: $showWhatsNew) {
+            let v = WhatsNewSheet(notes: whatsNew)
+            v.presentationDetents([.height(v.sheetHeight)]).presentationDragIndicator(.visible)
+        }
+        .task {
+            // 새로운 점: 업데이트 뒤 처음 켤 때 한 번. 처음 설치(게임 없음)나 자동 실행 중에는 띄우지 않고 본 것으로 적는다
+            try? await Task.sleep(for: .seconds(0.8))
+            let pending = WhatsNew.pending()
+            guard !pending.isEmpty else { return }
+            if menu.dishes.isEmpty || running != nil || DevEnv["BINGSU_OPEN"] != nil { WhatsNew.markSeen(); return }
+            whatsNew = pending; showWhatsNew = true
+        }
         .sheet(isPresented: $showDownload) { DownloadView(courier: courier) }
         // 다 받으면 가져오기로 넘긴다. 앱이 백그라운드였으면 다시 활성화될 때, 게임 중이면 홈으로 나올 때.
         .onChange(of: courier.state, initial: true) { _, _ in importDownloadIfReady() }

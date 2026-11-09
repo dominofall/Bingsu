@@ -138,6 +138,7 @@ struct SettingsView: View {
 
                 Section("정보") {
                     LabeledContent("버전", value: Self.versionText)
+                    NavigationLink("새로운 점") { WhatsNewListView() }
                     NavigationLink("오픈소스 라이선스") { LicensesView() }
                 }
             }
