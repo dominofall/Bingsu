@@ -31,6 +31,9 @@ struct SettingsView: View {
     /// 지금 연결된 실제 컨트롤러 제품명 (식별자 없이)
     @State private var controllers = LongSpoon.connectedNames()
     @State private var showEditor = false
+    /// 애플워치 컨트롤러 (Spoon/TeaSpoon.swift). iPhone 에서만 보인다
+    @ObservedObject private var watch = TeaSpoonLink.shared
+    @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
 
     /// 전역 @AppStorage 값들을 PadPrefs 하나로 묶은 바인딩
     private var globalPad: Binding<PadPrefs> {
@@ -61,6 +64,14 @@ struct SettingsView: View {
                         ForEach(controllers.indices, id: \.self) { i in
                             LabeledContent("연결된 컨트롤러", value: controllers[i])
                         }
+                    }
+                    if watch.supported {
+                        Toggle(isOn: $watchEnabled) {
+                            Text("애플워치로 조작")
+                            Text("워치의 빙수 앱 버튼과 크라운으로 조작해요. 메뉴·배틀 같은 턴제 조작에 알맞아요. 필드 이동은 조금 늦을 수 있어요")
+                        }
+                        .onChange(of: watchEnabled) { _, _ in watch.refreshContext() }
+                        LabeledContent("애플워치", value: watch.statusLabel)
                     }
                 } header: {
                     Text("컨트롤러")

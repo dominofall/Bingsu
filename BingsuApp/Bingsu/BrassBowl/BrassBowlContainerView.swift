@@ -17,6 +17,7 @@ struct BrassBowlContainerView: View {
     @StateObject private var spoon = SpoonController()
     @StateObject private var recorder: PerfRecorder
     @State private var longSpoon: LongSpoon?
+    @State private var teaSpoon: TeaSpoon?   // 애플워치 (Spoon/TeaSpoon.swift)
     @State private var toast: String?
     @State private var startError: String?
     @State private var showMenu = false
@@ -224,6 +225,10 @@ struct BrassBowlContainerView: View {
         if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }
         longSpoon?.enabled = visible
         longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
+        if teaSpoon == nil { teaSpoon = TeaSpoon(spoon: spoon) }      // 애플워치 → 같은 경로로 입력
+        teaSpoon?.enabled = visible
+        teaSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
+        TeaSpoonLink.shared.setContext(game: dish.title, state: visible ? .playing : .home)
         thermometer.fpsTarget = 60
         thermometer.onSample = { [weak recorder] t in
             recorder?.ingest(fps: t.fps, p95: t.frameP95ms, stutters: t.lastStutters, memoryMB: t.memoryMB, thermal: t.thermal)
@@ -356,6 +361,8 @@ struct BrassBowlContainerView: View {
         lastBackup = freezer.backups().first?.date
         pauseFocus = controllerConnected ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
+        teaSpoon?.menuInput = { b in pauseInput(b) }
+        TeaSpoonLink.shared.setContext(game: dish.title, state: .paused)
         withAnimation(.easeOut(duration: 0.22)) { showMenu = true }
     }
 
@@ -368,6 +375,8 @@ struct BrassBowlContainerView: View {
 
     private func closePause(resume: Bool = true) {
         longSpoon?.menuInput = nil
+        teaSpoon?.menuInput = nil
+        if resume { TeaSpoonLink.shared.setContext(game: dish.title, state: .playing) }
         withAnimation(.easeOut(duration: 0.18)) { showMenu = false }
         if resume { engine.resume() }
     }

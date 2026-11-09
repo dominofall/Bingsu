@@ -3,12 +3,13 @@ options:
   bundleIdPrefix: com.minwoo
   deploymentTarget:
     iOS: "26.0"
+    watchOS: "26.0"   # Series 6 이상·SE 2·Ultra (docs/watch/research.md 6.3)
   createIntermediateGroups: true
 settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "31"
+    CURRENT_PROJECT_VERSION: "32"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
@@ -52,6 +53,8 @@ targets:
     dependencies:
       - package: ZIPFoundation
       - package: SwiftGlass
+      # 애플워치 컨트롤러 (docs/watch/research.md). XcodeGen 이 Bingsu.app/Watch/BingsuWatch.app 로 넣는다
+      - target: BingsuWatch
     # RPG Maker XP 실행기(BrassBowl.framework, mkxp-z GPLv3)는 링크하지 않고 넣기만 한다. 앱이 실행 중에 dlopen.
     # 만드는 법: BrassBowl/README.md. 없으면 경고만 하고 그 빌드는 RPG Maker XP 게임을 "준비 중"으로 보인다
     postBuildScripts:
@@ -116,3 +119,29 @@ targets:
             UTTypeConformsTo: [public.zip-archive]
             UTTypeTagSpecification:
               public.filename-extension: [bingsuskin]
+
+  # 애플워치 컨트롤러: 워치 화면의 버튼을 WatchConnectivity 로 iPhone 빙수에 보낸다 (Spoon/TeaSpoon.swift 가 받는다).
+  # 단일 타깃 워치 앱(확장 없음). 시뮬레이터 확인만 하고 TestFlight 에는 올리지 않는다 (2026-11-01 사용자 규칙)
+  BingsuWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: BingsuWatch
+      # 워치와 iPhone 이 같은 메시지 형식을 쓴다
+      - path: Bingsu/Spoon/TeaSpoonWire.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.minwoo.bingsu.watchkitapp
+        PRODUCT_NAME: BingsuWatch
+        TARGETED_DEVICE_FAMILY: "4"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: BingsuWatch/Info.plist
+      properties:
+        CFBundleDisplayName: 빙수
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        CFBundleDevelopmentRegion: ko
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.minwoo.bingsu
+        WKRunsIndependentlyOfCompanionApp: false

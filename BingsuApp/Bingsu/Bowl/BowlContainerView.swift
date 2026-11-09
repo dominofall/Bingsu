@@ -22,6 +22,7 @@ struct BowlContainerView: View {
     @State private var autoFps: Bool
     @State private var heatCapped = false
     @State private var longSpoon: LongSpoon?
+    @State private var teaSpoon: TeaSpoon?   // 애플워치 (Spoon/TeaSpoon.swift)
     @State private var toast: String?
     @State private var webView: WKWebView?
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
@@ -172,6 +173,8 @@ struct BowlContainerView: View {
             if !v && showMenu { closePause(resume: false) }
             if !v { showEditor = false }
             longSpoon?.enabled = v
+            teaSpoon?.enabled = v
+            TeaSpoonLink.shared.setContext(game: dish.title, state: v ? .playing : .home)
             recorder.setActive(v && scenePhase == .active)
             showReturnToast()
             webView?.evaluateJavaScript("window.__bingsu && __bingsu.\(v ? "resume" : "pause")()", completionHandler: nil)
@@ -182,6 +185,10 @@ struct BowlContainerView: View {
             if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }   // 실제 컨트롤러 → 같은 경로로 입력
             longSpoon?.enabled = visible
             longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
+            if teaSpoon == nil { teaSpoon = TeaSpoon(spoon: spoon) }      // 애플워치 → 같은 경로로 입력
+            teaSpoon?.enabled = visible
+            teaSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
+            TeaSpoonLink.shared.setContext(game: dish.title, state: visible ? .playing : .home)
             // 디버그: BINGSU_PAUSE=1 이면 3초 뒤 일시정지 화면을 연다 (시뮬레이터 확인용)
             if DevEnv["BINGSU_PAUSE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { openPause() } }
             // 디버그: BINGSU_LAYOUT=1 이면 3초 뒤 배치 편집기를 연다
@@ -300,6 +307,8 @@ struct BowlContainerView: View {
         lastBackup = dish.isRemote ? nil : freezer.backups().first?.date
         pauseFocus = controllerConnected ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
+        teaSpoon?.menuInput = { b in pauseInput(b) }
+        TeaSpoonLink.shared.setContext(game: dish.title, state: .paused)
         withAnimation(.easeOut(duration: 0.22)) { showMenu = true }
     }
 
@@ -312,6 +321,8 @@ struct BowlContainerView: View {
 
     private func closePause(resume: Bool = true) {
         longSpoon?.menuInput = nil
+        teaSpoon?.menuInput = nil
+        if resume { TeaSpoonLink.shared.setContext(game: dish.title, state: .playing) }
         withAnimation(.easeOut(duration: 0.18)) { showMenu = false }
         if resume { setWebAudioHeld(false) }
     }

@@ -23,9 +23,13 @@
 		1DEAFC19F9916ACFEE639F28 /* CutlerySet+MV.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47F5AE906F2777AED2075B5 /* CutlerySet+MV.swift */; };
 		1E99712AB9DE67B7C4EBC318 /* SkinPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8895E843068FA01C56BEC359 /* SkinPicker.swift */; };
 		21ABF4514382A8BC12365874 /* BingsuApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = C26660F721EB6692A526F0AA /* BingsuApp.swift */; };
+		269C0DA91D351C58321CEF3A /* PadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1CCD1CFB5AC307693BC63B7 /* PadView.swift */; };
+		27C1FA03B5C2F311DFCC44C1 /* TeaSpoonWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90281D0FB1A3E8687F1DA57F /* TeaSpoonWire.swift */; };
+		28A03AA09E74B8C4CA22DFA1 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87E579CE077B5EE062E58D36 /* WatchLink.swift */; };
 		28A43B4C0978D8D45733FA60 /* Igloo.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCDF197A6F1466C399E2968D /* Igloo.swift */; };
 		2A10E61D0F247E19D80A998A /* Delivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD0A5681130D849ACDF5A87A /* Delivery.swift */; };
 		35B8B8BC3B7AA9D6BF34D6A9 /* Rumble.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEC288489930339F81A0B372 /* Rumble.swift */; };
+		376D7DEEEBA4AA9312C60F48 /* BingsuWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3B53B501F15EC7F4D16A9060 /* MenuButtonPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */; };
 		3C7E2F82BAABEABCA42266AC /* SchemeFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */; };
 		3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */ = {isa = PBXBuildFile; fileRef = B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */; };
@@ -45,9 +49,11 @@
 		80950D9AA7313C118A603F43 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 6B6355752F363DBD24157CFD /* ZIPFoundation */; };
 		83FF9626499DF6D3BF2B1E45 /* SpoonLayoutEditor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D44A9111A0EFCB4E6077F87B /* SpoonLayoutEditor.swift */; };
 		8616F3FC74E026DF0C7D538D /* RecipeDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF71D97A8C5CCC358C42466C /* RecipeDetector.swift */; };
+		873EBD1C3BDB5643D6CFBDAF /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1BD54A9083923324A55BBA30 /* Assets.xcassets */; };
 		8B0E2D54E457192F3314B996 /* AsarArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4912066674E48192C0479A /* AsarArchive.swift */; };
 		8C4B3BFB49AA7F692CA82984 /* Courier.swift in Sources */ = {isa = PBXBuildFile; fileRef = D57FFEAD0C4B5982C0DBC2AF /* Courier.swift */; };
 		9355EBE27E6065448206AE5A /* SpoonController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3355B376BCB5F7BECEA19761 /* SpoonController.swift */; };
+		9366CCF77D730EF05ECD50D8 /* TeaSpoon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6749C327959E8288335221FF /* TeaSpoon.swift */; };
 		938F1FE0C2462E529A0E3661 /* SampleGame in Resources */ = {isa = PBXBuildFile; fileRef = 9D9A4C8786BBFE3221D36278 /* SampleGame */; };
 		945A7EDEC7444DF3FDEDBC00 /* LongSpoon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C72A0868389022A39B2B41DE /* LongSpoon.swift */; };
 		960FEFB105501E8D62B8DD14 /* AuthPopupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2253E1CC5483C9EF25653A7 /* AuthPopupView.swift */; };
@@ -72,12 +78,14 @@
 		C721654EDFD44EF039797864 /* Freezer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 433D04EF76ACB0C11EC74FCD /* Freezer.swift */; };
 		C90E8C11C3038613DCEF2D5B /* BrassBowlContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E008BDF8B5048BDF74686502 /* BrassBowlContainerView.swift */; };
 		D057C3EDBACA16E4EBA495C2 /* SpoonSkin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */; };
+		D1CFD94A25FDB65C6E2BEF38 /* TeaSpoonWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90281D0FB1A3E8687F1DA57F /* TeaSpoonWire.swift */; };
 		D26C3971FB856CC93AB73DBD /* RumbleSet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */; };
 		D2763C7D5559F81F9CC98234 /* GreenTeaSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCBBFF73EC8EDD93FAA0AA15 /* GreenTeaSchemeHandler.swift */; };
 		D2E7584993AA67ADD5538980 /* Dish.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93A4FDE53502C75F063E7580 /* Dish.swift */; };
 		D401791711BEDF7422DF001B /* GlassBowl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C7DF0C151691866EEB6446A /* GlassBowl.swift */; };
 		D4A5AB6D1320F0EFEA465084 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5EE0ADB93C88F0A0601CBAE5 /* Assets.xcassets */; };
 		D53D0922DAEB3E7909346C17 /* RGSSProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */; };
+		D5831419869C7AA744AC5F78 /* BingsuWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3073A2612C0AE214DC2723AE /* BingsuWatchApp.swift */; };
 		DF82236AFFC89454986D18DA /* SavedDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9937FB5BFFACDD23793D55 /* SavedDataView.swift */; };
 		E185C5F4095BDD9BDB53DBFB /* DiagLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2983C24C173522B3B218825 /* DiagLog.swift */; };
 		E2E71BE164BFFF57F4A9243A /* CutlerySet+XP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345AA05D99D2919B652C1806 /* CutlerySet+XP.swift */; };
@@ -87,6 +95,30 @@
 		F6E8520372984365459BD218 /* SpoonFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = F77A15AFF28F0839031D49F7 /* SpoonFace.swift */; };
 		FB37FC71E46BCD318F9430AC /* DishSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57FE8FE684B4154DBB2D177B /* DishSettingsView.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		DCF90140ADA19A905BEB26A1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9960833910597DD2B0C085AC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 1BD6C905BD6918F49242BF93;
+			remoteInfo = BingsuWatch;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		ED144633DF54E02F5BB97B55 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				376D7DEEEBA4AA9312C60F48 /* BingsuWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		001477F31C2902EBE1C62873 /* SkinShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinShelf.swift; sourceTree = "<group>"; };
@@ -99,11 +131,15 @@
 		0A7A0B09C564E1653D5C9CD7 /* SafeUnzip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafeUnzip.swift; sourceTree = "<group>"; };
 		1232002CDDA6ED63239D5416 /* AutoCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoCover.swift; sourceTree = "<group>"; };
 		14F7C6254E82FAB6E79DBEF2 /* Bingsu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Bingsu.entitlements; sourceTree = "<group>"; };
+		1BD54A9083923324A55BBA30 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1F5139AB857871D3CC678B92 /* DownloadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadView.swift; sourceTree = "<group>"; };
+		21EC411CE4DD49C6EB51F884 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		23F360FC8FB7EEB8C30A452D /* SpoonOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonOverlay.swift; sourceTree = "<group>"; };
+		24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BingsuWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2851AF9D86A7BC63BFE83C44 /* Rumble */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Rumble; path = Bingsu/Resources/Rumble; sourceTree = SOURCE_ROOT; };
 		295FCF0A4046752C77CFFBC8 /* IceTray.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IceTray.swift; sourceTree = "<group>"; };
 		2C21A849703554258828BC24 /* DeliveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryView.swift; sourceTree = "<group>"; };
+		3073A2612C0AE214DC2723AE /* BingsuWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BingsuWatchApp.swift; sourceTree = "<group>"; };
 		30DE1AD2F52844D2C74FB12B /* WebGames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebGames.swift; sourceTree = "<group>"; };
 		31C2DDE5D213694E1AD89A9C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3355B376BCB5F7BECEA19761 /* SpoonController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonController.swift; sourceTree = "<group>"; };
@@ -125,6 +161,7 @@
 		5EE0ADB93C88F0A0601CBAE5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuButtonPlace.swift; sourceTree = "<group>"; };
 		661EF2D16CB92E30DD75247E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		6749C327959E8288335221FF /* TeaSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeaSpoon.swift; sourceTree = "<group>"; };
 		6A09005EDDC989FBC2219268 /* Thermometer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thermometer.swift; sourceTree = "<group>"; };
 		6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveCounter.swift; sourceTree = "<group>"; };
 		7C42938298781D2E35741C26 /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
@@ -132,8 +169,10 @@
 		7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSkin.swift; sourceTree = "<group>"; };
 		8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPGMakerCrypt.swift; sourceTree = "<group>"; };
 		8396F3A801DC4567F234ACF3 /* BrassShelves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrassShelves.swift; sourceTree = "<group>"; };
+		87E579CE077B5EE062E58D36 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLink.swift; sourceTree = "<group>"; };
 		8895E843068FA01C56BEC359 /* SkinPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinPicker.swift; sourceTree = "<group>"; };
 		8E49B2EBF23AB3180789D1B1 /* RumbleSet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RumbleSet.swift; sourceTree = "<group>"; };
+		90281D0FB1A3E8687F1DA57F /* TeaSpoonWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeaSpoonWire.swift; sourceTree = "<group>"; };
 		93A4FDE53502C75F063E7580 /* Dish.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Dish.swift; sourceTree = "<group>"; };
 		94869721A2A46AE8698BB186 /* Bingsu.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Bingsu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		96FAEB8CE0AF31876BC807AC /* DriveTicket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveTicket.swift; sourceTree = "<group>"; };
@@ -148,6 +187,7 @@
 		B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_LICENSES.md; sourceTree = "<group>"; };
 		BBD4724FB3CF8E194F10A6CE /* PerfSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfSection.swift; sourceTree = "<group>"; };
 		BF71D97A8C5CCC358C42466C /* RecipeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeDetector.swift; sourceTree = "<group>"; };
+		C1CCD1CFB5AC307693BC63B7 /* PadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadView.swift; sourceTree = "<group>"; };
 		C26660F721EB6692A526F0AA /* BingsuApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BingsuApp.swift; sourceTree = "<group>"; };
 		C3C0227D72374A629D33F563 /* MenuPadNavigator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuPadNavigator.swift; sourceTree = "<group>"; };
 		C3F12E3A1FC5BEED10D08AC0 /* SpoonTouchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonTouchView.swift; sourceTree = "<group>"; };
@@ -255,6 +295,7 @@
 			isa = PBXGroup;
 			children = (
 				94869721A2A46AE8698BB186 /* Bingsu.app */,
+				24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -314,6 +355,8 @@
 				5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */,
 				7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */,
 				C3F12E3A1FC5BEED10D08AC0 /* SpoonTouchView.swift */,
+				6749C327959E8288335221FF /* TeaSpoon.swift */,
+				90281D0FB1A3E8687F1DA57F /* TeaSpoonWire.swift */,
 			);
 			path = Spoon;
 			sourceTree = "<group>";
@@ -362,6 +405,18 @@
 			path = App;
 			sourceTree = "<group>";
 		};
+		DE5EB53665B25D2C75CBF87D /* BingsuWatch */ = {
+			isa = PBXGroup;
+			children = (
+				1BD54A9083923324A55BBA30 /* Assets.xcassets */,
+				3073A2612C0AE214DC2723AE /* BingsuWatchApp.swift */,
+				21EC411CE4DD49C6EB51F884 /* Info.plist */,
+				C1CCD1CFB5AC307693BC63B7 /* PadView.swift */,
+				87E579CE077B5EE062E58D36 /* WatchLink.swift */,
+			);
+			path = BingsuWatch;
+			sourceTree = "<group>";
+		};
 		EE1C12081FF0CE0DBAE8C7CD /* Freezer */ = {
 			isa = PBXGroup;
 			children = (
@@ -381,6 +436,7 @@
 			children = (
 				B97A3E7F8EAD4DD6E10871BA /* Bingsu */,
 				6BAE98E485D28C89720D3142 /* Bingsu */,
+				DE5EB53665B25D2C75CBF87D /* BingsuWatch */,
 				B02DD9E3E3CFE08A99E5328F /* Products */,
 			);
 			sourceTree = "<group>";
@@ -388,6 +444,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		1BD6C905BD6918F49242BF93 /* BingsuWatch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 80FD3ED66CEB8DC0092B6B57 /* Build configuration list for PBXNativeTarget "BingsuWatch" */;
+			buildPhases = (
+				B250F70CC09A4A3F6A93B489 /* Sources */,
+				CB7CE73C4CDF9E30435AA259 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BingsuWatch;
+			packageProductDependencies = (
+			);
+			productName = BingsuWatch;
+			productReference = 24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */;
+			productType = "com.apple.product-type.application";
+		};
 		6C4A8D18834F893E35221EA4 /* Bingsu */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = AFEE2652F72D8B4D142C749D /* Build configuration list for PBXNativeTarget "Bingsu" */;
@@ -395,11 +469,13 @@
 				99B659708213BAC959260785 /* Sources */,
 				9F5241A8D44BB5FD1BC4D8E6 /* Resources */,
 				FEC6F6089C9A5166A6D793F8 /* Frameworks */,
+				ED144633DF54E02F5BB97B55 /* Embed Watch Content */,
 				6F4C93683DA7309149884B3E /* BrassBowl 넣기 */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				4923BC2F87572F03D4CF2BA7 /* PBXTargetDependency */,
 			);
 			name = Bingsu;
 			packageProductDependencies = (
@@ -419,6 +495,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					1BD6C905BD6918F49242BF93 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Automatic;
+					};
 					6C4A8D18834F893E35221EA4 = {
 						DevelopmentTeam = "";
 						ProvisioningStyle = Automatic;
@@ -444,6 +524,7 @@
 			projectRoot = "";
 			targets = (
 				6C4A8D18834F893E35221EA4 /* Bingsu */,
+				1BD6C905BD6918F49242BF93 /* BingsuWatch */,
 			);
 		};
 /* End PBXProject section */
@@ -461,6 +542,14 @@
 				9E8F059C4857832F188B63EC /* Skins in Resources */,
 				3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */,
 				B68AF8EC6BEF1C3B7672C023 /* ogg-vorbis-decoder.min.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CB7CE73C4CDF9E30435AA259 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				873EBD1C3BDB5643D6CFBDAF /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -560,12 +649,33 @@
 				1123EBA1909EAEDFC37B4265 /* SpoonSelfTest.swift in Sources */,
 				D057C3EDBACA16E4EBA495C2 /* SpoonSkin.swift in Sources */,
 				B3D599383F692E0883D91430 /* SpoonTouchView.swift in Sources */,
+				9366CCF77D730EF05ECD50D8 /* TeaSpoon.swift in Sources */,
+				D1CFD94A25FDB65C6E2BEF38 /* TeaSpoonWire.swift in Sources */,
 				BA4D1C3E802C046D74CAA5BD /* Thermometer.swift in Sources */,
 				175CF3F1248AA510C122057F /* WebGames.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B250F70CC09A4A3F6A93B489 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D5831419869C7AA744AC5F78 /* BingsuWatchApp.swift in Sources */,
+				269C0DA91D351C58321CEF3A /* PadView.swift in Sources */,
+				27C1FA03B5C2F311DFCC44C1 /* TeaSpoonWire.swift in Sources */,
+				28A03AA09E74B8C4CA22DFA1 /* WatchLink.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		4923BC2F87572F03D4CF2BA7 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 1BD6C905BD6918F49242BF93 /* BingsuWatch */;
+			targetProxy = DCF90140ADA19A905BEB26A1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		5478F49BF9E31A6B2F941D5B /* Debug */ = {
@@ -589,6 +699,19 @@
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
+		};
+		8431D8FBDAADE6B9714AFEE2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = BingsuWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.minwoo.bingsu.watchkitapp;
+				PRODUCT_NAME = BingsuWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Release;
 		};
 		864ECA9B099F7E9517930521 /* Release */ = {
 			isa = XCBuildConfiguration;
@@ -625,7 +748,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -644,11 +767,11 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Release;
 		};
@@ -687,7 +810,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 31;
+				CURRENT_PROJECT_VERSION = 32;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -713,11 +836,11 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.10;
 				TARGETED_DEVICE_FAMILY = "1,2";
+				WATCHOS_DEPLOYMENT_TARGET = 26.0;
 			};
 			name = Debug;
 		};
@@ -743,6 +866,19 @@
 			};
 			name = Release;
 		};
+		E9CCA0BF47FE3CD0ACC09CED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				INFOPLIST_FILE = BingsuWatch/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.minwoo.bingsu.watchkitapp;
+				PRODUCT_NAME = BingsuWatch;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -751,6 +887,15 @@
 			buildConfigurations = (
 				870851FDB9484E4BB3E460D2 /* Debug */,
 				864ECA9B099F7E9517930521 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		80FD3ED66CEB8DC0092B6B57 /* Build configuration list for PBXNativeTarget "BingsuWatch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E9CCA0BF47FE3CD0ACC09CED /* Debug */,
+				8431D8FBDAADE6B9714AFEE2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
