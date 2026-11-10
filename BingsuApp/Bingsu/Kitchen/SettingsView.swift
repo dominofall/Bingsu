@@ -34,6 +34,9 @@ struct SettingsView: View {
     /// 애플워치 컨트롤러 (Spoon/TeaSpoon.swift). iPhone 에서만 보인다
     @ObservedObject private var watch = TeaSpoonLink.shared
     @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
+    /// iPhone 을 컨트롤러로 (Spoon/TableSpoon.swift). iPad 에서만 보인다
+    @ObservedObject private var table = TableSpoonLink.shared
+    @AppStorage(TableSpoonLink.enabledKey) private var tableEnabled = true
 
     /// 전역 @AppStorage 값들을 PadPrefs 하나로 묶은 바인딩
     private var globalPad: Binding<PadPrefs> {
@@ -72,6 +75,14 @@ struct SettingsView: View {
                         }
                         .onChange(of: watchEnabled) { _, _ in watch.refreshContext() }
                         LabeledContent("애플워치", value: watch.statusLabel)
+                    }
+                    if TableSpoon.canHost {
+                        Toggle(isOn: $tableEnabled) {
+                            Text("iPhone 을 컨트롤러로")
+                            Text("iPhone 의 빙수 홈에서 게임패드 단추를 누르면 이 iPad 를 찾아요. 같은 Wi-Fi 나 블루투스 범위 안에서만 돼요. 연결되면 가상 패드는 숨겨져요")
+                        }
+                        .onChange(of: tableEnabled) { _, _ in table.refresh() }
+                        LabeledContent("iPhone 컨트롤러", value: table.statusLabel)
                     }
                 } header: {
                     Text("컨트롤러")
@@ -138,7 +149,8 @@ struct SettingsView: View {
 
                 Section("정보") {
                     LabeledContent("버전", value: Self.versionText)
-                    NavigationLink("새로운 점") { WhatsNewListView() }
+                    NavigationLink("새로운 기능") { WhatsNewListView() }
+                    Link(destination: WhatsNew.qnaURL) { LabeledContent("질문·의견 (Q&A)", value: "bingsu.domino.kim") }
                     NavigationLink("오픈소스 라이선스") { LicensesView() }
                 }
             }

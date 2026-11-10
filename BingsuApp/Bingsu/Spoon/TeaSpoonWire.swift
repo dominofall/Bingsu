@@ -21,6 +21,25 @@ enum TeaWire {
         case heartbeat = 3  // 누르는 중
         case ping = 4       // 왕복 시간 측정만 (입력 아님)
         case releaseAll = 5 // 워치 앱이 뒤로 가거나 화면이 바뀜 → 모두 놓기
+        // 큰숟가락(iPhone → iPad 컨트롤러, Spoon/TableSpoon.swift)만 쓴다. 워치는 받으면 무시
+        case rumble = 6     // iPad → iPhone: 게임 진동 (strong·weak·duration·sharpness·repeats·gap)
+        case context = 7    // iPad → iPhone: 게임 이름·상태·설정 (워치의 applicationContext 와 같은 내용)
+        case stick = 8      // iPhone → iPad: 두 스틱 (lx ly rx ry, -1…1). 바뀔 때 + 기울인 동안 0.3초마다. 끊기면 iPad 가 1초 뒤 가운데로
+    }
+
+    /// 스틱 메시지 키
+    static let lx = "lx", ly = "ly", rx = "rx", ry = "ry"
+
+    /// 진동 메시지 키 (rumble)
+    static let strong = "i", weak = "w", duration = "d", sharpness = "sh", repeats = "r", gap = "g"
+
+    /// 바이트로 (MultipeerConnectivity 는 Data 만 보낸다). 바이너리 plist: 사전 그대로, 작다
+    static func encode(_ m: [String: Any]) -> Data? {
+        try? PropertyListSerialization.data(fromPropertyList: m, format: .binary, options: 0)
+    }
+    static func decode(_ d: Data) -> [String: Any]? {
+        guard d.count <= 4096 else { return nil }   // 입력 메시지는 수십 바이트. 큰 것은 버린다
+        return (try? PropertyListSerialization.propertyList(from: d, options: [], format: nil)) as? [String: Any]
     }
 
     enum State: String {

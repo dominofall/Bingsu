@@ -88,6 +88,10 @@ struct SpoonLayout {
     var rightStick: StickSlot?
     var dpadCenter: CGPoint?
     var dpadRadius: CGFloat = 0
+    /// 떠다니는 십자키(iPhone 컨트롤러 화면): 이 영역 아무 데나 손가락을 대면 그 자리가 십자키 중심. nil 이면 고정 십자키
+    var dpadZone: CGRect?
+    /// 둥근 버튼(ABXY) 사이의 빈 곳을 눌러도 이 거리 안이면 가장 가까운 버튼으로 (안 보고 누르기). 0 이면 끔
+    var snapRadius: CGFloat = 0
     /// 눈송이 버튼 자리를 배치가 직접 정할 때 (한손). nil 이면 보기/메뉴 사이
     var orbCenter: CGPoint?
 
@@ -363,7 +367,7 @@ struct SpoonLayout {
     }
 
     /// 스위치 순서: 위 X, 오른쪽 A, 아래 B, 왼쪽 Y (버튼 역할은 그대로, 자리만 다름)
-    private static func abxySwitch(cx: CGFloat, cy: CGFloat, gap: CGFloat, r: CGFloat) -> [PadButtonSlot] {
+    static func abxySwitch(cx: CGFloat, cy: CGFloat, gap: CGFloat, r: CGFloat) -> [PadButtonSlot] {
         [
             PadButtonSlot(button: .x, center: CGPoint(x: cx, y: cy - gap), radius: r, pill: false),
             PadButtonSlot(button: .a, center: CGPoint(x: cx + gap, y: cy), radius: r, pill: false),
@@ -478,6 +482,13 @@ struct SpoonLayout {
         for s in buttons where s.contains(p) {
             let d = hypot(p.x - s.center.x, p.y - s.center.y)
             if best == nil || d < best!.1 { best = (s.button, d) }
+        }
+        if best == nil, snapRadius > 0 {
+            // 빈 곳: 가장 가까운 둥근 버튼이 snapRadius 안이면 그것 (알약·십자키 쪽은 제외)
+            for s in buttons where !s.pill {
+                let d = hypot(p.x - s.center.x, p.y - s.center.y)
+                if d <= snapRadius, best == nil || d < best!.1 { best = (s.button, d) }
+            }
         }
         return best?.0
     }

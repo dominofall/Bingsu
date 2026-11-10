@@ -154,6 +154,7 @@ final class Rumble {
     /// 게임이 요청한 진동. strong/weak 0...1, duration 초. 길이 0 이면 멈춤.
     func play(strong: Float, weak: Float, duration: TimeInterval) {
         guard enabled else { return }
+        if TableSpoonLink.shared.forwardRumble(strong: strong, weak: weak, duration: duration, sharpness: nil, repeats: 1, gap: 0) { return }
         let d = min(max(duration, 0), 5)
         let base = min(1, max(strong, weak * 0.6))
         guard d > 0, base > 0.01 else { stopAll(); return }
@@ -163,6 +164,7 @@ final class Rumble {
     /// 효과음 진동표의 패턴. 반복이 있으면 간격을 두고 이어 울린다.
     func play(_ p: RumbleSet.Pattern) {
         guard enabled else { return }
+        if TableSpoonLink.shared.forwardRumble(strong: p.strong, weak: p.weak, duration: p.duration, sharpness: p.sharpness, repeats: p.repeats, gap: p.gap) { return }
         let light = lightForBluetooth
         // 블루투스 보호: 바로 앞 진동과 너무 가까우면 건너뛴다 (피격 연타·볼 흔들림 반복)
         if light, let last = lastFire, Date().timeIntervalSince(last) < Self.btMinGap { return }

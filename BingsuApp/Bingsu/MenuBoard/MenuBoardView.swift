@@ -18,6 +18,9 @@ struct MenuBoardView: View {
     @StateObject private var delivery = Delivery()
     @State private var showDelivery = false
     @State private var showSettings = false
+    /// iPhone: "iPad 컨트롤러" 전체 화면 (Spoon/TableSpoonView.swift). iPad: iPhone 의 연결 물음
+    @State private var showTableSpoon = false
+    @ObservedObject private var table = TableSpoonLink.shared
     /// 업데이트 뒤 처음 켤 때 "새로운 점" (Kitchen/WhatsNewView.swift)
     @State private var whatsNew: [WhatsNew.Note] = []
     @State private var showWhatsNew = false
@@ -48,7 +51,7 @@ struct MenuBoardView: View {
     private let chipMin: CGFloat = 150, chipSpacing: CGFloat = 18
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing, alignment: .top)] }
     /// 홈이 보이고 시트가 하나도 없을 때만 컨트롤러 입력을 받는다
-    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showWhatsNew && editing == nil && deleting == nil && conflict == nil }
+    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showTableSpoon && !showWhatsNew && editing == nil && deleting == nil && conflict == nil }
     /// 칩 수 = 게임 수 + "게임 추가" 칩
     private var chipCount: Int { menu.dishes.isEmpty ? 0 : menu.dishes.count + 1 }
 
@@ -189,6 +192,12 @@ struct MenuBoardView: View {
                     Button { showAddMenu = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel("게임 가져오기")
                 }
+                if TableSpoon.canRemote {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showTableSpoon = true } label: { Image(systemName: "gamecontroller") }
+                            .accessibilityLabel("iPad 컨트롤러")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showSettings = true } label: { Image(systemName: "gearshape") }
                         .accessibilityLabel("설정")
@@ -209,17 +218,30 @@ struct MenuBoardView: View {
             Text("RPG Maker XP·VX·VX Ace·MV·MZ 로 만든 PC용 게임을 zip 으로 넣어요.")
         }
         .sheet(isPresented: $showAddWeb) { AddWebGameView().environmentObject(menu) }
+        .fullScreenCover(isPresented: $showTableSpoon) { TableSpoonView() }
         .sheet(isPresented: $showWhatsNew) {
             let v = WhatsNewSheet(notes: whatsNew)
-            v.presentationDetents([.height(v.sheetHeight)]).presentationDragIndicator(.visible)
+            // iPhone: 내용 높이만큼 아래서 올라옴. iPad: 가운데 폼 시트를 내용 높이에 맞춤 (기본 폼 시트는 아래가 비어 보인다)
+            v.presentationDetents([.height(v.sheetHeight)]).presentationDragIndicator(.hidden)
+                .presentationSizing(.form.fitted(horizontal: false, vertical: true))
         }
         .task {
-            // 새로운 점: 업데이트 뒤 처음 켤 때 한 번. 처음 설치(게임 없음)나 자동 실행 중에는 띄우지 않고 본 것으로 적는다
+            // 새로운 점: 업데이트 뒤 처음 켤 때 ("다시 보지 않기"를 누를 때까지 켤 때마다). 처음 설치(게임 없음)나 자동 실행 중에는 띄우지 않고 본 것으로 적는다
             try? await Task.sleep(for: .seconds(0.8))
             let pending = WhatsNew.pending()
             guard !pending.isEmpty else { return }
-            if menu.dishes.isEmpty || running != nil || DevEnv["BINGSU_OPEN"] != nil { WhatsNew.markSeen(); return }
+            // 개발용: BINGSU_WHATSNEW=1 이면 게임이 없어도 띄운다 (iPad 시뮬레이터 모양 확인)
+            if DevEnv["BINGSU_WHATSNEW"] != "1", menu.dishes.isEmpty || running != nil || DevEnv["BINGSU_OPEN"] != nil || DevEnv["BINGSU_TABLESPOON"] == "1" { WhatsNew.markSeen(); return }
             whatsNew = pending; showWhatsNew = true
+        }
+        .task { if DevEnv["BINGSU_TABLESPOON"] == "1", TableSpoon.canRemote { showTableSpoon = true } }   // 개발용: 켜자마자 컨트롤러 화면
+        // iPad: iPhone 이 컨트롤러로 붙겠다고 하면 묻는다 (게임 중에도 뜬다)
+        .alert("iPhone 컨트롤러", isPresented: Binding(get: { table.invite != nil }, set: { if !$0 { table.invite?.accept(false); table.invite = nil } }),
+               presenting: table.invite) { inv in
+            Button("연결") { inv.accept(true); table.invite = nil }
+            Button("거절", role: .cancel) { inv.accept(false); table.invite = nil }
+        } message: { inv in
+            Text("‘\(inv.name)’ 을 이 iPad 의 컨트롤러로 받을까요? 연결되면 가상 패드는 숨겨져요.")
         }
         .sheet(isPresented: $showDownload) { DownloadView(courier: courier) }
         // 다 받으면 가져오기로 넘긴다. 앱이 백그라운드였으면 다시 활성화될 때, 게임 중이면 홈으로 나올 때.

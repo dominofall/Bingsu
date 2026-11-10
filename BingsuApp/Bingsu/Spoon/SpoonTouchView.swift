@@ -8,8 +8,10 @@ final class SpoonTouchUIView: UIView {
     var controller: SpoonController?
     var layout = SpoonLayout()
 
-    private enum Target { case leftStick, rightStick, button(PadButton), dpad(PadButton) }
+    private enum Target { case leftStick, rightStick, button(PadButton), dpad(PadButton), dpadFloat(PadButton?) }
     private var targets: [ObjectIdentifier: Target] = [:]
+    /// 떠다니는 십자키의 지금 중심 (한 손가락만)
+    private var floatCenter: CGPoint?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -31,6 +33,7 @@ final class SpoonTouchUIView: UIView {
         if let s = l.leftStick, s.zone.contains(p) { return true }
         if let s = l.rightStick, s.zone.contains(p) { return true }
         if l.button(at: p) != nil { return true }
+        if let z = l.dpadZone, z.contains(p) { return true }
         if let c = l.dpadCenter, hypot(p.x - c.x, p.y - c.y) <= l.dpadRadius * 1.3 { return true }
         return false
     }
@@ -43,6 +46,10 @@ final class SpoonTouchUIView: UIView {
             let id = ObjectIdentifier(t)
             if let b = l.button(at: p) {
                 targets[id] = .button(b); c.press(b); continue
+            }
+            // 떠다니는 십자키: 영역 안에 처음 댄 자리가 중심. 방향은 움직여야 정해진다
+            if let z = l.dpadZone, floatCenter == nil, z.contains(p) {
+                floatCenter = p; c.dpadFloatCenter = p; targets[id] = .dpadFloat(nil); continue
             }
             if let d = l.dpadButton(at: p) {
                 targets[id] = .dpad(d); c.press(d); continue
@@ -74,6 +81,17 @@ final class SpoonTouchUIView: UIView {
             case .dpad(let old):
                 let new = l.dpadButton(at: p)
                 if new != old { c.release(old); if let n = new { c.press(n); targets[id] = .dpad(n) } }
+            case .dpadFloat(let old):
+                guard let fc = floatCenter else { continue }
+                let dx = p.x - fc.x, dy = p.y - fc.y
+                // 중심에서 조금(반지름의 1/5) 벗어나면 방향. 바깥 한계는 없다 (손가락이 멀리 가도 그 방향 유지)
+                let new: PadButton? = hypot(dx, dy) > l.dpadRadius * 0.2
+                    ? (abs(dx) > abs(dy) ? (dx > 0 ? .right : .left) : (dy > 0 ? .down : .up)) : nil
+                if new != old {
+                    if let old { c.release(old) }
+                    if let new { c.press(new) }
+                    targets[id] = .dpadFloat(new)
+                }
             }
         }
     }
@@ -90,6 +108,9 @@ final class SpoonTouchUIView: UIView {
             case .leftStick: c.stickEnded(right: false)
             case .rightStick: c.stickEnded(right: true)
             case .button(let b), .dpad(let b): c.release(b)
+            case .dpadFloat(let b):
+                if let b { c.release(b) }
+                floatCenter = nil; c.dpadFloatCenter = nil
             }
         }
     }

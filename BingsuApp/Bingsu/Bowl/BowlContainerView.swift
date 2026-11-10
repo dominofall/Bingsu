@@ -28,6 +28,8 @@ struct BowlContainerView: View {
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
     @ObservedObject private var watch = TeaSpoonLink.shared
     @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
+    @ObservedObject private var table = TableSpoonLink.shared
+    @AppStorage(TableSpoonLink.enabledKey) private var tableEnabled = true
 
     /// 실제 게임패드(확장 게임패드 프로필)만 "컨트롤러 연결됨"으로 본다. 키보드·마우스·시뮬레이터 장치는 제외.
     static func realGamepadConnected() -> Bool {
@@ -238,6 +240,9 @@ struct BowlContainerView: View {
         .onChange(of: watchConnected) { _, on in
             if on { spoon.releaseAll(); if visible { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
         }
+        .onChange(of: tableConnected) { _, on in
+            if on { spoon.releaseAll(); if visible { showToast("iPhone 컨트롤러 연결됨 · 가상 패드 숨김") } }
+        }
     }
 
     /// 눈송이 버튼(28pt)+여백이 들어가는 띠 폭. 게임은 항상 이 바깥에 그려진다.
@@ -247,7 +252,9 @@ struct BowlContainerView: View {
     static let corner: CGFloat = 0
     /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
     private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
-    private var anyController: Bool { controllerConnected || watchConnected }
+    /// iPad 에 iPhone 이 컨트롤러로 붙어 있으면 (Spoon/TableSpoon.swift)
+    private var tableConnected: Bool { tableEnabled && table.connected }
+    private var anyController: Bool { controllerConnected || watchConnected || tableConnected }
     private var padShown: Bool { showSpoon && (!anyController || padForced) }
 
     private var padDebugText: String {

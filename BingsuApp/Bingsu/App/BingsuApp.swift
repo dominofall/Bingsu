@@ -12,6 +12,7 @@ struct BingsuApp: App {
         // 분류가 바뀌지 않도록 앱에서 고정한다 (2026-10-29: 진동 추가 뒤 소리가 안 나던 문제)
         Self.configureAudioSession()
         TeaSpoonLink.shared.activate()   // 애플워치 컨트롤러 (Spoon/TeaSpoon.swift)
+        TableSpoonLink.shared.start()    // iPad: iPhone 컨트롤러 받기 (Spoon/TableSpoon.swift)
     }
 
     /// 설정 "무음 모드에서도 소리 재생" (기본 끔, 빌드 31 부터. 30 까지는 기본 켬). 끄면 무음 스위치를 따르고 다른 앱 소리와 섞인다

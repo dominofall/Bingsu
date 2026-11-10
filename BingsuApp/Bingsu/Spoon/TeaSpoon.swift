@@ -11,8 +11,12 @@ final class TeaSpoon {
     /// 게임이 화면에 없을 때는 입력을 게임에 보내지 않는다. 켜지면 이 화면이 워치 입력을 받는다
     var enabled = true {
         didSet {
-            if enabled { TeaSpoonLink.shared.target = self } else if TeaSpoonLink.shared.target === self { TeaSpoonLink.shared.target = nil }
-            if !enabled { releaseHeld() }
+            if enabled { TeaSpoonLink.shared.target = self; TableSpoonLink.shared.target = self }
+            else {
+                if TeaSpoonLink.shared.target === self { TeaSpoonLink.shared.target = nil }
+                if TableSpoonLink.shared.target === self { TableSpoonLink.shared.target = nil }
+                releaseHeld()
+            }
         }
     }
     /// 일시정지 화면이 열려 있으면 버튼을 게임에 보내지 않고 여기로 넘긴다
@@ -22,10 +26,13 @@ final class TeaSpoon {
 
     private var held: [PadButton: Date] = [:]
     private var holdWatch: Timer?
+    /// 스틱이 기울어 있는 동안 마지막으로 값이 온 시각 (iPhone 컨트롤러). 끊기면 가운데로
+    private var stickAt: Date?
 
     init(spoon: SpoonController) {
         self.spoon = spoon
         TeaSpoonLink.shared.target = self
+        TableSpoonLink.shared.target = self   // iPad: iPhone 컨트롤러 (같은 handle 로 받는다)
     }
 
     deinit {
@@ -56,10 +63,19 @@ final class TeaSpoon {
             if held[b] != nil { held[b] = Date() } else { held[b] = Date(); s.press(b, haptic: false); armHoldWatch() }
         case .up:
             held[b] = nil; s.release(b)
-        case .ping, .releaseAll:
+        case .ping, .releaseAll, .rumble, .context, .stick:
             break
         }
         return true
+    }
+
+    /// iPhone 컨트롤러의 스틱. 일시정지 화면이 열려 있으면 버린다 (메뉴는 버튼으로)
+    func handleStick(left: CGVector, right: CGVector) {
+        guard enabled, let s = spoon, menuInput == nil else { return }
+        if DevEnv["BINGSU_KEYDEBUG"] == "1" { NSLog("[TeaSpoon] 스틱 L(\(String(format: "%.2f,%.2f", left.dx, left.dy))) R(\(String(format: "%.2f,%.2f", right.dx, right.dy)))") }
+        s.setStick(right: false, vector: left)
+        s.setStick(right: true, vector: right)
+        if left == .zero && right == .zero { stickAt = nil } else { stickAt = Date(); armHoldWatch() }
     }
 
     /// 하트비트가 끊긴 버튼을 놓는다 (뗌 메시지 유실 대비, 연구 8.2 "안 떼짐")
@@ -76,12 +92,17 @@ final class TeaSpoon {
             held[b] = nil; spoon?.release(b, immediate: true)
             NSLog("[TeaSpoon] \(b.name) 하트비트 끊김 → 놓음")
         }
-        if held.isEmpty { holdWatch?.invalidate(); holdWatch = nil }
+        if let at = stickAt, now.timeIntervalSince(at) > TeaWire.holdTimeout {
+            stickAt = nil; spoon?.setStick(right: false, vector: .zero); spoon?.setStick(right: true, vector: .zero)
+            NSLog("[TeaSpoon] 스틱 하트비트 끊김 → 가운데")
+        }
+        if held.isEmpty && stickAt == nil { holdWatch?.invalidate(); holdWatch = nil }
     }
 
     private func releaseHeld() {
         for b in held.keys { spoon?.release(b, immediate: true) }
         held.removeAll()
+        if stickAt != nil { stickAt = nil; spoon?.setStick(right: false, vector: .zero); spoon?.setStick(right: true, vector: .zero) }
         holdWatch?.invalidate(); holdWatch = nil
     }
 }
@@ -123,6 +144,7 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
 
     /// 워치 화면에 보여 줄 게임 이름·상태. 바뀐 값만 보낸다 (updateApplicationContext 는 마지막 값만 남는다)
     func setContext(game: String, state: TeaWire.State) {
+        TableSpoonLink.shared.setContext(game: game, state: state)   // iPad → iPhone 컨트롤러에도 같은 내용
         let next: [String: Any] = [TeaWire.game: game, TeaWire.state: state.rawValue, TeaWire.enabled: Self.isEnabled]
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { context = next; return }
         if let old = context as? [String: AnyHashable], let new = next as? [String: AnyHashable], old == new { return }

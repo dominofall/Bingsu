@@ -34,6 +34,8 @@ struct BrassBowlContainerView: View {
     @State private var controllerConnected = BowlContainerView.realGamepadConnected()
     @ObservedObject private var watch = TeaSpoonLink.shared
     @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
+    @ObservedObject private var table = TableSpoonLink.shared
+    @AppStorage(TableSpoonLink.enabledKey) private var tableEnabled = true
     @State private var showSpoon = true
     @State private var padForced = DevEnv["BINGSU_FORCE_PAD"] == "1"
     @AppStorage("bingsu.showPerformance") private var showHUD = false
@@ -54,7 +56,9 @@ struct BrassBowlContainerView: View {
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
     /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
     private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
-    private var anyController: Bool { controllerConnected || watchConnected }
+    /// iPad 에 iPhone 이 컨트롤러로 붙어 있으면 (Spoon/TableSpoon.swift)
+    private var tableConnected: Bool { tableEnabled && table.connected }
+    private var anyController: Bool { controllerConnected || watchConnected || tableConnected }
     private var padShown: Bool { showSpoon && (!anyController || padForced) }
     private var menuButtonPlace: MenuButtonPlace {
         if let e = DevEnv["BINGSU_MENU_BUTTON"], let p = MenuButtonPlace(rawValue: e) { return p }
@@ -193,6 +197,9 @@ struct BrassBowlContainerView: View {
         }
         .onChange(of: watchConnected) { _, on in
             if on { spoon.releaseAll(); if isPlaying { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
+        }
+        .onChange(of: tableConnected) { _, on in
+            if on { spoon.releaseAll(); if isPlaying { showToast("iPhone 컨트롤러 연결됨 · 가상 패드 숨김") } }
         }
     }
 

@@ -17,7 +17,6 @@
 		1123EBA1909EAEDFC37B4265 /* SpoonSelfTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */; };
 		137F44E8983CD6401E9EB8B6 /* Glass.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3BCE4B25C91A30226FA7CE67 /* Glass.swift */; };
 		15E6003FB9A7E03FFB29F33B /* RPGMakerCrypt.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */; };
-		16E468DCDAE53B0F3A31E1E1 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = F2D33E1468D6256A2462753B /* LICENSE */; };
 		175CF3F1248AA510C122057F /* WebGames.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30DE1AD2F52844D2C74FB12B /* WebGames.swift */; };
 		190C528E23B0F5B4D13852DA /* DownloadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F5139AB857871D3CC678B92 /* DownloadView.swift */; };
 		19C1BD6F3A5FBB9B20AD2C97 /* BrassShelves.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8396F3A801DC4567F234ACF3 /* BrassShelves.swift */; };
@@ -33,6 +32,7 @@
 		376D7DEEEBA4AA9312C60F48 /* BingsuWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		3B53B501F15EC7F4D16A9060 /* MenuButtonPlace.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F1250CF48A95B9BE9B5A03B /* MenuButtonPlace.swift */; };
 		3C7E2F82BAABEABCA42266AC /* SchemeFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */; };
+		3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */ = {isa = PBXBuildFile; fileRef = B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */; };
 		3F9C8B08153A870F7027FB42 /* AutoCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1232002CDDA6ED63239D5416 /* AutoCover.swift */; };
 		410C7737C27BE2F7DF30857F /* SpoonModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4513AC995966A91F9C712E4 /* SpoonModel.swift */; };
 		41B1145CE02AA00C20DFD31D /* AddWebGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E01E8A6B889DBD7F8F47948 /* AddWebGameView.swift */; };
@@ -62,8 +62,8 @@
 		9AA55B7BBFF66C1D869D0EBF /* PokemonSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */; };
 		9E0A32648E672FFAB3971FA3 /* SafeUnzip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A7A0B09C564E1653D5C9CD7 /* SafeUnzip.swift */; };
 		9E8F059C4857832F188B63EC /* Skins in Resources */ = {isa = PBXBuildFile; fileRef = 48BB60E7EE47E4EFE608E71C /* Skins */; };
+		9FF8B2874685DD0CF7022BD8 /* LICENSE in Resources */ = {isa = PBXBuildFile; fileRef = 05530461C9ACF9DF10D9D361 /* LICENSE */; };
 		A9E689EDF40590A4FF89777E /* PauseBoard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B34393F506CCC8FEC90F58EC /* PauseBoard.swift */; };
-		ABEE61DA31EE1866C115263A /* THIRD_PARTY_LICENSES.md in Resources */ = {isa = PBXBuildFile; fileRef = 4277EEF9987A49D72B7982C1 /* THIRD_PARTY_LICENSES.md */; };
 		AD18AD784AD7D6EAB9099C5F /* BowlScripts+NW.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D38BD9C92C1A38B995564F /* BowlScripts+NW.swift */; };
 		AE30282DD65A172A596FEF2F /* ConflictView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2D3073133203D9C91045254 /* ConflictView.swift */; };
 		B3D599383F692E0883D91430 /* SpoonTouchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3F12E3A1FC5BEED10D08AC0 /* SpoonTouchView.swift */; };
@@ -89,8 +89,11 @@
 		D5831419869C7AA744AC5F78 /* BingsuWatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3073A2612C0AE214DC2723AE /* BingsuWatchApp.swift */; };
 		DF82236AFFC89454986D18DA /* SavedDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE9937FB5BFFACDD23793D55 /* SavedDataView.swift */; };
 		E185C5F4095BDD9BDB53DBFB /* DiagLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2983C24C173522B3B218825 /* DiagLog.swift */; };
+		E2B72E4AD8E06F22F6DFC9AF /* TableSpoonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30E660AE7470A093A9BF5774 /* TableSpoonView.swift */; };
 		E2E71BE164BFFF57F4A9243A /* CutlerySet+XP.swift in Sources */ = {isa = PBXBuildFile; fileRef = 345AA05D99D2919B652C1806 /* CutlerySet+XP.swift */; };
+		E6C7CE4AD50C9FEAC7F0D051 /* TableSpoon.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5B6DF120F3E0ECFA4324A30 /* TableSpoon.swift */; };
 		E94ED9F9E71A3D4D65EE7699 /* MenuBoardStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E645865C8AC6975E8AB7712A /* MenuBoardStore.swift */; };
+		F049E343E1945608C5BFC15B /* TableSpoonLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3B8438D2E57B5205683DB53 /* TableSpoonLayout.swift */; };
 		F4A05E38D26A623F959F692B /* PadArrangement.swift in Sources */ = {isa = PBXBuildFile; fileRef = F78E167E559177D64C6FE17B /* PadArrangement.swift */; };
 		F6BE8D5E84C05252738D157A /* MenuBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EF5CD301B2AA261E35A61F /* MenuBoardView.swift */; };
 		F6E8520372984365459BD218 /* SpoonFace.swift in Sources */ = {isa = PBXBuildFile; fileRef = F77A15AFF28F0839031D49F7 /* SpoonFace.swift */; };
@@ -125,6 +128,7 @@
 		001477F31C2902EBE1C62873 /* SkinShelf.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinShelf.swift; sourceTree = "<group>"; };
 		002CC1D61D8D83F6C6CBF4C9 /* SkinDesigner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkinDesigner.swift; sourceTree = "<group>"; };
 		01B71C2BBEE0E1E2C20B5425 /* MVMZProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MVMZProbe.swift; sourceTree = "<group>"; };
+		05530461C9ACF9DF10D9D361 /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
 		05EF5CD301B2AA261E35A61F /* MenuBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBoardView.swift; sourceTree = "<group>"; };
 		06835BD01F64601441316486 /* BowlScripts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BowlScripts.swift; sourceTree = "<group>"; };
 		09F035B0C3E611B20D88C77C /* GamePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GamePicker.swift; sourceTree = "<group>"; };
@@ -142,6 +146,7 @@
 		2C21A849703554258828BC24 /* DeliveryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeliveryView.swift; sourceTree = "<group>"; };
 		3073A2612C0AE214DC2723AE /* BingsuWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BingsuWatchApp.swift; sourceTree = "<group>"; };
 		30DE1AD2F52844D2C74FB12B /* WebGames.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebGames.swift; sourceTree = "<group>"; };
+		30E660AE7470A093A9BF5774 /* TableSpoonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSpoonView.swift; sourceTree = "<group>"; };
 		31C2DDE5D213694E1AD89A9C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3355B376BCB5F7BECEA19761 /* SpoonController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonController.swift; sourceTree = "<group>"; };
 		33D38BD9C92C1A38B995564F /* BowlScripts+NW.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BowlScripts+NW.swift"; sourceTree = "<group>"; };
@@ -150,14 +155,12 @@
 		37105115927CA826EDF1F164 /* PerfLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfLog.swift; sourceTree = "<group>"; };
 		3B0758967469219BAF81DE3D /* GreenTeaSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenTeaSelfTest.swift; sourceTree = "<group>"; };
 		3BCE4B25C91A30226FA7CE67 /* Glass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Glass.swift; sourceTree = "<group>"; };
-		4277EEF9987A49D72B7982C1 /* THIRD_PARTY_LICENSES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_LICENSES.md; sourceTree = "<group>"; };
 		433D04EF76ACB0C11EC74FCD /* Freezer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Freezer.swift; sourceTree = "<group>"; };
 		48BB60E7EE47E4EFE608E71C /* Skins */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Skins; path = Bingsu/Resources/Skins; sourceTree = SOURCE_ROOT; };
 		4C7DF0C151691866EEB6446A /* GlassBowl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GlassBowl.swift; sourceTree = "<group>"; };
 		4D21C1CC71DE7C6BC818538A /* BrassBowlEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrassBowlEngine.swift; sourceTree = "<group>"; };
 		4E01E8A6B889DBD7F8F47948 /* AddWebGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddWebGameView.swift; sourceTree = "<group>"; };
 		4F10797A0398F1BA51C5ADAF /* Palette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Palette.swift; sourceTree = "<group>"; };
-		51514C3C4C8A0357BBFA576E /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
 		5583607EAB8FDED18CFB625C /* ogg-vorbis-decoder.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "ogg-vorbis-decoder.min.js"; sourceTree = "<group>"; };
 		57FE8FE684B4154DBB2D177B /* DishSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DishSettingsView.swift; sourceTree = "<group>"; };
 		5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSelfTest.swift; sourceTree = "<group>"; };
@@ -167,6 +170,7 @@
 		6749C327959E8288335221FF /* TeaSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeaSpoon.swift; sourceTree = "<group>"; };
 		6A09005EDDC989FBC2219268 /* Thermometer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Thermometer.swift; sourceTree = "<group>"; };
 		6FDB96B0FCA9233B147C0107 /* DriveCounter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DriveCounter.swift; sourceTree = "<group>"; };
+		7C42938298781D2E35741C26 /* Bingsu.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Bingsu.xcconfig; sourceTree = "<group>"; };
 		7C6F86303813EB4A57BA93C9 /* SchemeFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemeFile.swift; sourceTree = "<group>"; };
 		7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonSkin.swift; sourceTree = "<group>"; };
 		8074D96D38370780EE769FB5 /* RPGMakerCrypt.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RPGMakerCrypt.swift; sourceTree = "<group>"; };
@@ -186,6 +190,7 @@
 		ADECD5FDAE4D6987486D62CC /* FreezerSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FreezerSection.swift; sourceTree = "<group>"; };
 		AEC288489930339F81A0B372 /* Rumble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Rumble.swift; sourceTree = "<group>"; };
 		B34393F506CCC8FEC90F58EC /* PauseBoard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PauseBoard.swift; sourceTree = "<group>"; };
+		B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = THIRD_PARTY_LICENSES.md; sourceTree = "<group>"; };
 		BBD4724FB3CF8E194F10A6CE /* PerfSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerfSection.swift; sourceTree = "<group>"; };
 		BF71D97A8C5CCC358C42466C /* RecipeDetector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeDetector.swift; sourceTree = "<group>"; };
 		C1CCD1CFB5AC307693BC63B7 /* PadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadView.swift; sourceTree = "<group>"; };
@@ -198,6 +203,7 @@
 		C72A0868389022A39B2B41DE /* LongSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LongSpoon.swift; sourceTree = "<group>"; };
 		C8303A9F7AA26C6C613CAD40 /* RGSSProbe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RGSSProbe.swift; sourceTree = "<group>"; };
 		CCBBFF73EC8EDD93FAA0AA15 /* GreenTeaSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GreenTeaSchemeHandler.swift; sourceTree = "<group>"; };
+		D3B8438D2E57B5205683DB53 /* TableSpoonLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSpoonLayout.swift; sourceTree = "<group>"; };
 		D44A9111A0EFCB4E6077F87B /* SpoonLayoutEditor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonLayoutEditor.swift; sourceTree = "<group>"; };
 		D57FFEAD0C4B5982C0DBC2AF /* Courier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Courier.swift; sourceTree = "<group>"; };
 		D988BF9268BA0DA6DD774F12 /* PokemonSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PokemonSchemeHandler.swift; sourceTree = "<group>"; };
@@ -208,7 +214,7 @@
 		E47F5AE906F2777AED2075B5 /* CutlerySet+MV.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "CutlerySet+MV.swift"; sourceTree = "<group>"; };
 		E645865C8AC6975E8AB7712A /* MenuBoardStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBoardStore.swift; sourceTree = "<group>"; };
 		F2D3073133203D9C91045254 /* ConflictView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConflictView.swift; sourceTree = "<group>"; };
-		F2D33E1468D6256A2462753B /* LICENSE */ = {isa = PBXFileReference; path = LICENSE; sourceTree = "<group>"; };
+		F5B6DF120F3E0ECFA4324A30 /* TableSpoon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableSpoon.swift; sourceTree = "<group>"; };
 		F77A15AFF28F0839031D49F7 /* SpoonFace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpoonFace.swift; sourceTree = "<group>"; };
 		F78E167E559177D64C6FE17B /* PadArrangement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PadArrangement.swift; sourceTree = "<group>"; };
 		FCDF197A6F1466C399E2968D /* Igloo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Igloo.swift; sourceTree = "<group>"; };
@@ -260,14 +266,14 @@
 			path = Bowl;
 			sourceTree = "<group>";
 		};
-		4BD69C84F00D50E9E53F0C48 /* Bingsu-34 */ = {
+		6BAE98E485D28C89720D3142 /* Bingsu */ = {
 			isa = PBXGroup;
 			children = (
-				F2D33E1468D6256A2462753B /* LICENSE */,
-				4277EEF9987A49D72B7982C1 /* THIRD_PARTY_LICENSES.md */,
-				E420D999C6620ABB942E45B3 /* BingsuApp */,
+				05530461C9ACF9DF10D9D361 /* LICENSE */,
+				B4AC8362941BBB261C4EB458 /* THIRD_PARTY_LICENSES.md */,
+				B0AEC7AFDF6EBE8B46507E02 /* BingsuApp */,
 			);
-			name = "Bingsu-34";
+			name = Bingsu;
 			path = ..;
 			sourceTree = "<group>";
 		};
@@ -300,6 +306,14 @@
 				24CD7FC687C0D9D4804DB3D3 /* BingsuWatch.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		B0AEC7AFDF6EBE8B46507E02 /* BingsuApp */ = {
+			isa = PBXGroup;
+			children = (
+				7C42938298781D2E35741C26 /* Bingsu.xcconfig */,
+			);
+			path = BingsuApp;
 			sourceTree = "<group>";
 		};
 		B97A3E7F8EAD4DD6E10871BA /* Bingsu */ = {
@@ -349,6 +363,9 @@
 				5B185210926D5428BAE95A75 /* SpoonSelfTest.swift */,
 				7DCEFCBAF5B54ED86C5C228F /* SpoonSkin.swift */,
 				C3F12E3A1FC5BEED10D08AC0 /* SpoonTouchView.swift */,
+				F5B6DF120F3E0ECFA4324A30 /* TableSpoon.swift */,
+				D3B8438D2E57B5205683DB53 /* TableSpoonLayout.swift */,
+				30E660AE7470A093A9BF5774 /* TableSpoonView.swift */,
 				6749C327959E8288335221FF /* TeaSpoon.swift */,
 				90281D0FB1A3E8687F1DA57F /* TeaSpoonWire.swift */,
 			);
@@ -412,14 +429,6 @@
 			path = BingsuWatch;
 			sourceTree = "<group>";
 		};
-		E420D999C6620ABB942E45B3 /* BingsuApp */ = {
-			isa = PBXGroup;
-			children = (
-				51514C3C4C8A0357BBFA576E /* Bingsu.xcconfig */,
-			);
-			path = BingsuApp;
-			sourceTree = "<group>";
-		};
 		EE1C12081FF0CE0DBAE8C7CD /* Freezer */ = {
 			isa = PBXGroup;
 			children = (
@@ -438,7 +447,7 @@
 			isa = PBXGroup;
 			children = (
 				B97A3E7F8EAD4DD6E10871BA /* Bingsu */,
-				4BD69C84F00D50E9E53F0C48 /* Bingsu-34 */,
+				6BAE98E485D28C89720D3142 /* Bingsu */,
 				DE5EB53665B25D2C75CBF87D /* BingsuWatch */,
 				B02DD9E3E3CFE08A99E5328F /* Products */,
 			);
@@ -539,11 +548,11 @@
 			files = (
 				D4A5AB6D1320F0EFEA465084 /* Assets.xcassets in Resources */,
 				075CD23E7FDA85BB037A5849 /* IceBowl in Resources */,
-				16E468DCDAE53B0F3A31E1E1 /* LICENSE in Resources */,
+				9FF8B2874685DD0CF7022BD8 /* LICENSE in Resources */,
 				9812BA6C83623EDFF8AF5ABA /* Rumble in Resources */,
 				938F1FE0C2462E529A0E3661 /* SampleGame in Resources */,
 				9E8F059C4857832F188B63EC /* Skins in Resources */,
-				ABEE61DA31EE1866C115263A /* THIRD_PARTY_LICENSES.md in Resources */,
+				3DDB4B9DDDAB80CF10C310A6 /* THIRD_PARTY_LICENSES.md in Resources */,
 				B68AF8EC6BEF1C3B7672C023 /* ogg-vorbis-decoder.min.js in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -652,6 +661,9 @@
 				1123EBA1909EAEDFC37B4265 /* SpoonSelfTest.swift in Sources */,
 				D057C3EDBACA16E4EBA495C2 /* SpoonSkin.swift in Sources */,
 				B3D599383F692E0883D91430 /* SpoonTouchView.swift in Sources */,
+				E6C7CE4AD50C9FEAC7F0D051 /* TableSpoon.swift in Sources */,
+				F049E343E1945608C5BFC15B /* TableSpoonLayout.swift in Sources */,
+				E2B72E4AD8E06F22F6DFC9AF /* TableSpoonView.swift in Sources */,
 				9366CCF77D730EF05ECD50D8 /* TeaSpoon.swift in Sources */,
 				D1CFD94A25FDB65C6E2BEF38 /* TeaSpoonWire.swift in Sources */,
 				BA4D1C3E802C046D74CAA5BD /* Thermometer.swift in Sources */,
@@ -684,7 +696,7 @@
 /* Begin XCBuildConfiguration section */
 		5478F49BF9E31A6B2F941D5B /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 51514C3C4C8A0357BBFA576E /* Bingsu.xcconfig */;
+			baseConfigurationReference = 7C42938298781D2E35741C26 /* Bingsu.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Bingsu/Bingsu.entitlements;
@@ -752,7 +764,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -814,7 +826,7 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 34;
+				CURRENT_PROJECT_VERSION = 35;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -850,7 +862,7 @@
 		};
 		A5FD3328FA9E37F91EACA9FA /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 51514C3C4C8A0357BBFA576E /* Bingsu.xcconfig */;
+			baseConfigurationReference = 7C42938298781D2E35741C26 /* Bingsu.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Bingsu/Bingsu.entitlements;

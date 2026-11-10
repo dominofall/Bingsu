@@ -467,6 +467,20 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// 화면 방향 제한. nil 이면 Info.plist 대로(iPhone 은 거꾸로 세로 빼고 전부, iPad 는 전부). iPhone 컨트롤러 화면이 가로로 잠그려고 만들었다가
+    /// 세로 배치를 더하면서(2026-11-10) 지금은 부르는 곳이 없다. 방향을 잠글 화면이 생기면 쓴다
+    private static var orientationLock: UIInterfaceOrientationMask?
+    @MainActor static func lockOrientation(_ mask: UIInterfaceOrientationMask?) {
+        orientationLock = mask
+        for scene in UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }) {
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: mask ?? (UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown)))
+            scene.keyWindow?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+    }
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        Self.orientationLock ?? (UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown)
+    }
+
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
         guard identifier == Courier.sessionID else { completionHandler(); return }
         NSLog("[Courier] woken for background session events")

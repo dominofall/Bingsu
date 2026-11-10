@@ -20,6 +20,8 @@ final class SpoonController: ObservableObject {
     @Published private(set) var leftStick = StickState()
     @Published private(set) var rightStick = StickState()
     @Published var mode: CutlerySet.Mode = .field
+    /// 떠다니는 십자키가 생긴 자리 (`SpoonLayout.dpadZone`). 손을 떼면 nil. 그리는 쪽이 십자키를 여기로 옮겨 그린다
+    @Published var dpadFloatCenter: CGPoint?
 
     var cutlery: CutlerySet = .keyboardDefault
     weak var webView: WKWebView?
