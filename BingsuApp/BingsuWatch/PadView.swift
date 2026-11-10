@@ -10,6 +10,7 @@ struct PadView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var crown = 0.0
     @State private var crownAccum = 0.0
+    @AppStorage(WatchLink.hapticsKey) private var haptics = true
 
     /// 설계 기준 크기 (pt)
     private static let design = CGSize(width: 208, height: 248)
@@ -21,13 +22,16 @@ struct PadView: View {
             ZStack {
                 Ice.background.ignoresSafeArea()
                 ZStack(alignment: .topLeading) {
-                    // 게임 이름 (시계 왼쪽). ● 는 연결 상태색
+                    // 게임 이름 + ● 연결 상태색. 위 가운데(Y·X 사이, 원반 위 빈 자리). 길면 뒤를 … 로 줄인다.
+                    // 왼쪽 위는 실기기에서 둥근 모서리·시계에 가렸다 (2026-11-10 피드백, 사용자가 Y·X 사이를 고름)
                     HStack(spacing: 5 * s) {
                         Circle().fill(link.canPlay ? Ice.coral : Color.white.opacity(0.35)).frame(width: 6 * s, height: 6 * s)
-                        Text(link.game.isEmpty ? "빙수" : link.game).font(.system(size: 13 * s, weight: .semibold)).lineLimit(1)
+                        Text(link.game.isEmpty ? "빙수" : link.game).font(.system(size: 12 * s, weight: .semibold))
+                            .lineLimit(1).truncationMode(.tail)
                     }
                     .foregroundStyle(Ice.text)
-                    .offset(x: 12 * s, y: 6 * s)
+                    .frame(width: 82 * s)
+                    .position(x: 104 * s, y: 24 * s)
 
                     pad(scale: s)
                         .opacity(link.canPlay ? 1 : 0.3)
@@ -49,14 +53,17 @@ struct PadView: View {
         }
         .ignoresSafeArea()
         .focusable()
-        .digitalCrownRotation($crown, from: -1000, through: 1000, sensitivity: .medium, isContinuous: true, isHapticFeedbackEnabled: true)
+        .digitalCrownRotation($crown, from: -1000, through: 1000, sensitivity: .medium, isContinuous: true, isHapticFeedbackEnabled: haptics)   // 크라운 디텐트 톡도 진동 스위치를 따른다
         .onChange(of: crown) { old, new in
             // 디텐트 한 칸(값 1) 마다 ▲/▼ 한 번. 값이 느는 쪽 = 목록이 아래로 스크롤되는 쪽 = ▼. 빨리 돌리면 칸 수만큼 (연구 P6). 칸마다 시스템 디텐트 톡
             crownAccum += new - old
             while crownAccum >= 1 { crownAccum -= 1; link.tap(.down) }
             while crownAccum <= -1 { crownAccum += 1; link.tap(.up) }
         }
-        .onChange(of: scenePhase) { _, p in if p != .active { link.releaseAll() } }
+        // 손목 내림(비활성) = 모두 놓기만, 시계·다른 앱으로 나감(백그라운드) = 놓고 "나간다"
+        .onChange(of: scenePhase) { _, p in
+            if p == .background { link.bye() } else if p != .active { link.releaseAll() }
+        }
     }
 
     /// 원반 중심·반지름, ABXY 한 변, 원반과 ABXY 사이 틈 (설계 pt)
@@ -76,8 +83,9 @@ struct PadView: View {
                     .frame(width: Self.gem * s, height: Self.gem * s)
                     .position(x: cx * s, y: cy * s)
             }
-            // 양쪽 다 길게(0.6초) 누르면 일시정지. 실기기에서 − 를 길게 누르는 사람이 있었다
-            EdgeButton(button: .view, link: link, scale: s, longPress: .home).frame(width: 14 * s, height: 44 * s).position(x: 9 * s, y: 134 * s)
+            // − 는 누르고 있는 동안 눌린 상태(달리기·Shift 같은 꾹 누르기), + 는 길게(0.6초) 누르면 일시정지.
+            // 2026-11-10 실기기 피드백: − 길게 = 일시정지는 싫다. 33 에서 "− 꾹 누르기가 안 된다"를 잘못 읽어 일시정지로 만들었던 것
+            EdgeButton(button: .view, link: link, scale: s).frame(width: 14 * s, height: 44 * s).position(x: 9 * s, y: 134 * s)
             EdgeButton(button: .menu, link: link, scale: s, longPress: .home).frame(width: 14 * s, height: 44 * s).position(x: 199 * s, y: 134 * s)
         }
     }
@@ -224,15 +232,17 @@ struct GemButton: View {
     }
 }
 
-/// −·+ : 화면 좌우 가장자리의 세로 알약. 누르는 동안 눌림 표시, 0.6초 전에 떼면 그 버튼, 넘기면 `longPress`(⌂ = 일시정지)를 그 순간 보내고 진동.
-/// (전에는 onTapGesture + onLongPressGesture 였는데 실기기에서 길게 누르기가 안 먹었다. GemButton 처럼 DragGesture 하나로 통일)
+/// −·+ : 화면 좌우 가장자리의 세로 알약. `longPress` 가 있으면(+): 0.6초 전에 떼면 그 버튼, 넘기면 `longPress`(⌂ = 일시정지)를 그 순간 보내고 진동.
+/// 없으면(−): GemButton 처럼 0.25초 넘게 누르면 누르고 있는 동안 눌린 상태(down…up), 짧으면 tap — 달리기(Shift)처럼 꾹 누르는 조작용.
+/// (전에는 onTapGesture + onLongPressGesture 였는데 실기기에서 길게 누르기가 안 먹었다. DragGesture 하나로 통일)
 struct EdgeButton: View {
     let button: TeaWire.Button
     @ObservedObject var link: WatchLink
     let scale: CGFloat
     var longPress: TeaWire.Button? = nil
     @State private var pressing = false
-    @State private var fired = false
+    @State private var fired = false      // longPress 를 보냈다
+    @State private var sentDown = false   // 눌린 상태(down)를 보냈다 — longPress 없는 버튼
     @State private var holdTimer: Timer?
 
     var body: some View {
@@ -243,17 +253,19 @@ struct EdgeButton: View {
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { _ in
                     guard !pressing else { return }
-                    pressing = true; fired = false
+                    pressing = true; fired = false; sentDown = false
                     if let longPress {
                         holdTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: false) { _ in
                             fired = true; link.tap(longPress)
                         }
+                    } else {
+                        holdTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: false) { _ in sentDown = true; link.down(button) }
                     }
                 }
                 .onEnded { _ in
                     holdTimer?.invalidate(); holdTimer = nil
                     pressing = false
-                    if !fired { link.tap(button) }
+                    if sentDown { link.up(button) } else if !fired { link.tap(button) }
                 })
     }
 }
@@ -261,10 +273,13 @@ struct EdgeButton: View {
 /// 연결 상태와 왕복 시간 (연구 P2). 베타 동안만 두 번째 페이지로. "200회 측정" 은 입력 없이 ping 만 보낸다
 struct StatsView: View {
     @ObservedObject var link: WatchLink
+    @AppStorage(WatchLink.hapticsKey) private var haptics = true
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
+                row("판", "11차 · 11/10 f")   // 어느 워치 앱이 깔렸는지 눈으로 확인 (번호는 iPhone 과 같아 구분이 안 된다)
+                Toggle("진동", isOn: $haptics).font(.footnote)   // 기본 켬: 버튼마다 또렷한 톡 하나. 배터리를 더 아끼려면 끔
                 row("세션", link.activated ? "활성" : "비활성")
                 row("iPhone", link.reachable ? "닿음" : "안 닿음")
                 row("상태", link.state.rawValue + (link.game.isEmpty ? "" : " · \(link.game)"))

@@ -5,6 +5,7 @@ import Foundation
 enum TeaWire {
     /// 메시지 사전 키 (짧게: 무선 큐를 타는 작은 사전이라 바이트를 아낀다)
     static let seq = "s"        // Int, 워치가 보낸 일련번호 (중복·역순 버림)
+    static let run = "r"        // Int, 워치 앱이 켜질 때마다 새로 뽑는 수. 바뀌면 iPhone 은 일련번호 기억을 지운다 (앱이 다시 켜져 0 부터 보내는 것을 중복으로 버리지 않게)
     static let button = "b"     // Int, PadButton.rawValue
     static let event = "e"      // Int, TeaEvent.rawValue
     static let sentAt = "t"     // Double, 워치 시계(uptime). 답장에 그대로 실어 왕복 시간을 잰다
@@ -13,6 +14,8 @@ enum TeaWire {
     static let game = "game"    // String, 지금 게임 이름 ("" 이면 홈)
     static let state = "state"  // String, TeaState.rawValue
     static let enabled = "on"   // Bool, 설정 "애플워치로 조작"
+    /// 워치 → iPhone applicationContext 키: 워치 앱이 나간 시각(Double). 백그라운드로 가는 순간은 sendMessage 가 닿지 않을 수 있어 이 길로도 보낸다
+    static let bye = "bye"
 
     enum Event: Int {
         case tap = 0        // 누르고 바로 뗌 (iPhone 이 press 뒤 release; minPress 가 놓치지 않게 한다)
@@ -25,6 +28,7 @@ enum TeaWire {
         case rumble = 6     // iPad → iPhone: 게임 진동 (strong·weak·duration·sharpness·repeats·gap)
         case context = 7    // iPad → iPhone: 게임 이름·상태·설정 (워치의 applicationContext 와 같은 내용)
         case stick = 8      // iPhone → iPad: 두 스틱 (lx ly rx ry, -1…1). 바뀔 때 + 기울인 동안 0.3초마다. 끊기면 iPad 가 1초 뒤 가운데로
+        case bye = 9        // 워치 → iPhone: 워치 앱이 시계·다른 앱으로 나감(백그라운드). iPhone 은 바로 가상 패드 복귀. 손목 내림(비활성)에는 안 보냄
     }
 
     /// 스틱 메시지 키
@@ -64,7 +68,7 @@ enum TeaWire {
     static let heartbeatInterval: TimeInterval = 0.3
     static let holdTimeout: TimeInterval = 1.0
 
-    static func message(seq: Int, button: Int, event: Event, sentAt: Double) -> [String: Any] {
-        [Self.seq: seq, Self.button: button, Self.event: event.rawValue, Self.sentAt: sentAt]
+    static func message(seq: Int, run: Int = 0, button: Int, event: Event, sentAt: Double) -> [String: Any] {
+        [Self.seq: seq, Self.run: run, Self.button: button, Self.event: event.rawValue, Self.sentAt: sentAt]
     }
 }

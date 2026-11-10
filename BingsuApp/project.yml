@@ -9,7 +9,7 @@ settings:
   base:
     SWIFT_VERSION: "5.10"
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "35"
+    CURRENT_PROJECT_VERSION: "36"
     DEVELOPMENT_TEAM: ""
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1,2"
@@ -98,9 +98,8 @@ targets:
         UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
         # 표준 HTTPS 외 암호화 없음 → App Store Connect 업로드 때 수출 규정 질문 생략
         ITSAppUsesNonExemptEncryption: false
-        NSLocalNetworkUsageDescription: "같은 와이파이에서 iPhone 을 iPad 의 컨트롤러로 쓰거나, 게임의 온라인 방을 열거나 참가할 때 필요해요."
+        NSLocalNetworkUsageDescription: "같은 와이파이에서 게임의 온라인 방을 열거나 참가할 때 필요해요."
         # iPhone ↔ iPad 컨트롤러 (MultipeerConnectivity, Spoon/TableSpoon.swift)
-        NSBonjourServices: ["_bingsu-pad._tcp", "_bingsu-pad._udp"]
         CFBundleDocumentTypes:
           - CFBundleTypeName: "게임 압축 파일"
             LSHandlerRank: Alternate

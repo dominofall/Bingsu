@@ -18,6 +18,9 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var measuring = false
 
     private var seq = 0
+    /// 이번 실행의 표식. 앱이 다시 켜지면 바뀌어 iPhone 이 일련번호를 새로 센다 (2026-11-10: 시계로 나갔다 오면 앱이 다시 켜져 0 부터 보내는데
+    /// iPhone 은 지난 번호보다 작다고 버려서, 지난 번호를 넘을 때까지 어느 버튼도 안 먹던 문제)
+    private let run = Int.random(in: 1...Int(Int32.max))
     private var heartbeats: [Int: Timer] = [:]
 
     override init() {
@@ -64,27 +67,37 @@ final class WatchLink: NSObject, ObservableObject, WCSessionDelegate {
         send(-1, .releaseAll)
     }
 
-    /// 버튼마다 다른 진동: 안 보고 눌러도 무엇을 눌렀는지 손으로 안다 (2026-11-09 피드백). 연달아 100ms 안쪽은 시스템이 합친다
-    static func haptic(for b: TeaWire.Button) -> WKHapticType {
-        switch b {
-        case .up, .down, .left, .right: return .click            // 원반: 짧은 톡 (크라운 디텐트와 비슷한 결)
-        case .a: return .directionUp                              // 확인: 올라가는 톡
-        case .b: return .directionDown                            // 취소: 내려가는 톡
-        case .x: return .start                                    // 두 번 톡
-        case .y: return .stop                                     // 두 번 톡(다른 결)
-        case .view, .menu: return .notification                   // 가장자리 −·+
-        case .home: return .success                               // 길게 눌러 일시정지: 올라가는 세 번
-        }
+    /// 앱이 백그라운드로 감(시계로 돌아감·다른 앱). 모두 놓고 "나간다"를 알려 iPhone 이 바로 가상 패드를 되돌리게 한다.
+    /// 손목을 내려 화면만 꺼진 것(비활성)은 `releaseAll` 만 — 그때는 iPhone 이 2분 걸쇠로 패드를 숨긴 채 기다린다
+    func bye() {
+        for t in heartbeats.values { t.invalidate() }
+        heartbeats.removeAll()
+        send(-1, .bye)
+        // 백그라운드로 가는 순간엔 reachable 이 이미 꺼져 sendMessage 가 실패할 수 있다 → applicationContext 로도 (뒤늦게라도 닿는다)
+        try? WCSession.default.updateApplicationContext([TeaWire.bye: Date().timeIntervalSince1970])
     }
 
-    private func click(_ b: TeaWire.Button) { WKInterfaceDevice.current().play(Self.haptic(for: b)) }
+    /// 진동 (측정 페이지의 스위치). 기본 켬이되 어느 버튼이든 짧은 톡 두 번(.click ×2, 40ms)뿐 — 버튼별로 다른 진동(10차)은 뺐다
+    /// (2026-11-10 사용자: 화면을 보면 무엇을 눌렀는지 아니 구분은 필요 없고, 배터리를 위해 최소로; 눌린 느낌은 있어야 하고 .click 은 약함). 크라운 디텐트 톡도 이 스위치를 따른다
+    static let hapticsKey = "haptics"
+    static var hapticsOn: Bool { UserDefaults.standard.object(forKey: hapticsKey) as? Bool ?? true }
+
+    private func click(_ b: TeaWire.Button) {
+        // 세기는 시스템 종류 중에서만 고를 수 있다. .click 은 약하고 .directionUp 은 세다는 피드백(2026-11-10)
+        // → 그 중간: .click 을 40ms 간격으로 두 번. 일시정지(⌂)만 .start 로 구분
+        guard Self.hapticsOn else { return }
+        let device = WKInterfaceDevice.current()
+        if b == .home { device.play(.start); return }
+        device.play(.click)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) { device.play(.click) }
+    }
 
     private func send(_ button: Int, _ event: TeaWire.Event, done: ((Bool) -> Void)? = nil) {
         let s = WCSession.default
         guard s.activationState == .activated else { done?(false); return }
         seq += 1
         let t = ProcessInfo.processInfo.systemUptime
-        s.sendMessage(TeaWire.message(seq: seq, button: button, event: event, sentAt: t), replyHandler: { [weak self] reply in
+        s.sendMessage(TeaWire.message(seq: seq, run: run, button: button, event: event, sentAt: t), replyHandler: { [weak self] reply in
             let rtt = ProcessInfo.processInfo.systemUptime - t
             DispatchQueue.main.async {
                 guard let self else { return }

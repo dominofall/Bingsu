@@ -113,7 +113,13 @@ struct BowlContainerView: View {
             }
             .ignoresSafeArea()
 
-            if showSpoon && (!controllerConnected || padForced) && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            // padShown: 실제 컨트롤러·애플워치·iPhone 컨트롤러 어느 것이든 붙으면 숨김 (전에는 실제 컨트롤러만 봐서 워치가 붙어도 안 사라졌다, 2026-11-10)
+            if padShown && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            // 워치·iPhone 컨트롤러 때문에 숨겨졌을 때 손으로 되돌리는 단추 (Spoon/PadRevealButton.swift)
+            if !showEditor && (watchConnected || tableConnected) && !controllerConnected {
+                if !padShown { PadRevealButton(mode: .reveal) { showSpoon = true; padForced = true } }
+                else if padForced { PadRevealButton(mode: .hide) { padForced = false; spoon.releaseAll() } }
+            }
 
             if showHUD {
                 VStack {
@@ -185,6 +191,8 @@ struct BowlContainerView: View {
             webView?.evaluateJavaScript("window.__bingsuSilentHold && __bingsuSilentHold(\(!v))", completionHandler: nil)
         }
         .onAppear {
+            // 게임 중에는 화면이 저절로 꺼지지 않게. 워치·실제 컨트롤러·iPhone 컨트롤러로 하면 iPhone 을 안 건드려 "입력 없음"으로 꺼졌다 (2026-11-10 피드백)
+            UIApplication.shared.isIdleTimerDisabled = true
             spoon.cutlery = CutlerySet.forDish(dish); spoon.webView = webView; spoon.hapticsEnabled = padPrefs.haptics
             if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }   // 실제 컨트롤러 → 같은 경로로 입력
             longSpoon?.enabled = visible
@@ -217,6 +225,7 @@ struct BowlContainerView: View {
             }
         }
         .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
             recorder.setActive(false)
             // 게임 종료(또는 다른 게임으로 바꿈): 마지막 스냅샷이 파일에 닿은 뒤 iCloud 로 올린다
             packSaveFiles()
@@ -240,6 +249,10 @@ struct BowlContainerView: View {
         .onChange(of: watchConnected) { _, on in
             if on { spoon.releaseAll(); if visible { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
         }
+        // 손으로 꺼낸 패드도 워치 입력이 다시 오면 숨긴다 (2026-11-10 사용자 요청)
+        .onChange(of: watch.lastInputAt) { _, _ in
+            if padForced && watchConnected { padForced = false; spoon.releaseAll() }
+        }
         .onChange(of: tableConnected) { _, on in
             if on { spoon.releaseAll(); if visible { showToast("iPhone 컨트롤러 연결됨 · 가상 패드 숨김") } }
         }
@@ -251,7 +264,8 @@ struct BowlContainerView: View {
     static let margin: CGFloat = 0
     static let corner: CGFloat = 0
     /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
-    private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
+    /// 워치로 조작 중이면 연결로 본다: 처음 닿거나 입력이 온 뒤, 워치가 잠들어도 2분은 유지 (화면이 흔들리지 않게). isWatchAppInstalled 는 안 본다
+    private var watchConnected: Bool { watchEnabled && watch.engaged }
     /// iPad 에 iPhone 이 컨트롤러로 붙어 있으면 (Spoon/TableSpoon.swift)
     private var tableConnected: Bool { tableEnabled && table.connected }
     private var anyController: Bool { controllerConnected || watchConnected || tableConnected }

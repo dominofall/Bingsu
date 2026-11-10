@@ -55,7 +55,8 @@ struct BrassBowlContainerView: View {
 
     private var padPrefs: PadPrefs { prefsStore.effectivePad(for: dish.id) }
     /// 워치 앱이 전면이고(닿음) 설정이 켜져 있으면 워치를 컨트롤러로 본다 → 가상 패드를 숨긴다 (실기기 피드백 2026-11-09)
-    private var watchConnected: Bool { watchEnabled && watch.reachable && watch.watchAppInstalled }
+    /// 워치로 조작 중이면 연결로 본다: 처음 닿거나 입력이 온 뒤, 워치가 잠들어도 2분은 유지 (화면이 흔들리지 않게). isWatchAppInstalled 는 안 본다
+    private var watchConnected: Bool { watchEnabled && watch.engaged }
     /// iPad 에 iPhone 이 컨트롤러로 붙어 있으면 (Spoon/TableSpoon.swift)
     private var tableConnected: Bool { tableEnabled && table.connected }
     private var anyController: Bool { controllerConnected || watchConnected || tableConnected }
@@ -102,6 +103,11 @@ struct BrassBowlContainerView: View {
             .ignoresSafeArea()
 
             if padShown && isPlaying && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            // 워치·iPhone 컨트롤러 때문에 숨겨졌을 때 손으로 되돌리는 단추 (Spoon/PadRevealButton.swift)
+            if isPlaying && !showEditor && (watchConnected || tableConnected) && !controllerConnected {
+                if !padShown { PadRevealButton(mode: .reveal) { showSpoon = true; padForced = true } }
+                else if padForced { PadRevealButton(mode: .hide) { padForced = false; spoon.releaseAll() } }
+            }
 
             if showHUD {
                 VStack {
@@ -181,8 +187,9 @@ struct BrassBowlContainerView: View {
         .onChange(of: engine.phase) { _, p in
             if case .ended(let id, _) = p, id == dish.id { spoon.releaseAll() }   // 저장 묶기·올리기는 엔진이 끝날 때 BrassBowlEngine 이
         }
-        .onAppear(perform: start)
+        .onAppear { UIApplication.shared.isIdleTimerDisabled = true; start() }   // 게임 중 화면 안 꺼짐 (컨트롤러·워치로 하면 iPhone 을 안 건드린다)
         .onDisappear {
+            UIApplication.shared.isIdleTimerDisabled = false
             fpsTimer?.invalidate()
             recorder.setActive(false)
             // 다른 게임을 열거나 "종료"로 이 화면이 사라짐: 엔진을 끝낸다 (끝나면 엔진이 저장 파일을 묶어 올림)
@@ -197,6 +204,10 @@ struct BrassBowlContainerView: View {
         }
         .onChange(of: watchConnected) { _, on in
             if on { spoon.releaseAll(); if isPlaying { showToast("애플워치 연결됨 · 가상 패드 숨김") } }
+        }
+        // 손으로 꺼낸 패드도 워치 입력이 다시 오면 숨긴다 (2026-11-10 사용자 요청)
+        .onChange(of: watch.lastInputAt) { _, _ in
+            if padForced && watchConnected { padForced = false; spoon.releaseAll() }
         }
         .onChange(of: tableConnected) { _, on in
             if on { spoon.releaseAll(); if isPlaying { showToast("iPhone 컨트롤러 연결됨 · 가상 패드 숨김") } }

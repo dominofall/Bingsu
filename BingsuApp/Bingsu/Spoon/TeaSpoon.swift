@@ -44,7 +44,7 @@ final class TeaSpoon {
     func handle(button raw: Int, event: TeaWire.Event) -> Bool {
         guard enabled, let s = spoon else { return false }
         if DevEnv["BINGSU_KEYDEBUG"] == "1" { NSLog("[TeaSpoon] 받음 b=\(raw) e=\(event) menu=\(menuInput != nil)") }
-        if event == .releaseAll { releaseHeld(); return true }
+        if event == .releaseAll || event == .bye { releaseHeld(); return true }
         guard let b = PadButton(rawValue: raw) else { return false }
         if b == .home {
             if event == .tap || event == .down { if let menuInput { menuInput(.home) } else { onHomeButton?() } }
@@ -63,7 +63,7 @@ final class TeaSpoon {
             if held[b] != nil { held[b] = Date() } else { held[b] = Date(); s.press(b, haptic: false); armHoldWatch() }
         case .up:
             held[b] = nil; s.release(b)
-        case .ping, .releaseAll, .rumble, .context, .stick:
+        case .ping, .releaseAll, .bye, .rumble, .context, .stick:
             break
         }
         return true
@@ -118,6 +118,16 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var paired = false
     @Published private(set) var watchAppInstalled = false
     @Published private(set) var reachable = false
+    /// 최근 4초 안에 워치에서 무엇이든(ping 포함) 왔다. 실기기에서 `isReachable`·`isWatchAppInstalled` 가 늦거나 틀릴 때가 있어
+    /// (2026-11-10 피드백: 워치로 조작은 되는데 가상 패드가 안 사라짐) 가상 패드 숨김은 `reachable || talking` 으로 본다
+    @Published private(set) var talking = false
+    private var talkingTimer: Timer?
+    /// "워치로 조작 중": 처음 닿거나 메시지가 온 뒤부터, 닿지도 않고 메시지도 없는 채 `engagedTimeout` 이 지날 때까지 참.
+    /// 손목을 내려 워치가 잠들면 reachable 이 바로 꺼지는데 그때마다 가상 패드가 나왔다 들어가면 화면이 흔들린다 (2026-11-10 피드백).
+    /// 게임을 나가면(홈 상태) 바로 거짓
+    @Published private(set) var engaged = false
+    private var engagedTimer: Timer?
+    static let engagedTimeout: TimeInterval = 120
     @Published private(set) var lastInputAt: Date?
     @Published private(set) var received = 0
 
@@ -125,6 +135,7 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
     @MainActor weak var target: TeaSpoon?
 
     private var lastSeq = -1
+    private var lastRun = 0
     private var context: [String: Any] = [:]
 
     func activate() {
@@ -145,6 +156,7 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
     /// 워치 화면에 보여 줄 게임 이름·상태. 바뀐 값만 보낸다 (updateApplicationContext 는 마지막 값만 남는다)
     func setContext(game: String, state: TeaWire.State) {
         TableSpoonLink.shared.setContext(game: game, state: state)   // iPad → iPhone 컨트롤러에도 같은 내용
+        if state == .home, engaged { engaged = false; engagedTimer?.invalidate(); engagedTimer = nil }   // 게임을 나가면 다음 게임은 패드부터
         let next: [String: Any] = [TeaWire.game: game, TeaWire.state: state.rawValue, TeaWire.enabled: Self.isEnabled]
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { context = next; return }
         if let old = context as? [String: AnyHashable], let new = next as? [String: AnyHashable], old == new { return }
@@ -179,6 +191,12 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
         session.activate()
     }
 
+    /// 워치가 보낸 applicationContext: 지금은 "나감"(bye) 뿐. 워치 앱이 백그라운드로 간 뒤 늦게라도 닿는다
+    func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        guard applicationContext[TeaWire.bye] != nil else { return }
+        DispatchQueue.main.async { self.leave() }
+    }
+
     func sessionReachabilityDidChange(_ session: WCSession) {
         DispatchQueue.main.async { self.readState(session) }
     }
@@ -189,6 +207,43 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
 
     private func readState(_ s: WCSession) {
         paired = s.isPaired; watchAppInstalled = s.isWatchAppInstalled; reachable = s.isReachable
+        NSLog("[TeaSpoon] 상태 paired=\(paired) installed=\(watchAppInstalled) reachable=\(reachable)")
+        updateEngaged()
+    }
+
+    /// 버튼 입력이 와야 "조작 중"이 된다 (닿기만 해서는 안 됨 — 2026-11-10: 워치 앱을 안 켰는데 패드가 사라졌다는 피드백).
+    /// 일단 조작 중이면 닿아 있는 동안은 유지하고, 닿지도 않고 입력도 없는 채 `engagedTimeout` 이 지나면 풀린다
+    private func updateEngaged() {
+        if talking {
+            engagedTimer?.invalidate(); engagedTimer = nil
+            if !engaged { engaged = true; NSLog("[TeaSpoon] 워치 조작 시작") }
+        } else if reachable {
+            engagedTimer?.invalidate(); engagedTimer = nil
+        } else if engaged, engagedTimer == nil {
+            engagedTimer = Timer.scheduledTimer(withTimeInterval: Self.engagedTimeout, repeats: false) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, !self.reachable, !self.talking else { return }
+                    self.engaged = false; self.engagedTimer = nil; NSLog("[TeaSpoon] 워치 조작 끝 (\(Int(Self.engagedTimeout))초 무응답)")
+                }
+            }
+        }
+    }
+
+    /// 워치 앱이 나갔다(bye): 걸쇠를 바로 풀어 가상 패드가 돌아오게
+    private func leave() {
+        talkingTimer?.invalidate(); talkingTimer = nil; talking = false
+        engagedTimer?.invalidate(); engagedTimer = nil
+        if engaged { engaged = false; NSLog("[TeaSpoon] 워치 앱 나감 → 조작 끝") }
+    }
+
+    /// 워치에서 메시지가 왔다: 4초 동안 `talking`
+    private func noteTalking() {
+        if !talking { talking = true }
+        talkingTimer?.invalidate()
+        talkingTimer = Timer.scheduledTimer(withTimeInterval: 4, repeats: false) { [weak self] _ in
+            Task { @MainActor in self?.talking = false; self?.updateEngaged() }
+        }
+        updateEngaged()
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any], replyHandler: @escaping ([String: Any]) -> Void) {
@@ -206,10 +261,14 @@ final class TeaSpoonLink: NSObject, ObservableObject, WCSessionDelegate {
         guard let raw = message[TeaWire.event] as? Int, let event = TeaWire.Event(rawValue: raw) else { return false }
         let seq = message[TeaWire.seq] as? Int ?? 0
         let button = message[TeaWire.button] as? Int ?? -1
-        if event == .ping { return true }
+        if event == .bye { DispatchQueue.main.async { self.leave() }; return true }
+        if event == .ping { return true }                 // 측정용 ping 은 조작으로 치지 않는다
+        DispatchQueue.main.async { self.noteTalking() }   // 버튼 입력만 "조작 중"으로
         guard Self.isEnabled else { return false }
+        let run = message[TeaWire.run] as? Int ?? 0
         let accepted = DispatchQueue.main.sync { () -> Bool in
-            // 역순·중복은 버린다 (워치 앱이 다시 켜지면 번호가 0 부터라 크게 뒤로 가면 받아 준다)
+            // 워치 앱이 다시 켜졌으면(run 바뀜) 번호를 새로 센다. 그 안에서 역순·중복은 버린다
+            if run != lastRun { lastRun = run; lastSeq = -1 }
             if seq <= lastSeq && lastSeq - seq < 1000 { return false }
             lastSeq = seq
             received += 1; lastInputAt = Date()

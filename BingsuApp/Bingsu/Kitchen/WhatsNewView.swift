@@ -48,10 +48,10 @@ enum WhatsNew {
 
     /// 새 빌드는 맨 위에. 빌드마다 세 줄 이하
     static let notes: [Note] = [
-        Note(build: 36, title: "iPhone 을 iPad 의 컨트롤러로", message: "불편한 점은 Q&A로", items: [
-            Item(symbol: "gamecontroller", text: "iPhone 홈의 게임패드 단추로 iPad 의 빙수에 연결해요. iPad 설정 › 컨트롤러에서 켜요"),
-            Item(symbol: "rectangle.portrait.rotate", text: "배치 다섯 가지, 가로·세로 모두. 십자키는 왼쪽 아무 데나 대면 생겨요"),
-            Item(symbol: "iphone.radiowaves.left.and.right", text: "게임 진동은 손에 든 iPhone 에서. 연결되면 iPad 가상 패드는 숨겨져요"),
+        Note(build: 36, title: "워치 기능 최적화", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "applewatch", text: "− 는 누르고 있는 동안 눌려요(달리기). 일시정지는 + 길게. 진동은 짧게 두 번, 측정 페이지에서 끌 수 있어요"),
+            Item(symbol: "eye.slash", text: "워치 버튼이 오면 가상 패드가 숨겨지고 화면 구석 단추로 다시 꺼내요. 워치 앱을 나가면 돌아와요"),
+            Item(symbol: "sun.max", text: "게임 중에는 iPhone 화면이 저절로 꺼지지 않아요"),
         ]),
         Note(build: 35, title: "새로운 기능 알림 다듬기", message: "불편한 점은 Q&A로", items: [
             Item(symbol: "bell.slash", text: "\"다시 보지 않기\"를 누를 때까지 켤 때마다 떠요. 다음 빌드가 오면 그 빌드 것만 다시 떠요"),
@@ -121,9 +121,9 @@ struct WhatsNewSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(notes) { n in
-                        if notes.count > 1 {
-                            Text("빌드 \(n.build) · \(n.title)").font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, 4)
-                        }
+                        // 빌드 제목은 늘 보인다. 한 빌드뿐이면 번호는 머리에 있으니 제목만 (전에는 한 빌드일 때 제목이 빠졌다, 2026-11-10 피드백)
+                        Text(notes.count > 1 ? "빌드 \(n.build) · \(n.title)" : n.title)
+                            .font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.top, notes.count > 1 ? 4 : 0)
                         ForEach(n.items) { it in WhatsNewRow(item: it) }
                     }
                 }
