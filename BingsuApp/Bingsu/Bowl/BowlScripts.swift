@@ -213,6 +213,8 @@ enum BowlScripts {
                          KeyZ: ["z", 90], KeyX: ["x", 88], KeyM: ["m", 77], KeyB: ["b", 66], KeyR: ["r", 82], KeyF: ["f", 70], KeyV: ["v", 86],
                          KeyQ: ["q", 81], KeyW: ["w", 87], KeyE: ["e", 69], Space: [" ", 32], Enter: ["Enter", 13], Escape: ["Escape", 27],
                          ShiftLeft: ["Shift", 16], Digit1: ["1", 49], Digit2: ["2", 50], Digit3: ["3", 51], Digit4: ["4", 52], Digit5: ["5", 53], Digit6: ["6", 54] };
+          const MORE_KEYS = { Tab: ["Tab", 9], Backspace: ["Backspace", 8], Delete: ["Delete", 46], Home: ["Home", 36], End: ["End", 35],
+                              PageUp: ["PageUp", 33], PageDown: ["PageDown", 34], ShiftRight: ["Shift", 16], ControlLeft: ["Control", 17], ControlRight: ["Control", 17] };
           // WKWebView 는 웹뷰가 직접 터치를 받기 전까지 document.hasFocus() 가 false 다.
           // 가상 패드가 터치를 가로채면 영원히 false 가 되어 게임의 패드 폴링이 멈추므로 항상 true 로 둔다.
           try { Object.defineProperty(Document.prototype, "hasFocus", { configurable: true, writable: true, value: function () { return true; } }); } catch (e) {}
@@ -273,11 +275,13 @@ enum BowlScripts {
           window.__bingsu = {
             pad: setPad,
             padDisconnect() { if (PAD.connected) { PAD.connected = false; padEvent("gamepaddisconnected"); } },
-            key(code, down) {
+            key(code, down, repeat) {
               // 표에 없는 글자/숫자 키는 코드에서 만든다 (KeyC → "c", 67 / Digit7 → "7", 55). Phaser 등은 keyCode 를 본다.
-              const [key, keyCode] = KEYS[code] || (/^Key[A-Z]$/.test(code) ? [code[3].toLowerCase(), code.charCodeAt(3)]
-                                     : /^Digit[0-9]$/.test(code) ? [code[5], code.charCodeAt(5)] : [code, 0]);
-              const ev = new KeyboardEvent(down ? "keydown" : "keyup", { code, key, keyCode, which: keyCode, bubbles: true, cancelable: true });
+              // F1~F12·Tab·Backspace 등은 터치 조작의 키 줄이 쓴다 (repeat: 누르고 있을 때 되풀이하는 keydown)
+              const [key, keyCode] = KEYS[code] || MORE_KEYS[code] || (/^Key[A-Z]$/.test(code) ? [code[3].toLowerCase(), code.charCodeAt(3)]
+                                     : /^Digit[0-9]$/.test(code) ? [code[5], code.charCodeAt(5)]
+                                     : /^F([1-9]|1[0-2])$/.test(code) ? [code, 111 + Number(code.slice(1))] : [code, 0]);
+              const ev = new KeyboardEvent(down ? "keydown" : "keyup", { code, key, keyCode, which: keyCode, repeat: !!(down && repeat), bubbles: true, cancelable: true });
               // keyCode/which 는 생성자 옵션으로는 안 박히는 브라우저가 있어 직접 덮어쓴다 (Phaser 는 keyCode 를 본다)
               try { Object.defineProperty(ev, "keyCode", { get: () => keyCode }); Object.defineProperty(ev, "which", { get: () => keyCode }); } catch (e) {}
               const target = document.activeElement && document.activeElement !== document.body ? document.activeElement : (KEYS_TO_DOCUMENT ? document : window);

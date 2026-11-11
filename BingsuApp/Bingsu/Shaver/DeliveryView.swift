@@ -145,6 +145,7 @@ struct DeliveryView: View {
             Text("이미 있는 게임이에요").font(.title3.bold())
             Text("\(p.existing.title) · \(Self.versionChange(p.oldVersion, p.staged.version))")
                 .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            fileChange(p)
             if p.staged.title != p.existing.title || p.staged.recipe != p.existing.recipe {
                 // 저장 폴더 이름은 게임 파일이 정하므로 다른 게임이 같은 이름을 쓸 수 있다
                 Label("가져오는 파일의 이름은 \u{201C}\(p.staged.title)\u{201D} 예요. 저장 폴더는 같지만 다른 게임일 수 있어요. 업데이트하거나 따로 추가하면 이 파일이 지금 저장 데이터를 읽을 수 있으니, 모르는 파일이면 취소하세요.", systemImage: "exclamationmark.triangle.fill")
@@ -165,6 +166,18 @@ struct DeliveryView: View {
             .padding(14)
             .background(Palette.card, in: RoundedRectangle(cornerRadius: 14))
         }
+    }
+
+    /// 어느 파일에서 어느 파일로 바뀌는지: 버전이 양쪽 다 없어도 파일 이름으로 패치를 알아보게
+    private func fileChange(_ p: Delivery.Pending) -> some View {
+        let r = Receipt.read(folder: p.existing.location)
+        let now = [r.sourceName ?? "파일 기록 없음", r.importedAt.map { Receipt.dateText($0) + " 가져옴" }]
+            .compactMap { $0 }.joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 4) {
+            row("지금 파일", now)
+            row("새 파일", Receipt.clean(p.staged.sourceName, limit: Receipt.maxTextLength) ?? "")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func confirmButtons(_ p: Delivery.Pending) -> some View {

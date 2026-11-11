@@ -116,6 +116,16 @@ struct DishPrefs: Codable, Equatable {
     var rubyOverride: String?     // RPG Maker 게임의 Ruby 버전 "18"/"19"/"31". nil = 자동 (빌드 26 에서 더함, 예전 파일엔 없음 → nil)
     var rtpNoticeShown: Bool?     // RTP 가 필요하다는 안내를 이 게임에서 한 번 보였다 (빌드 26)
     var pixelSharp: Bool?         // RPG Maker MV·MZ 화면을 픽셀 그대로(흐리지 않게). nil = 켬 (빌드 27 에서 더함, 예전 파일엔 없음 → nil)
+    /// 새 모양 Electron 게임의 조작 방식 "pointer"(터치)·"pad"(가상 패드). nil = 자동(가져올 때 판별한 값).
+    /// 모르는 글자가 와도 파일 전체를 못 읽는 일이 없게 글자로 둔다 (빌드 38 에서 더함, 예전 파일엔 없음 → nil)
+    var inputStyle: String?
+    var keyStrip: Bool?           // 키보드 키 줄 보기. nil = 자동(터치 방식이면 보임) (빌드 38)
+
+    /// 실제로 쓸 조작 방식: 직접 고른 값 → 판별 값. 새 모양 Electron 게임이 아니면 nil
+    func effectiveInputStyle(_ dish: Dish) -> ElectronInfo.InputStyle? {
+        guard dish.isRedBean, let found = dish.electron?.inputStyle else { return nil }
+        return inputStyle.flatMap(ElectronInfo.InputStyle.init(rawValue:)) ?? found
+    }
 
     /// 실제로 쓸 화질: 직접 고른 값 → 벤치마크 권장 → 높음
     var effectiveQuality: Quality { quality ?? recommendedQuality ?? .high }

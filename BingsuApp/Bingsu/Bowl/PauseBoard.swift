@@ -15,6 +15,8 @@ struct PauseBoard: View {
     let setPad: (PadPrefs) -> Void
     let applyToAllGames: () -> Void
     @Binding var padShown: Bool
+    /// 새 모양 Electron 게임만: 키보드 키 줄 보기 (nil 이면 그 줄을 숨긴다, 터치 조작 §8)
+    var keyStrip: Binding<Bool>? = nil
     let controllerNames: [String]
     /// 웹 게임만: 초당 프레임·화질 (nil 이면 그 줄을 숨긴다. RPG Maker XP 는 엔진이 정함)
     var fpsLimit: Binding<FpsLimit?>?
@@ -136,6 +138,9 @@ struct PauseBoard: View {
                 slider("불투명도", value: pad.opacity, in: 0.25...0.9, item: .opacity) { v in setPad(with { $0.opacity = v }) }
                 Divider()
                 toggle("가상 패드 숨기기", isOn: Binding(get: { !padShown }, set: { padShown = !$0 }), item: .hidePad)
+                if let keyStrip {
+                    toggle("키보드 키", sub: "Esc·Enter 같은 키를 화면에 띄워요. 가상 패드가 보이면 숨어요", isOn: keyStrip, item: .keyStrip)
+                }
                 toggle("버튼 설명 보기", sub: "이 게임에서 각 버튼이 하는 일", isOn: Binding(get: { pad.showLabels }, set: { v in setPad(with { $0.showLabels = v }) }), item: .labels)
                 if pad.providesStick() {
                     toggle("움직이는 스틱", isOn: Binding(get: { pad.floatingStick }, set: { v in setPad(with { $0.floatingStick = v }) }), item: .floating)
@@ -281,7 +286,7 @@ struct PauseBoard: View {
 
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
-    case resume, home, close, kind(PadKind), editLayout, leftHand, size, opacity, hidePad, labels, floating, applyAll
+    case resume, home, close, kind(PadKind), editLayout, leftHand, size, opacity, hidePad, keyStrip, labels, floating, applyAll
     case volume, musicRate, mixAudio, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 

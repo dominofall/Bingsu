@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>빙수 시험 터치</title>
+<link rel="stylesheet" href="lab.css">
+<style>
+  /* 나중에 더해지는 <style> 도 :hover 바꿔 넣기 대상인지 보려고 lab.js 가 하나 더 넣는다 */
+  .hov { background: #345; }
+  .hov:hover { background: #e83; color: #000; }
+  @media (hover: hover) { .hh:hover { outline: 3px solid #4f4; } .hhOn::after { content: " hover:hover 켜짐"; color: #8f8; } }
+  @media (hover: none) { .hhOn::after { content: " hover:none"; color: #f88; } }
+  @supports (display: grid) { .sup:hover { background: #5a5; } }
+</style>
+</head>
+<body>
+<header id="top">
+  <b>빙수 시험 터치</b>
+  <span id="env"></span>
+  <button id="clear">기록 지우기</button>
+</header>
+<main id="grid">
+  <section id="c1"><h3>1 click</h3>
+    <button id="b1">한 번 누르기</button> <b id="n1">0</b>
+    <pre class="log"></pre></section>
+
+  <section id="c2"><h3>2 mouseenter 로 화면 바뀜</h3>
+    <button id="b2">상점 물건</button> <span id="b2info" class="info">설명 보임</span> <b id="n2">0</b>
+    <pre class="log"></pre></section>
+
+  <section id="c3"><h3>3 설명 창</h3>
+    <span id="tip3" class="chip">특성(enter)</span>
+    <span class="dlg" id="dlg3"><span class="chip" data-i="가">가</span><span class="chip" data-i="나">나<i class="inner">안</i></span></span>
+    <div id="pop3" class="pop">설명 창</div>
+    <pre class="log"></pre></section>
+
+  <section id="c4"><h3>4 :hover</h3>
+    <button class="hov" id="b4">색 바뀜</button>
+    <span class="menu" id="menu4">메뉴 ▾<span class="sub"><button id="m4a">항목 A</button><button id="m4b">항목 B</button></span></span>
+    <span class="hh hhOn sup chip" id="hh4">미디어</span>
+    <span class="late chip" id="late4">늦은 style</span>
+    <pre class="log"></pre></section>
+
+  <section id="c5"><h3>5 title</h3>
+    <span class="chip" title="불꽃 타입: 물에 약하다">불꽃</span>
+    <span class="chip" title="부모의 설명이에요"><b class="inner">안쪽 글자</b></span>
+    <span class="chip" title="여러 줄 설명
+두 번째 줄 &lt;b&gt;굵게 아님&lt;/b&gt;">여러 줄</span>
+    <span class="chip" id="dyn5">스크립트 title</span>
+    <pre class="log"></pre></section>
+
+  <section id="c6"><h3>6 마우스 끌기</h3>
+    <div class="area" id="area6"><div class="box" id="box6">끌기</div></div>
+    <pre class="log"></pre></section>
+
+  <section id="c7"><h3>7 포인터 끌기 (capture)</h3>
+    <div class="area" id="area7"><div class="box" id="box7">카드</div></div>
+    <pre class="log"></pre></section>
+
+  <section id="c8"><h3>8 dblclick·detail</h3>
+    <button id="b8">두 번 누르기</button> <b id="n8">0</b>
+    <pre class="log"></pre></section>
+
+  <section id="c9"><h3>9 오른쪽 클릭·휠 (마우스)</h3>
+    <div class="area small" id="area9">오른쪽 클릭 · 휠 받음 <b id="w10">0</b></div>
+    <div class="scroll" id="list10"></div>
+    <pre class="log"></pre></section>
+
+  <section id="c10"><h3>10 양손 번갈아 빨리</h3>
+    <div class="two"><button id="l10">왼손</button><button id="r10">오른손</button></div>
+    <div>click <b id="n10">0 / 0</b> · 누름 <b id="d10">0</b></div>
+    <pre class="log"></pre></section>
+
+  <section id="c11"><h3>11 키보드</h3>
+    <button id="open11">창 열기</button> <span id="k11">-</span>
+    <div id="win11" class="pop">Esc 로 닫는 창</div>
+    <pre class="log"></pre></section>
+
+  <section id="c12"><h3>12 입력 칸</h3>
+    <input id="in12" placeholder="글자"> <select id="sel12"><option>1280×720</option><option>1920×1080</option><option>800×600</option></select><br>
+    <textarea id="ta12" rows="1" cols="10"></textarea>
+    <label><input type="checkbox" id="cb12"> 체크</label>
+    <label><input type="radio" name="r12" value="a"> 가</label><label><input type="radio" name="r12" value="b"> 나</label>
+    <a href="#c12" id="a12">안 링크</a>
+    <pre class="log"></pre></section>
+
+  <section id="c13"><h3>13 끌어다 놓기 (HTML)</h3>
+    <span class="chip" draggable="true" id="drag13">끌 것</span>
+    <span class="chip" draggable="true" id="drag13b">막힌 것</span>
+    <div class="area small" id="drop13">놓는 자리</div>
+    <pre class="log"></pre></section>
+
+  <section id="c14"><h3>14 터치 직접</h3>
+    <div class="area small" id="touch14">touchstart 막음</div>
+    <pre class="log"></pre></section>
+
+  <section id="c15"><h3>15 작은 글씨</h3>
+    <div class="tiny">8px: 공격력 12 · 방어력 7 · 특성 맹화(HP 1/3 이하에서 불꽃 기술 1.5배)<br>
+    <button class="tinyb" id="b15">작은 단추</button> <b id="n15">0</b></div>
+    <pre class="log"></pre></section>
+
+  <section id="c16"><h3>16 사용자 동작</h3>
+    <button id="snd16">소리</button><button id="clip16">복사</button><button id="file16">파일</button>
+    <a href="https://example.com/" id="ext16">바깥 링크</a>
+    <input type="file" id="fi16" style="display:none">
+    <pre class="log"></pre></section>
+</main>
+<script src="lab.js"></script>
+</body>
+</html>

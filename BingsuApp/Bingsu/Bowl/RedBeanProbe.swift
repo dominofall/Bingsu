@@ -24,6 +24,8 @@ enum RedBeanProbe {
         var keyListeners: Int
         var pointerListeners: Int
         var gamepad: Bool
+        /// 게임이 듣는 키 (`info.keys` 와 같음, 로그용)
+        var keys: [String] { info.keys ?? [] }
     }
 
     /// 옛 Electron 모양 (레조넌스): 풀린 asar 의 `dist/index.html` + `assets/`
@@ -104,7 +106,8 @@ enum RedBeanProbe {
         if title.isEmpty { title = folder.lastPathComponent }
 
         let info = ElectronInfo(main: main, entry: entry, inputStyle: pointer ? .pointer : .pad,
-                                nodeIntegration: prefs.nodeIntegration, preload: preload, nativeAddons: addons)
+                                nodeIntegration: prefs.nodeIntegration, preload: preload, nativeAddons: addons,
+                                keys: StrawKeys.top(counts.keyNames))
         return .success(Result(info: info, title: String(title.prefix(200)), packageName: (name?.isEmpty ?? true) ? nil : name,
                                version: (pkg["version"] as? String).flatMap { $0.isEmpty ? nil : $0 },
                                keyListeners: counts.keys, pointerListeners: counts.pointer, gamepad: counts.gamepad))
@@ -172,7 +175,11 @@ enum RedBeanProbe {
         return (node, preload)
     }
 
-    struct Counts: Equatable { var keys = 0, pointer = 0, gamepad = false }
+    struct Counts: Equatable {
+        var keys = 0, pointer = 0, gamepad = false
+        /// 게임이 비교하는 키 이름(code)별 나온 수 (터치 조작 §10)
+        var keyNames: [String: Int] = [:]
+    }
 
     /// 화면 쪽 코드의 이벤트 듣기 수. `node_modules`·숨김·메인 스크립트는 빼고, 큰 파일(4MB 넘음)은 건너뛴다
     static func listenerCounts(_ folder: URL, skip main: String) -> Counts {
@@ -183,8 +190,10 @@ enum RedBeanProbe {
             let ext = (rel as NSString).pathExtension.lowercased()
             guard ["js", "html", "htm", "cjs", "mjs"].contains(ext), let s = text(folder, rel, limit: 4 * 1024 * 1024) else { continue }
             let r = NSRange(location: 0, length: (s as NSString).length)
-            c.keys += keyRe.numberOfMatches(in: s, range: r)
+            let k = keyRe.numberOfMatches(in: s, range: r)
+            c.keys += k
             c.pointer += ptrRe.numberOfMatches(in: s, range: r)
+            StrawKeys.count(in: s, listensKeys: k > 0 || s.contains("'keydown'") || s.contains("\"keydown\""), into: &c.keyNames)
             if !c.gamepad, s.contains("getGamepads") || s.contains("gamepadconnected") { c.gamepad = true }
         }
         return c
@@ -260,17 +269,21 @@ struct ElectronInfo: Hashable, Sendable {
     var preload: String?
     /// 게임 안의 네이티브 애드온(.node) 이름. 실행 때 require 하면 compat 기록
     var nativeAddons: [String] = []
+    /// 게임 코드가 듣는 키(`KeyboardEvent.code`, 많이 나온 순 12개까지). nil = 이 판별 전에 가져온 게임 (터치 조작 §10)
+    var keys: [String]?
 
     var manifest: [String: Any] {
         var m: [String: Any] = ["main": main, "entry": entry, "inputStyle": inputStyle.rawValue, "nodeIntegration": nodeIntegration]
         if let preload { m["preload"] = preload }
         if !nativeAddons.isEmpty { m["nativeAddons"] = nativeAddons }
+        if let keys { m["keys"] = keys }
         return m
     }
 
-    init(main: String, entry: String, inputStyle: InputStyle, nodeIntegration: Bool = false, preload: String? = nil, nativeAddons: [String] = []) {
+    init(main: String, entry: String, inputStyle: InputStyle, nodeIntegration: Bool = false, preload: String? = nil, nativeAddons: [String] = [],
+         keys: [String]? = nil) {
         self.main = main; self.entry = entry; self.inputStyle = inputStyle
-        self.nodeIntegration = nodeIntegration; self.preload = preload; self.nativeAddons = nativeAddons
+        self.nodeIntegration = nodeIntegration; self.preload = preload; self.nativeAddons = nativeAddons; self.keys = keys
     }
 
     /// bingsu.json 의 `electron`. 경로가 게임 폴더 밖을 가리키면 버린다
@@ -280,6 +293,7 @@ struct ElectronInfo: Hashable, Sendable {
         let preload = (m["preload"] as? String).flatMap(RedBeanProbe.cleanRelative)
         self.init(main: main, entry: entry, inputStyle: (m["inputStyle"] as? String).flatMap(InputStyle.init) ?? .pad,
                   nodeIntegration: m["nodeIntegration"] as? Bool ?? false, preload: preload,
-                  nativeAddons: (m["nativeAddons"] as? [String] ?? []).prefix(20).map { String($0.prefix(200)) })
+                  nativeAddons: (m["nativeAddons"] as? [String] ?? []).prefix(20).map { String($0.prefix(200)) },
+                  keys: StrawKeys.sanitize(m["keys"] as? [Any]))
     }
 }

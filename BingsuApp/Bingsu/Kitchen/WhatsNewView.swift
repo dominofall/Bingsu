@@ -48,6 +48,11 @@ enum WhatsNew {
 
     /// 새 빌드는 맨 위에. 빌드마다 세 줄 이하
     static let notes: [Note] = [
+        // 38 글의 두 줄은 사용자 문장 (2026-11-11). 외부 테스터는 36 → 38 이라 아래 37 글도 함께 뜬다
+        Note(build: 38, title: "터치 조작과 게임 정보", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "hand.tap", text: "터치 조작 게임 기능 개선"),
+            Item(symbol: "info.circle", text: "게임 정보 기능 추가"),
+        ]),
         Note(build: 37, title: "Electron 호환 1차", message: "불편한 점은 Q&A로", items: [
             Item(symbol: "shippingbox", text: "Electron 호환 1차 작업을 진행했습니다"),
             Item(symbol: "plus.circle", text: "더 많은 게임 추가가 가능합니다"),

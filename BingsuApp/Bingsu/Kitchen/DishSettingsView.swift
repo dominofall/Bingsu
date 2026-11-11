@@ -97,6 +97,27 @@ struct DishSettingsView: View {
                     Text("가상 패드")
                 }
 
+                // 터치 조작 (docs/engines/IMPLEMENTATION-touch.md §8): 새 모양 Electron 게임만
+                if dish.isRedBean, let found = dish.electron?.inputStyle {
+                    Section {
+                        Picker("조작 방식", selection: Binding(get: { prefs.inputStyle.flatMap(ElectronInfo.InputStyle.init(rawValue:)) },
+                                                            set: { v in store.update(dish.id) { $0.inputStyle = v?.rawValue } })) {
+                            Text("자동 (\(Self.styleName(found)))").tag(ElectronInfo.InputStyle?.none)
+                            Text("터치").tag(ElectronInfo.InputStyle?.some(.pointer))
+                            Text("가상 패드").tag(ElectronInfo.InputStyle?.some(.pad))
+                        }
+                        Toggle(isOn: Binding(get: { prefs.keyStrip ?? (prefs.effectiveInputStyle(dish) == .pointer) },
+                                             set: { on in store.update(dish.id) { $0.keyStrip = on } })) {
+                            Text("키보드 키 보기")
+                            Text("Esc·Enter 같은 키를 화면 옆에 띄워요")
+                        }
+                    } header: {
+                        Text("조작")
+                    } footer: {
+                        Text("길게 누르면 설명이 보여요. 조작 방식은 게임을 다시 켜면 적용돼요.")
+                    }
+                }
+
                 Section {
                     Picker("무음 모드에서도 소리 재생", selection: silentChoice) {
                         Text("기본 설정 따르기 (\(globalPlayInSilent ? "켬" : "끔"))").tag(SilentChoice.global)
@@ -232,6 +253,9 @@ struct DishSettingsView: View {
                               onClose: { showEditor = false })
         }
     }
+
+    /// 조작 방식 이름 (화면 문구)
+    static func styleName(_ s: ElectronInfo.InputStyle) -> String { s == .pointer ? "터치" : "가상 패드" }
 
     /// 자동일 때 고르는 Ruby (RubyProfile)
     private var autoRuby: String {

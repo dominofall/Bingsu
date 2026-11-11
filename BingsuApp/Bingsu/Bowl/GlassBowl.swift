@@ -23,6 +23,8 @@ struct GlassBowl: UIViewRepresentable {
     var onQuit: () -> Void = {}
     /// 팥빙수 게임이 정한 창 크기(레이아웃 크기, CSS 픽셀). 컨테이너가 웹뷰를 이 크기로 만들고 줄여 그린다
     var onPageSize: (CGSize) -> Void = { _ in }
+    /// 팥빙수 게임의 터치 조작(빨대): 화면 pt ÷ CSS px. title 말풍선 글자를 화면에서 읽을 크기로 맞추는 데 쓴다 (명세 §4)
+    var strawScale: CGFloat? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(dish: dish, thermometer: thermometer, freezer: freezer) }
 
@@ -89,6 +91,11 @@ struct GlassBowl: UIViewRepresentable {
             ucc.addUserScript(WKUserScript(source: BowlScripts.mediaShim(volume: BingsuApp.gameVolume), injectionTime: .atDocumentStart, forMainFrameOnly: true))
             ucc.add(context.coordinator, name: "redbean")
             context.coordinator.onPageSize = onPageSize
+            // 터치 조작: 손가락 → PC 마우스, :hover, title 말풍선 (BowlScripts.strawShim, 명세 IMPLEMENTATION-touch.md)
+            ucc.addUserScript(WKUserScript(source: BowlScripts.strawShim(debug: DevEnv["BINGSU_TAPDEBUG"] == "1"),
+                                           injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            ucc.add(context.coordinator, name: "straw")
+            NSLog("[Bowl] straw on")
         }
         if let mvmz {
             // NW.js 흉내: 엔진이 PC 처럼 save/ 에 파일로 저장하게 (BowlScripts.nwShim)
@@ -191,6 +198,10 @@ struct GlassBowl: UIViewRepresentable {
         context.coordinator.onRestart = onRestart
         context.coordinator.onQuit = onQuit
         if dish.isRedBean { context.coordinator.onPageSize = onPageSize }
+        if dish.isRedBean, let k = strawScale, k > 0, abs(k - context.coordinator.strawScale) > 0.0005 {
+            context.coordinator.strawScale = k
+            context.coordinator.pushStrawScale(uiView)
+        }
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -224,6 +235,9 @@ struct GlassBowl: UIViewRepresentable {
         var onRestart: ((PerfRestart.Kind) -> Void)?
         var onQuit: (() -> Void)?
         var onPageSize: ((CGSize) -> Void)?
+        /// 스크립트에 마지막으로 알린 배율 (바뀐 때만 다시 알린다)
+        var strawScale: CGFloat = 0
+        private let holdHaptic = UIImpactFeedbackGenerator(style: .light)
         private var askingOpen = false
         private var declinedOpens = 0
         var paused = false
@@ -322,7 +336,7 @@ struct GlassBowl: UIViewRepresentable {
         }
 
         /// 빙수 주입 스크립트(BowlScripts)가 보내는 사건 이름. 릴리스 로그에는 이것만 적는다
-        static let bowlEvents: Set<String> = ["audio", "compat", "dpr", "error", "fps", "key", "mv", "ogg", "pad", "prkey", "ready", "redbean", "sfxdbg", "stall"]
+        static let bowlEvents: Set<String> = ["audio", "compat", "dpr", "error", "fps", "key", "mv", "ogg", "pad", "prkey", "ready", "redbean", "sfxdbg", "stall", "straw"]
 
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             // 게임 본 화면에서 온 것만 받는다 (광고·임베드 같은 다른 프레임은 무시)
@@ -433,6 +447,12 @@ struct GlassBowl: UIViewRepresentable {
                     onPageSize?(CGSize(width: w.rounded(), height: h.rounded()))
                 default: break
                 }
+            case "straw":
+                // 빨대 스크립트(신뢰하지 않음)의 알림: 가리키기가 된 순간 약한 진동 한 번 (패드 진동 설정을 따른다)
+                guard dish.isRedBean, let d = message.body as? [String: Any], (d["op"] as? String) == "hold" else { return }
+                Task { @MainActor in
+                    if DishPrefsStore.shared.effectivePad(for: self.dish.id).haptics { self.holdHaptic.impactOccurred(intensity: 0.5) }
+                }
             #if DEBUG
             case "diag":
                 if let s = message.body as? String { diag?.write(String(s.prefix(600))) }
@@ -536,11 +556,18 @@ struct GlassBowl: UIViewRepresentable {
             webView.reload()
         }
 
+        @MainActor func pushStrawScale(_ webView: WKWebView) {
+            guard strawScale > 0 else { return }
+            webView.evaluateJavaScript(String(format: "window.__bingsuStraw&&__bingsuStraw.setScale(%.4f)", strawScale), completionHandler: nil)
+        }
+
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             #if DEBUG
             diag?.write("page loaded")
             #endif
             crashReloadPending = false
+            // 페이지를 새로 읽으면 스크립트가 처음부터라 배율을 다시 알린다
+            if dish.isRedBean { MainActor.assumeIsolated { pushStrawScale(webView) } }
             guard repauseOnFinish else { return }
             repauseOnFinish = false
             if paused { webView.evaluateJavaScript("window.__bingsu && __bingsu.pause()", completionHandler: nil) }

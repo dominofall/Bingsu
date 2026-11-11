@@ -25,6 +25,8 @@ struct MenuBoardView: View {
     @State private var whatsNew: [WhatsNew.Note] = []
     @State private var showWhatsNew = false
     @State private var editing: Dish?
+    /// 길게 누르기 › 게임 정보 시트
+    @State private var info: Dish?
     /// 길게 눌러 "게임 삭제"를 고른 게임. 알림으로 한 번 더 묻는다
     @State private var deleting: Dish?
     /// 실제 컨트롤러로 게임칩 고르기
@@ -268,6 +270,7 @@ struct MenuBoardView: View {
             if phase == .active { Task { await Igloo.shared.syncAll(except: Set([running?.dataPathApp].compactMap { $0 })) } }
         }
         .sheet(item: $editing) { dish in DishSettingsView(dish: dish) }
+        .sheet(item: $info) { dish in ReceiptView(dish: dish) }
         .alert("‘\(deleting?.title ?? "")’ 게임을 삭제하시겠습니까?",
                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { dish in
             Button("삭제", role: .destructive) { delete(dish) }
@@ -304,6 +307,8 @@ struct MenuBoardView: View {
             if running == nil, let id = DevEnv["BINGSU_OPEN"], let d = dishes.first(where: { $0.id == id }) { serve(d) }
             // 디버그: BINGSU_EDIT=<게임 id> 면 그 게임 설정 시트를 연다 (시뮬레이터 확인용)
             if editing == nil, let id = DevEnv["BINGSU_EDIT"], let d = dishes.first(where: { $0.id == id }) { editing = d }
+            // 디버그: BINGSU_INFO=<게임 id> 면 그 게임 정보 시트를 연다 (시뮬레이터 확인용)
+            if info == nil, let id = DevEnv["BINGSU_INFO"], let d = dishes.first(where: { $0.id == id }) { info = d }
         }
         .onChange(of: menu.pendingImport, initial: true) { _, url in
             guard let url else { return }
@@ -416,6 +421,10 @@ struct MenuBoardView: View {
     @ViewBuilder
     private func contextMenu(for dish: Dish) -> some View {
         Button { editing = dish } label: { Label("이 게임 설정", systemImage: "slider.horizontal.3") }
+        if !dish.isRemote && !MenuBoardStore.isBuiltIn(dish) {
+            // 가져온 게임만: 어느 파일(패치)에서 왔는지
+            Button { info = dish } label: { Label("게임 정보", systemImage: "info.circle") }
+        }
         if !dish.isRemote && !MenuBoardStore.isBuiltIn(dish) {
             Button { updateTarget = dish.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } } label: { Label("새 버전으로 업데이트", systemImage: "arrow.down.circle") }
         }

@@ -12,6 +12,10 @@ struct BowlContainerView: View {
 
     @StateObject private var thermometer = Thermometer()
     @StateObject private var spoon = SpoonController()
+    /// 터치 조작의 키보드 키 줄 (Spoon/KeyStrip.swift)
+    @StateObject private var keyStrip = KeyStripController()
+    /// 블루투스 등 키보드가 연결돼 있으면 키 줄을 숨긴다
+    @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
     /// 성능 기록: 화면 표시와 상관없이 항상 남긴다 (`Documents/Perf/<id>.json`)
     @StateObject private var recorder: PerfRecorder
     /// 이번 실행의 화질 (웹뷰를 만들 때 정해지므로 실행 중에는 바뀌지 않는다)
@@ -94,8 +98,8 @@ struct BowlContainerView: View {
         _recorder = StateObject(wrappedValue: rec)
         // 빙수 매핑이 있는 게임은 가상 패드를 기본 표시, 자체 터치 UI 만 있는 웹 게임은 숨김
         _showSpoon = State(initialValue: !dish.isRemote || CutlerySet.forDish(dish).transport == .gamepad || !CutlerySet.forDish(dish).keys.isEmpty)
-        // 탭으로 하는 팥빙수 게임은 패드를 처음부터 숨긴다 (일시정지 화면에서 켤 수 있음)
-        if dish.isRedBean, dish.electron?.inputStyle == .pointer { _showSpoon = State(initialValue: false) }
+        // 탭으로 하는 팥빙수 게임은 패드를 처음부터 숨긴다 (일시정지 화면에서 켤 수 있음). 이 게임 설정의 "조작 방식"이 판별보다 먼저
+        if prefs.effectiveInputStyle(dish) == .pointer { _showSpoon = State(initialValue: false) }
     }
 
     var body: some View {
@@ -108,9 +112,7 @@ struct BowlContainerView: View {
                 // 페이지에 보여 줄 크기. 보통은 자리 크기 그대로, 기본 게임 세로는 가로 화면의 게임 크기로 그린 뒤 줄인다
                 let page = pageSize(geo.size, rect: r)
                 let k = page.width > 0 ? r.width / page.width : 1
-                GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
-                          paused: !visible, onRestart: restarted, onQuit: { flush(); onClose() },
-                          onPageSize: { size in if redBeanPage != size { redBeanPage = size } })
+                glassBowl(scale: k)
                     .frame(width: page.width, height: page.height - refitNudge)
                     .clipShape(RoundedRectangle(cornerRadius: Self.corner / k, style: .continuous))
                     .scaleEffect(k)
@@ -124,6 +126,14 @@ struct BowlContainerView: View {
             if !showEditor && (watchConnected || tableConnected) && !controllerConnected {
                 if !padShown { PadRevealButton(mode: .reveal) { showSpoon = true; padForced = true } }
                 else if padForced { PadRevealButton(mode: .hide) { padForced = false; spoon.releaseAll() } }
+            }
+
+            if keyStripShown && !showMenu && !showEditor {
+                GeometryReader { geo in
+                    let r = gameRect(geo)
+                    KeyStripView(controller: keyStrip, keys: stripKeys, place: keyStripPlace(geo.size, game: r), opacity: padPrefs.opacity)
+                }
+                .ignoresSafeArea()
             }
 
             if showHUD {
@@ -170,10 +180,10 @@ struct BowlContainerView: View {
         .sheet(item: $authRequest) { req in
             AuthPopupView(dish: dish, url: req.url) { webView?.load(URLRequest(url: dish.location)) }
         }
-        .onChange(of: padPrefs.haptics) { _, on in spoon.hapticsEnabled = on }
+        .onChange(of: padPrefs.haptics) { _, on in spoon.hapticsEnabled = on; keyStrip.haptics = on }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { nudgeWebViewSize() }
-            if phase != .active { flush(); spoon.releaseAll() }
+            if phase != .active { flush(); spoon.releaseAll(); keyStrip.releaseAll() }
             // 앱이 안 보이면 게임 소리와 무음 <audio> 를 멈춘다. 무음 재생이 돌고 있으면 WebKit 이 백그라운드에서도
             // 게임 소리를 계속 내기 때문 (2026-10-31 실기기). 돌아오면 게임이 보이고 일시정지 화면이 아닐 때만 다시 켠다
             if phase == .background || (phase == .active && visible && !showMenu && !showEditor) {
@@ -183,7 +193,7 @@ struct BowlContainerView: View {
             recorder.setActive(phase == .active && visible)
             showReturnToast()
         }
-        .onChange(of: webView) { _, wv in spoon.webView = wv }
+        .onChange(of: webView) { _, wv in spoon.webView = wv; keyStrip.webView = wv }
         .onChange(of: visible) { _, v in
             if !v && showMenu { closePause(resume: false) }
             if !v { showEditor = false }
@@ -199,6 +209,13 @@ struct BowlContainerView: View {
             // 게임 중에는 화면이 저절로 꺼지지 않게. 워치·실제 컨트롤러·iPhone 컨트롤러로 하면 iPhone 을 안 건드려 "입력 없음"으로 꺼졌다 (2026-11-10 피드백)
             UIApplication.shared.isIdleTimerDisabled = true
             spoon.cutlery = CutlerySet.forDish(dish); spoon.webView = webView; spoon.hapticsEnabled = padPrefs.haptics
+            keyStrip.webView = webView; keyStrip.haptics = padPrefs.haptics
+            if dish.isRedBean { NSLog("[Bowl] input style=\(inputStyle?.rawValue ?? "-") keyStrip=\(keyStripShown) keys=\(stripKeys.joined(separator: ",")) keyboard=\(hardwareKeyboard)") }
+            // iPhone 에서 터치 방식 게임을 세로로 켰으면 한 번 알린다 (터치 조작 §8)
+            if inputStyle == .pointer, UIDevice.current.userInterfaceIdiom == .phone,
+               UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first?.effectiveGeometry.interfaceOrientation.isPortrait == true {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { showToast("가로로 돌리면 크게 보여요") }
+            }
             if longSpoon == nil { longSpoon = LongSpoon(spoon: spoon) }   // 실제 컨트롤러 → 같은 경로로 입력
             longSpoon?.enabled = visible
             longSpoon?.onHomeButton = { if visible && !showMenu && !showEditor { openPause() } }
@@ -247,6 +264,8 @@ struct BowlContainerView: View {
             let kind = c?.extendedGamepad != nil ? "게임패드" : "확장 프로필 없음"
             showToast("컨트롤러 연결됨 · \(c?.vendorName ?? "?") (\(kind))")
         }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in hardwareKeyboard = true; keyStrip.releaseAll() }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in hardwareKeyboard = GCKeyboard.coalesced != nil }
         .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in
             controllerConnected = Self.realGamepadConnected()
             showToast("컨트롤러 연결 해제")
@@ -275,6 +294,26 @@ struct BowlContainerView: View {
     private var tableConnected: Bool { tableEnabled && table.connected }
     private var anyController: Bool { controllerConnected || watchConnected || tableConnected }
     private var padShown: Bool { showSpoon && (!anyController || padForced) }
+
+    // MARK: 터치 조작 (docs/engines/IMPLEMENTATION-touch.md §7, §8)
+
+    /// 새 모양 Electron 게임의 조작 방식 (이 게임 설정 → 판별). 그 밖의 게임은 nil
+    private var inputStyle: ElectronInfo.InputStyle? { prefsStore.prefs(for: dish.id).effectiveInputStyle(dish) }
+    /// 키 줄 켬 (이 게임 설정 › 키보드 키, 없으면 터치 방식일 때 켬)
+    private var keyStripOn: Bool { dish.isRedBean && (prefsStore.prefs(for: dish.id).keyStrip ?? (inputStyle == .pointer)) }
+    /// 지금 키 줄을 보이나: 가상 패드가 보이거나 키보드가 연결돼 있으면 숨긴다 (디버그: BINGSU_KEYSTRIP=1 이면 키보드가 있어도 보임, 시뮬레이터용)
+    private var keyStripShown: Bool {
+        keyStripOn && !padShown && (!hardwareKeyboard || DevEnv["BINGSU_KEYSTRIP"] == "1")
+    }
+    private var stripKeys: [String] { StrawKeys.pick(dish.electron?.keys) }
+
+    private func keyStripPlace(_ size: CGSize, game: CGRect) -> KeyStripPlace.Output {
+        let ins = Self.windowInsets(), inset = Self.cornerInset()
+        // 피할 자리: 눈송이(구석 48pt)
+        let orbLeft = menuButtonPlace == .topLeft
+        let orb = CGRect(x: orbLeft ? inset : size.width - inset - 48, y: inset, width: 48, height: 48)
+        return KeyStripPlace.place(count: stripKeys.count, screen: size, safe: ins, game: game, avoid: [orb], island: KeyStripPlace.islandSide())
+    }
 
     private var padDebugText: String {
         let names = spoon.pressed.sorted { $0.rawValue < $1.rawValue }.map { $0.glyph }.joined(separator: " ")
@@ -320,6 +359,7 @@ struct BowlContainerView: View {
             padShown: Binding(get: { padShown }, set: { on in
                 if on { showSpoon = true; padForced = anyController } else { showSpoon = false; spoon.releaseAll() }
             }),
+            keyStrip: dish.isRedBean ? Binding(get: { keyStripOn }, set: { on in prefsStore.update(dish.id) { $0.keyStrip = on } }) : nil,
             controllerNames: LongSpoon.connectedNames(),
             fpsLimit: Binding(get: { prefsStore.prefs(for: dish.id).fpsLimit }, set: setFpsLimit),
             quality: Binding(get: { prefsStore.prefs(for: dish.id).quality }, set: { q in prefsStore.update(dish.id) { $0.quality = q } }),
@@ -439,6 +479,7 @@ struct BowlContainerView: View {
             case .kind(let k)?: p.kind = k; setPadHere(p)
             case .editLayout?: editLayout()
             case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = anyController }
+            case .keyStrip?: let on = keyStripOn; prefsStore.update(dish.id) { $0.keyStrip = !on }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
             case .floating?: p.floatingStick.toggle(); setPadHere(p)
             case .leftHand?: p.leftHanded.toggle(); setPadHere(p)
@@ -459,7 +500,7 @@ struct BowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
+        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad] + (dish.isRedBean ? [.keyStrip] : []) + [.labels]
         if p.providesStick() { out.append(.floating) }
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.mixAudio, .rumble]
@@ -500,6 +541,14 @@ struct BowlContainerView: View {
                 }
             }
         }
+    }
+
+    /// - Parameter scale: 화면 pt ÷ CSS px (팥빙수 게임의 title 말풍선 크기)
+    private func glassBowl(scale: CGFloat) -> GlassBowl {
+        GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
+                  paused: !visible, onRestart: restarted, onQuit: { flush(); onClose() },
+                  onPageSize: { size in if redBeanPage != size { redBeanPage = size } },
+                  strawScale: dish.isRedBean ? scale : nil)
     }
 
     /// 게임 웹뷰의 자리 (geo 는 안전 영역을 무시한 전체 화면 좌표).

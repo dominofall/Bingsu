@@ -299,7 +299,7 @@ final class Delivery: ObservableObject {
                 electron = p
                 let e = p.info
                 NSLog("[Delivery] recipe=electron main=\(e.main) entry=\(e.entry) input=\(e.inputStyle.rawValue) saves=\(desc.dataPathApp)"
-                      + " keys=\(p.keyListeners) pointer=\(p.pointerListeners) gamepad=\(p.gamepad) node=\(e.nodeIntegration) preload=\(e.preload ?? "-")"
+                      + " keys=\(p.keyListeners) [\(p.keys.joined(separator: ","))] pointer=\(p.pointerListeners) gamepad=\(p.gamepad) node=\(e.nodeIntegration) preload=\(e.preload ?? "-")"
                       + (e.nativeAddons.isEmpty ? "" : " addons=\(e.nativeAddons.joined(separator: ","))"))
             }
         }
