@@ -68,6 +68,8 @@ final class Delivery: ObservableObject {
         var rgss: RGSSProbe.Result? = nil
         /// RPG Maker MV·MZ 게임(.rpgMakerMV)이면 MVMZProbe 결과
         var mvmz: MVMZProbe.Result? = nil
+        /// 새 모양 Electron 게임(.electron)이면 RedBeanProbe 결과 (옛 모양 레조넌스는 nil)
+        var electron: RedBeanProbe.Result? = nil
     }
 
     /// 1~4단계 결과: 등록할 게임, 또는 바로 넣은 패드 스킨
@@ -244,6 +246,13 @@ final class Delivery: ObservableObject {
             }
             try fm.removeItem(at: root)
             root = unpacked
+        } else if fm.fileExists(atPath: root.appendingPathComponent("resources/app/package.json").path) {
+            // asar 로 묶지 않고 resources/app/ 폴더로 낸 Electron 앱: 그 폴더가 게임 루트
+            let unpacked = work.appendingPathComponent("unpacked", isDirectory: true)
+            try fm.moveItem(at: root.appendingPathComponent("resources/app", isDirectory: true), to: unpacked)
+            try fm.removeItem(at: root)
+            root = unpacked
+            NSLog("[Delivery] resources/app 폴더를 게임 루트로 씀")
         }
 
         // 3-1) package.nw 풀기 (NW.js 게임을 zip 하나로 묶은 것. MV·MZ 게임이 그 안에 있다)
@@ -280,13 +289,27 @@ final class Delivery: ObservableObject {
         // RGSS 판·RTP 는 exe·dll 을 지우기 전에 본다 (ini 의 Library= 는 지워진 dll 이름이라 상관없지만 순서를 지킨다)
         let rgss = recipe == .mkxp ? RGSSProbe.probe(folder: root) : nil
         let mvmz = recipe == .rpgMakerMV ? MVMZProbe.probe(folder: root) : nil
+        // 새 모양 Electron: 메인 스크립트·시작 화면·조작 방식 (옛 모양·package.json 없는 index.html 은 nil = 옛 경로)
+        var electron: RedBeanProbe.Result?
+        if recipe == .electron, let r = RedBeanProbe.probe(folder: root) {
+            switch r {
+            case .failure(.remoteURL): throw DeliveryError.remoteApp
+            case .failure(.noEntry): throw DeliveryError.noEntry
+            case .success(let p):
+                electron = p
+                let e = p.info
+                NSLog("[Delivery] recipe=electron main=\(e.main) entry=\(e.entry) input=\(e.inputStyle.rawValue) saves=\(desc.dataPathApp)"
+                      + " keys=\(p.keyListeners) pointer=\(p.pointerListeners) gamepad=\(p.gamepad) node=\(e.nodeIntegration) preload=\(e.preload ?? "-")"
+                      + (e.nativeAddons.isEmpty ? "" : " addons=\(e.nativeAddons.joined(separator: ","))"))
+            }
+        }
         if let m = mvmz {
             NSLog("[Delivery] recipe=rpgMakerMV engine=\(m.engine.rawValue) root=\(m.root.isEmpty ? "." : m.root) dataPathApp=\(m.dataPathApp) encrypted=\(m.encryptedImages ? "img" : "-")/\(m.encryptedAudio ? "audio" : "-")")
         }
         if removeWindowsBinaries { Self.pruneWindowsBinaries(in: root, recipe: recipe) }
         ok = true
         return .game(Staged(work: work, root: root, recipe: recipe, title: desc.title, dataPathApp: desc.dataPathApp,
-                            version: version, sourceName: source.lastPathComponent, rgss: rgss, mvmz: mvmz))
+                            version: version, sourceName: source.lastPathComponent, rgss: rgss, mvmz: mvmz, electron: electron))
     }
 
     /// 5단계: 등록. 업데이트는 기존 폴더를 옆으로 옮긴 뒤 새 폴더를 그 자리로 옮긴다 (같은 볼륨이라 이름 바꾸기 = 원자적).
@@ -316,6 +339,7 @@ final class Delivery: ObservableObject {
             manifest["needsRTP"] = r.needsRTP
         }
         if let m = s.mvmz { manifest["mvmz"] = m.info.manifest }
+        if let e = s.electron { manifest["electron"] = e.info.manifest }
         try JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])
             .write(to: s.root.appendingPathComponent(manifestName))
 
@@ -347,7 +371,7 @@ final class Delivery: ObservableObject {
 
         let dish = Dish(id: id, title: title, recipe: s.recipe, location: final, dataPathApp: s.dataPathApp,
                         rgss: s.rgss.map { $0.version ?? .xp }, rtp: s.rgss?.rtp, needsRTP: s.rgss?.needsRTP ?? false,
-                        mvmz: s.mvmz?.info)
+                        mvmz: s.mvmz?.info, electron: s.electron?.info)
         var result = Result(dish: dish, version: s.version, bytes: folderSize(final), updatedExisting: { if case .update = mode { return true }; return false }())
         result.backedUp = backedUp
         result.keptOld = keptOld
@@ -527,6 +551,10 @@ final class Delivery: ObservableObject {
         case cannotRead(String)
         case packedInExe
         case linkInFolder
+        /// 새 모양 Electron 앱인데 시작 화면(html)을 찾지 못함
+        case noEntry
+        /// 온라인 주소를 여는 Electron 앱
+        case remoteApp
         var errorDescription: String? {
             switch self {
             case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
@@ -537,6 +565,8 @@ final class Delivery: ObservableObject {
             case .cannotReplace: return "기존 게임 폴더를 바꿀 수 없어요."
             case .packedInExe: return "이 게임은 파일이 실행 파일 안에 묶여 있어 열 수 없어요"
             case .linkInFolder: return "폴더 안에 심볼릭 링크가 있어 가져오지 않았어요"
+            case .noEntry: return "지원하지 않는 게임이에요 · 시작 화면을 찾지 못했어요"
+            case .remoteApp: return "온라인 주소를 여는 앱이에요 · 주소로 웹 게임 추가를 써 보세요"
             }
         }
     }
@@ -568,11 +598,17 @@ final class Delivery: ObservableObject {
         let electronJunk: Set<String> = ["icudtl.dat", "snapshot_blob.bin", "v8_context_snapshot.bin", "resources.pak",
                                          "chrome_100_percent.pak", "chrome_200_percent.pak", "vk_swiftshader_icd.json", "LICENSES.chromium.html"]
         guard let items = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return }
+        let newShape = recipe == .electron && RedBeanProbe.looksLikeApp(folder)
         for f in items {
             let name = f.lastPathComponent
             let ext = f.pathExtension.lowercased()
             if ext == "exe" || ext == "dll" { try? fm.removeItem(at: f); continue }
-            if recipe == .electron, (electronJunk.contains(name) || name == "locales" || (exts.contains(ext) && name != "soundfont.sf2")) {
+            // 옛 모양(레조넌스): 맨 위의 pak·bin·dat 와 locales 까지. 새 모양은 게임 루트가 앱 폴더(asar 안)라
+            // 이름이 정해진 런타임 파일과 pak 만 든 locales 만 지운다 (게임 데이터 .dat·.bin 을 지우지 않게)
+            if newShape {
+                let paksOnly = name == "locales" && ((try? fm.contentsOfDirectory(atPath: f.path)) ?? ["?"]).allSatisfy { $0.lowercased().hasSuffix(".pak") }
+                if electronJunk.contains(name) || paksOnly { try? fm.removeItem(at: f) }
+            } else if recipe == .electron, (electronJunk.contains(name) || name == "locales" || (exts.contains(ext) && name != "soundfont.sf2")) {
                 try? fm.removeItem(at: f)
             }
             // MV·MZ: 맨 위의 NW.js 런타임(nw.pak·icudtl.dat·locales 등). 게임 데이터(www/·img/·data/…)는 이름이 달라 건드리지 않는다

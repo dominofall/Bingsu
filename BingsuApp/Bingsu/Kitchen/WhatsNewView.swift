@@ -48,6 +48,10 @@ enum WhatsNew {
 
     /// 새 빌드는 맨 위에. 빌드마다 세 줄 이하
     static let notes: [Note] = [
+        Note(build: 37, title: "Electron 호환 1차", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "shippingbox", text: "Electron 호환 1차 작업을 진행했습니다"),
+            Item(symbol: "plus.circle", text: "더 많은 게임 추가가 가능합니다"),
+        ]),
         Note(build: 36, title: "워치 기능 최적화", message: "불편한 점은 Q&A로", items: [
             Item(symbol: "applewatch", text: "− 는 누르고 있는 동안 눌려요(달리기). 일시정지는 + 길게. 진동은 짧게 두 번, 측정 페이지에서 끌 수 있어요"),
             Item(symbol: "eye.slash", text: "워치 버튼이 오면 가상 패드가 숨겨지고 화면 구석 단추로 다시 꺼내요. 워치 앱을 나가면 돌아와요"),
@@ -63,8 +67,9 @@ enum WhatsNew {
         ]),
         Note(build: 33, title: "애플워치 컨트롤러 연동 기능 추가", message: "불편한 점은 Q&A로", items: [
             Item(symbol: "applewatch", text: "원반 십자키가 커지고 A·B·X·Y 가 원반을 감싸는 모양이 됐어요"),
-            Item(symbol: "arrow.up.arrow.down", text: "크라운을 올리면 ▲, 내리면 ▼. − 와 + 를 길게 누르면 일시정지"),
-            Item(symbol: "hand.tap", text: "버튼마다 진동이 달라요. 워치를 쓰는 동안 iPhone 가상 패드는 숨겨져요"),
+            // 36 에서 바뀐 부분(−·+ 길게 = 일시정지, 버튼별 진동)은 뺐다 — 33~35 를 건너뛴 사람이 36 글과 모순되게 읽지 않도록 (2026-11-10)
+            Item(symbol: "arrow.up.arrow.down", text: "크라운을 올리면 ▲, 내리면 ▼"),
+            Item(symbol: "iphone.slash", text: "워치를 쓰는 동안 iPhone 가상 패드는 숨겨져요"),
         ]),
     ]
 

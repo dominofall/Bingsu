@@ -1,0 +1,6 @@
+{
+  "name": "bingsu-fixture-preload",
+  "productName": "빙수 시험 프리로드",
+  "version": "0.4.0",
+  "main": "src/main.js"
+}

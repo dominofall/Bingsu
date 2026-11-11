@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>빙수 시험 노드</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #1d2a44; color: #fff; font: 22px/1.5 -apple-system, sans-serif; }
+  #box { padding: 24px; }
+  button { font: inherit; padding: 10px 22px; margin: 6px; border-radius: 10px; border: 0; }
+  #dot { width: 48px; height: 48px; image-rendering: pixelated; vertical-align: middle; }
+  .ok { color: #8f8; } .fail { color: #f88; }
+  #corner { position: fixed; right: 0; bottom: 0; width: 80px; height: 80px; background: #f80; }
+</style>
+</head>
+<body>
+<div id="box">
+  <h2>빙수 시험 노드 <img id="dot" alt=""></h2>
+  <div id="size"></div>
+  <div>저장 횟수: <b id="count">-</b></div>
+  <button id="plus">+1 저장</button>
+  <button id="wav">삑 (wav)</button>
+  <button id="ogg">딩 (ogg)</button>
+  <button id="quit">닫기</button>
+  <div id="log"></div>
+</div>
+<div id="corner"></div>
+<script src="lib/early.js"></script>
+<script>
+  // 화면 쪽: nodeIntegration 전역
+  const { ipcRenderer } = require('electron');
+  const util = require('./lib/util');
+  const lines = [];
+  const check = (name, ok, extra) => {
+    lines.push('<div class="' + (ok ? 'ok' : 'fail') + '">' + (ok ? 'OK ' : 'FAIL ') + name + (extra ? ' · ' + extra : '') + '</div>');
+    console.warn('[fixture] ' + (ok ? 'OK ' : 'FAIL ') + name + (extra ? ' ' + extra : ''));
+    document.getElementById('log').innerHTML = lines.join('');
+  };
+  check('require electron', typeof ipcRenderer.invoke === 'function');
+  check('early module', window.EARLY === 'early ok');
+  check('fs json', util.info().items.length === 3, util.info().name);
+  document.getElementById('dot').src = util.dataURL('dot.png');
+  check('__dirname', typeof __dirname === 'string' && __dirname.length > 0, __dirname);
+  check('process.platform', process.platform === 'win32');
+  let shown = '';
+  const show = () => { shown = innerWidth + 'x' + innerHeight; document.getElementById('size').textContent = '화면 ' + innerWidth + '×' + innerHeight; };
+  show(); addEventListener('resize', show);
+  setTimeout(() => {
+    check('layout 960x640', innerWidth === 960 && innerHeight === 640, innerWidth + 'x' + innerHeight);
+    // 마지막 resize 이벤트에서 읽은 크기도 최종 크기와 같아야 한다 (resize 때만 크기를 읽는 게임)
+    check('last resize 960x640', shown === '960x640', shown);
+  }, 1500);
+  let state = { count: 0 };
+  ipcRenderer.invoke('load').then((s) => { state = s; document.getElementById('count').textContent = s.count; check('ipc load', true, 'count=' + s.count); });
+  ipcRenderer.invoke('version').then((v) => check('app.getVersion', v === '1.2.3', v));
+  ipcRenderer.once('pong', (e, n) => check('ipc send/reply', n === 42));
+  ipcRenderer.send('ping', 41);
+  ipcRenderer.invoke('nope').then(() => check('missing handler rejects', false), (e) => check('missing handler rejects', /No handler registered/.test(e.message)));
+  document.getElementById('plus').onclick = async () => {
+    state.count += 1;
+    await ipcRenderer.invoke('save', state);
+    document.getElementById('count').textContent = state.count;
+    check('ipc save', true, 'count=' + state.count);
+  };
+  document.getElementById('wav').onclick = () => { const a = new Audio('data/beep.wav'); a.play().then(() => check('wav play', true), (e) => check('wav play', false, e.name)); };
+  document.getElementById('ogg').onclick = () => {
+    const a = new Audio('data/chime.ogg');
+    a.onerror = () => check('ogg play', false, 'error ' + (a.error && a.error.code));
+    a.onended = () => check('ogg ended', true);
+    a.play().then(() => check('ogg play', true, a.src.split('/').pop()), (e) => check('ogg play', false, e.name));
+  };
+  document.getElementById('quit').onclick = () => window.close();
+</script>
+</body>
+</html>

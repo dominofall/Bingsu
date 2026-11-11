@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>빙수 시험 프리로드</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #2b1d3a; color: #fff; font: 24px/1.5 -apple-system, sans-serif; }
+  #box { padding: 28px; }
+  button { font: inherit; padding: 10px 22px; margin: 6px; border-radius: 10px; border: 0; }
+  .ok { color: #8f8; } .fail { color: #f88; }
+</style>
+</head>
+<body>
+<div id="box">
+  <h2>빙수 시험 프리로드</h2>
+  <div>슬롯 1: <b id="slot">-</b></div>
+  <button id="save">저장</button>
+  <button id="ask">지우기 묻기</button>
+  <button id="site">사이트 열기</button>
+  <div id="log"></div>
+</div>
+<script>
+  const lines = [];
+  const check = (name, ok, extra) => {
+    lines.push('<div class="' + (ok ? 'ok' : 'fail') + '">' + (ok ? 'OK ' : 'FAIL ') + name + (extra ? ' · ' + extra : '') + '</div>');
+    console.warn('[fixture] ' + (ok ? 'OK ' : 'FAIL ') + name + (extra ? ' ' + extra : ''));
+    document.getElementById('log').innerHTML = lines.join('');
+  };
+  check('window.api', !!window.api && typeof window.api.save === 'function');
+  check('no node in page', typeof require === 'undefined' && typeof process === 'undefined');
+  check('versions via preload', !!window.api.versions.electron, window.api.versions.electron);
+  check('layout 1280x720', innerWidth === 1280 && innerHeight === 720, innerWidth + 'x' + innerHeight);
+  let n = 0;
+  window.api.load(1).then((d) => { n = d ? d.n : 0; document.getElementById('slot').textContent = d ? d.n : '없음'; check('load', true, d ? 'n=' + d.n : 'empty'); });
+  window.api.probe().then((r) => check('write guard', r.every((x) => x !== 'leaked'), r.join(',')));
+  document.getElementById('save').onclick = () => window.api.save(1, { n: ++n, at: Date.now() }).then((names) => {
+    document.getElementById('slot').textContent = n; check('save', names.includes('slot1.json'), names.join(','));
+  });
+  document.getElementById('ask').onclick = () => window.api.ask().then((r) => check('dialog', true, 'response=' + r));
+  document.getElementById('site').onclick = () => window.api.site();
+</script>
+</body>
+</html>

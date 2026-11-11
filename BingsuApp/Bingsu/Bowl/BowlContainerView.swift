@@ -40,6 +40,8 @@ struct BowlContainerView: View {
     @AppStorage(AudioDiagHUD.key) private var audioDiag = false
     /// 웹 게임은 자체 터치 UI 를 쓰므로 가상 패드를 기본으로 숨긴다 (일시정지 시트에서 켤 수 있음)
     @State private var showSpoon: Bool
+    /// 팥빙수(새 모양 Electron) 게임이 정한 창 크기 (게임이 알려 주기 전에는 Electron 기본값 1280×720)
+    @State private var redBeanPage = CGSize(width: 1280, height: 720)
     /// 컨트롤러가 연결돼 있어도 사용자가 "가상 패드 보기"를 고르면 보여준다 (BINGSU_FORCE_PAD=1 로도 켬)
     @State private var padForced = DevEnv["BINGSU_FORCE_PAD"] == "1"
     /// 일시정지 화면 (PauseBoard)
@@ -92,6 +94,8 @@ struct BowlContainerView: View {
         _recorder = StateObject(wrappedValue: rec)
         // 빙수 매핑이 있는 게임은 가상 패드를 기본 표시, 자체 터치 UI 만 있는 웹 게임은 숨김
         _showSpoon = State(initialValue: !dish.isRemote || CutlerySet.forDish(dish).transport == .gamepad || !CutlerySet.forDish(dish).keys.isEmpty)
+        // 탭으로 하는 팥빙수 게임은 패드를 처음부터 숨긴다 (일시정지 화면에서 켤 수 있음)
+        if dish.isRedBean, dish.electron?.inputStyle == .pointer { _showSpoon = State(initialValue: false) }
     }
 
     var body: some View {
@@ -105,7 +109,8 @@ struct BowlContainerView: View {
                 let page = pageSize(geo.size, rect: r)
                 let k = page.width > 0 ? r.width / page.width : 1
                 GlassBowl(dish: dish, thermometer: thermometer, freezer: freezer, quality: quality, fpsCap: baseFpsCap, webView: $webView, authRequest: $authRequest,
-                          paused: !visible, onRestart: restarted, onQuit: { flush(); onClose() })
+                          paused: !visible, onRestart: restarted, onQuit: { flush(); onClose() },
+                          onPageSize: { size in if redBeanPage != size { redBeanPage = size } })
                     .frame(width: page.width, height: page.height - refitNudge)
                     .clipShape(RoundedRectangle(cornerRadius: Self.corner / k, style: .continuous))
                     .scaleEffect(k)
@@ -505,21 +510,30 @@ struct BowlContainerView: View {
         let fixedAspect = dish.recipe == .electron || dish.knownWeb == .pokerogue
         guard fixedAspect else { return CGRect(x: 0, y: 0, width: W, height: H) }
         let ins = Self.windowInsets()
+        // 팥빙수 게임은 게임이 정한 창 비율, 그 밖은 16:9
+        let aspect = dish.isRedBean && redBeanPage.height > 0 ? redBeanPage.width / redBeanPage.height : 16 / 9
         if H > W {
             return Self.portraitRect(W: W, H: H, top: ins.top, padTop: padLayout(full: geo.size, ins: ins)?.topEdge,
-                                     orbInPad: menuButtonPlace == .pad && padShown, padShown: padShown)
+                                     orbInPad: menuButtonPlace == .pad && padShown, padShown: padShown, aspect: aspect)
         } else {
-            return Self.landscapeRect(W: W, H: H, padShown: padShown)
+            return Self.landscapeRect(W: W, H: H, padShown: padShown, aspect: aspect)
         }
     }
 
     /// 세로 화면의 16:9 게임 자리 (배치 편집기의 자리 표시도 같은 계산). `padTop` 은 패드 맨 위 요소의 윗변
-    static func portraitRect(W: CGFloat, H: CGFloat, top: CGFloat, padTop: CGFloat?, orbInPad: Bool, padShown: Bool) -> CGRect {
-        let gameW = W - margin * 2
-        let gameH = gameW * 9 / 16
+    static func portraitRect(W: CGFloat, H: CGFloat, top: CGFloat, padTop: CGFloat?, orbInPad: Bool, padShown: Bool,
+                             aspect: CGFloat = 16 / 9) -> CGRect {
+        var gameW = W - margin * 2
+        var gameH = gameW / aspect
         let padTop = padTop.map { $0 - 12 } ?? H
         // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
         let band = orbInPad ? 8 : chrome
+        // 세로로 긴 게임(팥빙수 게임이 정한 비율)은 남는 높이에 맞춰 줄이고 가운데에 둔다
+        let roomH = (padShown ? padTop : H - margin) - top - band
+        if gameH > roomH, roomH > 0 {
+            gameH = roomH; gameW = gameH * aspect
+            return CGRect(x: (W - gameW) / 2, y: top + band, width: gameW, height: gameH)
+        }
         let slack = max(0, padTop - top - band - gameH)
         // 패드가 없으면(컨트롤러 연결 등) 창의 위아래 가운데. 눈송이 줄은 가리지 않는다
         let y = padShown ? top + band + slack * 0.75 : max(top + band, (H - gameH) / 2)
@@ -528,12 +542,12 @@ struct BowlContainerView: View {
 
     /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다.
     /// 패드가 없으면(컨트롤러 연결 등) 눈송이 줄을 가리지 않는 한 창의 위아래 가운데에 둔다
-    static func landscapeRect(W: CGFloat, H: CGFloat, padShown: Bool = true) -> CGRect {
+    static func landscapeRect(W: CGFloat, H: CGFloat, padShown: Bool = true, aspect: CGFloat = 16 / 9) -> CGRect {
         let innerH = H - margin * 2
-        let fullW = min(W - margin * 2, innerH * 16 / 9)
+        let fullW = min(W - margin * 2, innerH * aspect)
         let sideBand = (W - fullW) / 2
-        let gameH = sideBand >= chrome ? fullW * 9 / 16 : min(innerH - chrome, (W - margin * 2) * 9 / 16)
-        let gameW = gameH * 16 / 9
+        let gameH = sideBand >= chrome ? fullW / aspect : min(innerH - chrome, (W - margin * 2) / aspect)
+        let gameW = gameH * aspect
         let cy = sideBand >= chrome ? H / 2 : chrome + (H - chrome) / 2
         let y = padShown || sideBand >= chrome ? cy - gameH / 2 : max(chrome, (H - gameH) / 2)
         return CGRect(x: (W - gameW) / 2, y: y, width: gameW, height: gameH)
@@ -542,6 +556,8 @@ struct BowlContainerView: View {
     /// 웹뷰가 페이지에 알릴 크기. 기본 게임(Bingsu)은 세로에서도 가로 화면과 같은 크기로 그려 똑같은 모습을 16:9 자리에 맞게 줄인다
     /// (2026-10-31 사용자 요청: 세로도 가로와 똑같이). 그 밖의 게임은 자리 크기 그대로
     private func pageSize(_ size: CGSize, rect r: CGRect) -> CGSize {
+        // 팥빙수 게임: 웹뷰를 게임이 정한 창 크기로 만들고 자리에 맞게 줄인다 (innerWidth·innerHeight 가 그 값이 되게, 명세 §6)
+        if dish.isRedBean { return redBeanPage }
         guard MenuBoardStore.isBuiltIn(dish), size.height > size.width else { return r.size }
         let land = Self.landscapeRect(W: size.height, H: size.width).size
         return land.width > r.width ? land : r.size
@@ -616,7 +632,7 @@ struct BowlContainerView: View {
     /// MV·MZ 는 게임이 저장 데이터 폴더에 파일로 바로 쓴다(동기 쓰기라 이미 디스크에 있다) → save.json 으로 묶어
     /// 백업·iCloud 가 XP 와 같은 길을 타게 한다. 게임이 켜져 있으니 파일은 건드리지 않고 묶기만 한다
     private func packSaveFiles() {
-        guard dish.recipe == .rpgMakerMV else { return }
+        guard dish.recipe == .rpgMakerMV || dish.isRedBean else { return }
         IceTray.sync(dish, allowUnpack: false)
     }
 

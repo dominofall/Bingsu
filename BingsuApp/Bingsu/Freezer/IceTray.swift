@@ -9,6 +9,7 @@ import CryptoKit
 ///
 /// 어느 쪽이 바뀌었나는 마지막으로 두 쪽을 맞춘 상태(`Library/Application Support/IceTray/<dataPathApp>.json`: save.json 의 savedAt,
 /// 파일 지문)와 비교해 정한다.
+/// 새 모양 Electron 게임(`dish.isRedBean`)은 `userData/` 아래 파일을 하위 폴더까지 묶는다(키의 이름은 `userData/<상대 경로>`).
 /// - save.json 만 바뀜(iCloud 에서 내려받음·백업 되돌리기·PC 백업 가져오기) → 파일로 풀어 쓴다
 /// - 파일만 바뀜(게임이 저장함) → save.json 으로 묶는다
 /// - 둘 다 바뀜 → save.json 쪽을 쓰고, 지금 파일들은 백업으로 남긴다(사용자가 고른 되돌리기·내려받기가 이김)
@@ -48,8 +49,10 @@ enum IceTray {
         if let d = try? JSONEncoder().encode(m) { try? d.write(to: markURL(dish), options: .atomic) }
     }
 
-    /// 저장 폴더 바로 아래의 저장 파일들 (하위 폴더·숨김·save.json·임시 파일 제외)
+    /// 저장 폴더 바로 아래의 저장 파일들 (하위 폴더·숨김·save.json·임시 파일 제외).
+    /// 새 모양 Electron 은 `userData/` 아래 모든 파일 (숨김·`.tmp` 제외, 깊이 4 이하)
     static func saveFiles(_ fz: Freezer) -> [URL] {
+        if fz.dish.isRedBean { return userDataFiles(fz) }
         let fm = FileManager.default
         let items = (try? fm.contentsOfDirectory(at: fz.directory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
                                                  options: [.skipsHiddenFiles])) ?? []
@@ -61,12 +64,46 @@ enum IceTray {
         }.sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    private static func userDataFiles(_ fz: Freezer) -> [URL] {
+        let base = fz.directory.appendingPathComponent(RedBeanSchemeHandler.userDataFolder, isDirectory: true)
+        guard let e = FileManager.default.enumerator(at: base, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey],
+                                                     options: [.skipsHiddenFiles]) else { return [] }
+        var out: [URL] = []
+        for case let u as URL in e {
+            guard (try? u.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  (try? u.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
+                  let rel = relativeName(u, fz: fz), safeUserDataPath(rel) else { continue }
+            out.append(u)
+            if out.count >= RedBeanSchemeHandler.maxFiles { break }
+        }
+        return out.sorted { (relativeName($0, fz: fz) ?? "") < (relativeName($1, fz: fz) ?? "") }
+    }
+
+    /// 저장 폴더 기준 상대 이름 (`Game.rxdata`, `userData/settings.json`)
+    static func relativeName(_ u: URL, fz: Freezer) -> String? {
+        let base = fz.directory.standardizedFileURL.path, p = u.standardizedFileURL.path
+        if p.hasPrefix(base + "/") { return String(p.dropFirst(base.count + 1)) }
+        // /var 와 /private/var 처럼 같은 곳이 다른 경로로 보일 때
+        let rb = fz.directory.resolvingSymlinksInPath().path, rp = u.resolvingSymlinksInPath().path
+        guard rp.hasPrefix(rb + "/") else { return nil }
+        return String(rp.dropFirst(rb.count + 1))
+    }
+
+    /// 새 모양 Electron 의 묶을 이름: `userData/` 아래, 조각마다 1~128바이트·숨김·`..` 아님, 깊이 4 이하, `.tmp` 아님
+    static func safeUserDataPath(_ rel: String) -> Bool {
+        let parts = rel.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard parts.count >= 2, parts[0] == RedBeanSchemeHandler.userDataFolder, !rel.contains("\u{0}"), !rel.contains("\\"),
+              !rel.hasSuffix(".tmp") else { return false }
+        let rest = parts.dropFirst()
+        return RedBeanSchemeHandler.writablePath(Array(rest))
+    }
+
     /// 파일 이름 + 내용 해시. 파일이 없으면 ""
-    static func fingerprint(_ files: [URL]) -> String {
+    static func fingerprint(_ files: [URL], fz: Freezer? = nil) -> String {
         guard !files.isEmpty else { return "" }
         var h = SHA256()
         for f in files {
-            h.update(data: Data(f.lastPathComponent.utf8))
+            h.update(data: Data((fz.flatMap { relativeName(f, fz: $0) } ?? f.lastPathComponent).utf8))
             if let d = try? Data(contentsOf: f, options: .mappedIfSafe) { h.update(data: d) }
         }
         return h.finalize().map { String(format: "%02x", $0) }.joined()
@@ -77,13 +114,13 @@ enum IceTray {
     /// 두 쪽 맞추기. `allowUnpack == false`(게임이 켜져 있음)면 파일은 건드리지 않고 묶기만 한다.
     @discardableResult
     static func sync(_ dish: Dish, allowUnpack: Bool) -> Result {
-        guard dish.recipe == .mkxp || dish.recipe == .rpgMakerMV, !dish.isRemote else { return .nothing }
+        guard dish.recipe == .mkxp || dish.recipe == .rpgMakerMV || dish.isRedBean, !dish.isRemote else { return .nothing }
         lock.lock(); defer { lock.unlock() }
         let fz = Freezer(dish: dish)
         let mark = loadMark(dish)
         let snap = fz.loadLocalStorage()
         let files = saveFiles(fz)
-        let fp = fingerprint(files)
+        let fp = fingerprint(files, fz: fz)
         let jsonChanged = snap != nil && snap!.savedAt.rounded() != mark?.savedAt.rounded()
         let filesChanged = !fp.isEmpty && fp != mark?.fingerprint
 
@@ -93,7 +130,7 @@ enum IceTray {
                 backedUp = fz.freeze(data: packed) != nil
             }
             guard unpack(snap, fz: fz) else { return .skipped("파일 쓰기 실패") }
-            saveMark(Mark(savedAt: snap.savedAt, fingerprint: fingerprint(saveFiles(fz))), dish)
+            saveMark(Mark(savedAt: snap.savedAt, fingerprint: fingerprint(saveFiles(fz), fz: fz)), dish)
             NSLog("[IceTray] \(dish.dataPathApp): save.json → 파일 \(snap.entries.count)개\(backedUp ? " (그전 파일은 백업)" : "")")
             return backedUp ? .unpackedWithBackup : .unpacked
         }
@@ -148,7 +185,7 @@ enum IceTray {
             let s = d.base64EncodedString()
             total += s.utf8.count
             if total > Freezer.maxBytes { return nil }
-            out[key(f.lastPathComponent, fz: fz)] = s
+            out[key(relativeName(f, fz: fz) ?? f.lastPathComponent, fz: fz)] = s
         }
         return out.isEmpty ? nil : out
     }
@@ -163,6 +200,15 @@ enum IceTray {
     private static func unpack(_ snap: Freezer.Snapshot, fz: Freezer) -> Bool {
         var ok = true
         for (k, v) in snap.entries {
+            if fz.dish.isRedBean {
+                // userData/ 아래 상대 경로: 조각 규칙을 지난 것만, 폴더는 만들어 둔다
+                guard fz.isValidKey(k), let name = Self.name(fromKey: k, fz: fz), safeUserDataPath(name), let data = Data(base64Encoded: v) else { continue }
+                let dest = name.split(separator: "/").reduce(fz.directory) { $0.appendingPathComponent(String($1)) }.standardizedFileURL
+                guard dest.path.hasPrefix(fz.directory.standardizedFileURL.path + "/" + RedBeanSchemeHandler.userDataFolder + "/") else { continue }
+                try? FileManager.default.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                if (try? data.write(to: dest, options: .atomic)) == nil { ok = false }
+                continue
+            }
             guard fz.isValidKey(k), let name = Self.name(fromKey: k, fz: fz), safeName(name, recipe: fz.dish.recipe), name != fz.localStorageFile.lastPathComponent,
                   let data = Data(base64Encoded: v) else { continue }
             let dest = fz.directory.appendingPathComponent(name)

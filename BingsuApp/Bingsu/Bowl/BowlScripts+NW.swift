@@ -11,6 +11,7 @@ extension BowlScripts {
     static func nwShim(engine: MVMZInfo.Engine) -> String {
         """
         (() => {
+        \(nodeKit)
           const ENGINE = "\(engine.rawValue)";
           const ORIGIN = "\(GreenTeaSchemeHandler.origin)";
           const post = (body) => { try { window.webkit.messageHandlers.bowl.postMessage(body); } catch (e) {} };
@@ -19,177 +20,10 @@ extension BowlScripts {
           const noop = () => {};
           const quit = () => { log("quit"); native({ op: "quit" }); };
 
-          // ---- path (POSIX, 게임 루트 = "/") ----
-          const normalize = (p) => {
-            let s = String(p).replace(/\\\\/g, "/").replace(/^file:\\/\\/+/i, "/");
-            if (s.startsWith(ORIGIN)) s = s.slice(ORIGIN.length);
-            const abs = s.startsWith("/"), out = [];
-            for (const seg of s.split("/")) {
-              if (!seg || seg === ".") continue;
-              if (seg === "..") { if (out.length && out[out.length - 1] !== "..") out.pop(); else if (!abs) out.push(".."); continue; }
-              out.push(seg);
-            }
-            let r = (abs ? "/" : "") + out.join("/");
-            if (s.endsWith("/") && out.length) r += "/";
-            return r || (abs ? "/" : ".");
-          };
-          const trimEnd = (s) => s.length > 1 && s.endsWith("/") ? s.slice(0, -1) : s;
-          const path = {
-            sep: "/", delimiter: ":", normalize,
-            isAbsolute: (p) => String(p).replace(/\\\\/g, "/").startsWith("/"),
-            join: (...a) => normalize(a.map(String).filter((x) => x !== "").join("/") || "."),
-            resolve: (...a) => {
-              let r = "";
-              for (let i = a.length - 1; i >= 0; i--) {
-                const s = String(a[i]).replace(/\\\\/g, "/"); if (!s) continue;
-                r = r ? s + "/" + r : s; if (s.startsWith("/")) break;
-              }
-              return trimEnd(normalize("/" + r));
-            },
-            dirname: (p) => { const s = trimEnd(normalize(p)); const i = s.lastIndexOf("/"); return i < 0 ? "." : i === 0 ? "/" : s.slice(0, i); },
-            basename: (p, ext) => { const s = trimEnd(normalize(p)); let b = s.slice(s.lastIndexOf("/") + 1); if (ext && b.endsWith(ext) && b !== ext) b = b.slice(0, -ext.length); return b; },
-            extname: (p) => { const b = path.basename(p); const i = b.lastIndexOf("."); return i > 0 ? b.slice(i) : ""; },
-            relative: (from, to) => {
-              const f = path.resolve(from).split("/").filter(Boolean), t = path.resolve(to).split("/").filter(Boolean);
-              let i = 0; while (i < f.length && i < t.length && f[i] === t[i]) i++;
-              return f.slice(i).map(() => "..").concat(t.slice(i)).join("/");
-            },
-            parse: (p) => { const base = path.basename(p), ext = path.extname(p); return { root: path.isAbsolute(p) ? "/" : "", dir: path.dirname(p), base, ext, name: ext ? base.slice(0, -ext.length) : base }; },
-            format: (o) => (o.dir ? o.dir + "/" : "") + (o.base || ((o.name || "") + (o.ext || ""))),
-          };
-          path.posix = path; path.win32 = path;
-          const urlOf = (p) => ORIGIN + path.resolve(String(p)).split("/").map(encodeURIComponent).join("/");
-
-          // ---- Buffer (from / toString 만 되는 최소 흉내) ----
-          class Buf extends Uint8Array {
-            toString(enc) {
-              const e = String(enc || "utf8").toLowerCase();
-              if (e === "base64" || e === "latin1" || e === "binary") {
-                let s = ""; for (let i = 0; i < this.length; i += 0x8000) s += String.fromCharCode.apply(null, this.subarray(i, i + 0x8000));
-                return e === "base64" ? btoa(s) : s;
-              }
-              if (e === "hex") return Array.from(this, (b) => b.toString(16).padStart(2, "0")).join("");
-              return new TextDecoder("utf-8").decode(this);
-            }
-            static from(v, enc) {
-              if (typeof v === "string") {
-                const e = String(enc || "utf8").toLowerCase();
-                if (e === "base64" || e === "latin1" || e === "binary") { const s = e === "base64" ? atob(v) : v; const b = new Buf(s.length); for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff; return b; }
-                if (e === "hex") { const b = new Buf(v.length >> 1); for (let i = 0; i < b.length; i++) b[i] = parseInt(v.substr(i * 2, 2), 16); return b; }
-                const u = new TextEncoder().encode(v); const b = new Buf(u.length); b.set(u); return b;
-              }
-              if (v instanceof ArrayBuffer) return new Buf(v.slice(0));
-              if (ArrayBuffer.isView(v)) { const b = new Buf(v.byteLength); b.set(new Uint8Array(v.buffer, v.byteOffset, v.byteLength)); return b; }
-              const b = new Buf(v && v.length || 0); if (v && v.length) b.set(v); return b;
-            }
-            static alloc(n) { return new Buf(n); }
-            static isBuffer(v) { return v instanceof Buf; }
-            static byteLength(s) { return typeof s === "string" ? new TextEncoder().encode(s).length : (s && s.byteLength) || 0; }
-            static concat(list) { const n = list.reduce((a, b) => a + b.length, 0); const out = new Buf(n); let o = 0; for (const b of list) { out.set(b, o); o += b.length; } return out; }
-          }
+          // ---- path·Buffer·fs·os: Node 흉내 공용 부품 (BowlScripts.nodeKit, 게임 루트 = "/") ----
+          const kit = makeNodeKit({ origin: ORIGIN, cwd: "/", log, compat: (what, file) => log("compat " + what + (file ? " @" + file : "")) });
+          const { path, Buf, fs, os } = kit;
           if (typeof window.Buffer === "undefined") try { Object.defineProperty(window, "Buffer", { configurable: true, writable: true, value: Buf }); } catch (e) {}
-
-          // ---- fs (동기 XHR → 스킴 핸들러) ----
-          const sx = (method, p, opt) => {
-            const o = opt || {}, x = new XMLHttpRequest();
-            x.open(method, urlOf(p), false);
-            for (const k in (o.headers || {})) x.setRequestHeader(k, o.headers[k]);
-            if (o.binary) x.overrideMimeType("text/plain; charset=x-user-defined");
-            else if (o.text) x.overrideMimeType("text/plain; charset=utf-8");
-            try { x.send(o.body === undefined ? null : o.body); } catch (e) { return { status: 0, x }; }
-            return { status: x.status, x };
-          };
-          const MSG = { ENOENT: "no such file or directory", EACCES: "permission denied", ENOTDIR: "not a directory", EISDIR: "illegal operation on a directory", EEXIST: "file already exists", EIO: "i/o error", ENOSYS: "function not implemented" };
-          const ERRNO = { ENOENT: -2, EACCES: -13, ENOTDIR: -20, EISDIR: -21, EEXIST: -17, EIO: -5, ENOSYS: -38 };
-          const fsErr = (code, syscall, p) => { const e = new Error(code + ": " + MSG[code] + ", " + syscall + " '" + p + "'"); e.code = code; e.errno = ERRNO[code]; e.syscall = syscall; e.path = String(p); return e; };
-          const codeOf = (status) => status === 404 ? "ENOENT" : status === 403 ? "EACCES" : "EIO";
-          const enc = (opt) => typeof opt === "string" ? opt : opt && opt.encoding;
-          const isUtf8 = (e) => !!e && /^utf-?8$/i.test(String(e));
-          const statOf = (p) => {
-            const { status, x } = sx("HEAD", p);
-            if (status !== 200) return null;
-            const dir = x.getResponseHeader("X-Bingsu-Kind") === "dir";
-            const ms = Number(x.getResponseHeader("X-Bingsu-Mtime")) || 0, d = new Date(ms);
-            const size = Number(x.getResponseHeader("Content-Length")) || 0;
-            return { isFile: () => !dir, isDirectory: () => dir, isSymbolicLink: () => false, size, mode: dir ? 0o40755 : 0o100644,
-                     mtime: d, mtimeMs: ms, ctime: d, ctimeMs: ms, atime: d, atimeMs: ms, birthtime: d, birthtimeMs: ms };
-          };
-          const writes = { count: 0 };
-          const fs = {
-            existsSync: (p) => { try { return !!statOf(p); } catch (e) { return false; } },
-            statSync: (p, opt) => { const s = statOf(p); if (!s) { if (opt && opt.throwIfNoEntry === false) return undefined; throw fsErr("ENOENT", "stat", p); } return s; },
-            accessSync: (p) => { if (!statOf(p)) throw fsErr("ENOENT", "access", p); },
-            readFileSync: (p, opt) => {
-              const e = enc(opt), text = isUtf8(e);
-              const { status, x } = sx("GET", p, { binary: !text, text });
-              if (status !== 200 && status !== 206) throw fsErr(codeOf(status), "open", p);
-              if (x.getResponseHeader("X-Bingsu-Kind") === "dir") throw fsErr("EISDIR", "read", p);
-              if (text) return x.responseText;
-              const s = x.responseText, b = new Buf(s.length);
-              for (let i = 0; i < s.length; i++) b[i] = s.charCodeAt(i) & 0xff;
-              return e ? b.toString(e) : b;
-            },
-            writeFileSync: (p, data, opt) => {
-              const e = enc(opt);
-              let body;
-              if (typeof data === "string") body = e && !isUtf8(e) ? Buf.from(data, e) : data;
-              else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) body = data;
-              else body = String(data);
-              const { status } = sx("PUT", p, { body });
-              writes.count++;
-              if (status < 200 || status >= 300) { log("write failed " + status + " " + p); throw fsErr(codeOf(status), "open", p); }
-            },
-            appendFileSync: (p, data, opt) => {
-              let old = ""; try { old = fs.readFileSync(p, "utf8"); } catch (e) {}
-              fs.writeFileSync(p, old + (typeof data === "string" ? data : Buf.from(data).toString("utf8")), opt);
-            },
-            copyFileSync: (a, b) => fs.writeFileSync(b, fs.readFileSync(a)),
-            unlinkSync: (p) => { const { status } = sx("DELETE", p); if (status < 200 || status >= 300) throw fsErr(codeOf(status), "unlink", p); },
-            rmdirSync: (p) => { const { status } = sx("DELETE", p); if (status < 200 || status >= 300) throw fsErr(codeOf(status), "rmdir", p); },
-            mkdirSync: (p, opt) => {
-              const s = statOf(p);
-              if (s) { if (opt && (opt.recursive || opt === true)) return undefined; throw fsErr("EEXIST", "mkdir", p); }
-              const { status } = sx("MKCOL", p);
-              if (status < 200 || status >= 300) throw fsErr(codeOf(status), "mkdir", p);
-              return undefined;
-            },
-            readdirSync: (p, opt) => {
-              const { status, x } = sx("GET", p, { text: true });
-              if (status !== 200) throw fsErr(codeOf(status), "scandir", p);
-              if (x.getResponseHeader("X-Bingsu-Kind") !== "dir") throw fsErr("ENOTDIR", "scandir", p);
-              let names = []; try { names = JSON.parse(x.responseText); } catch (e) {}
-              if (opt && opt.withFileTypes) return names.map((name) => { const s = statOf(path.join(String(p), name)); return { name, isFile: () => !!s && s.isFile(), isDirectory: () => !!s && s.isDirectory(), isSymbolicLink: () => false }; });
-              return names;
-            },
-            renameSync: (a, b) => {
-              const { status } = sx("MOVE", a, { headers: { Destination: urlOf(b) } });
-              if (status < 200 || status >= 300) throw fsErr(codeOf(status), "rename", a);
-            },
-          };
-          fs.lstatSync = fs.statSync; fs.rmSync = fs.unlinkSync;
-          for (const n of ["openSync", "readSync", "writeSync", "closeSync", "watch", "watchFile", "createReadStream", "createWriteStream"]) {
-            fs[n] = () => { throw fsErr("ENOSYS", n, ""); };
-          }
-          // 콜백판: 동기판을 setTimeout(0) 으로 감싼다
-          const later = (fn) => function (...args) {
-            const cb = typeof args[args.length - 1] === "function" ? args.pop() : null;
-            setTimeout(() => { let r, err = null; try { r = fn(...args); } catch (e) { err = e; } if (cb) cb(err, r); }, 0);
-          };
-          const asyncNames = { readFile: "readFileSync", writeFile: "writeFileSync", appendFile: "appendFileSync", copyFile: "copyFileSync",
-                               unlink: "unlinkSync", rmdir: "rmdirSync", rm: "rmSync", mkdir: "mkdirSync", readdir: "readdirSync",
-                               rename: "renameSync", stat: "statSync", lstat: "lstatSync", access: "accessSync" };
-          fs.promises = {};
-          for (const [a, s] of Object.entries(asyncNames)) {
-            fs[a] = later(fs[s]);
-            fs.promises[a] = (...args) => new Promise((ok, no) => setTimeout(() => { try { ok(fs[s](...args)); } catch (e) { no(e); } }, 0));
-          }
-          fs.exists = (p, cb) => setTimeout(() => { if (cb) cb(fs.existsSync(p)); }, 0);
-          fs.constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1 };
-
-          // ---- os ----
-          const os = { platform: () => "linux", type: () => "Linux", arch: () => "arm64", release: () => "0", hostname: () => "bingsu",
-                       homedir: () => "/", tmpdir: () => "/tmp", EOL: "\\n", cpus: () => [], totalmem: () => 0, freemem: () => 0,
-                       networkInterfaces: () => ({}), userInfo: () => ({ username: "player", homedir: "/" }) };
 
           // ---- process ----
           const proc = {

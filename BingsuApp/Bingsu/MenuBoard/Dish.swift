@@ -50,12 +50,16 @@ struct Dish: Identifiable, Hashable {
     var needsRTP = false
     /// RPG Maker MV·MZ 게임(.rpgMakerMV)의 엔진·게임 루트. 가져올 때 MVMZProbe 로 정해 bingsu.json 에 적는다. 그 밖의 게임은 nil
     var mvmz: MVMZInfo?
+    /// 새 모양 Electron 게임(.electron)의 메인 스크립트·시작 화면·조작 방식. 가져올 때 RedBeanProbe 로 정해 bingsu.json 에 적는다.
+    /// 옛 모양(레조넌스·기본 게임)과 그 밖의 게임은 nil
+    var electron: ElectronInfo?
 
     init(id: String, title: String, recipe: Recipe, location: URL, dataPathApp: String,
-         rgss: RGSSVersion? = nil, rtp: String? = nil, needsRTP: Bool = false, mvmz: MVMZInfo? = nil) {
+         rgss: RGSSVersion? = nil, rtp: String? = nil, needsRTP: Bool = false, mvmz: MVMZInfo? = nil, electron: ElectronInfo? = nil) {
         self.id = id; self.title = title; self.recipe = recipe; self.location = location
         self.dataPathApp = Self.folderName(dataPathApp, fallback: id)
         self.rgss = rgss; self.rtp = rtp; self.needsRTP = needsRTP; self.mvmz = mvmz
+        self.electron = recipe == .electron ? electron : nil
     }
 
     /// MV·MZ 게임의 루트 폴더 (`index.html` 이 있는 곳). 그 밖의 게임은 게임 폴더
@@ -88,6 +92,9 @@ struct Dish: Identifiable, Hashable {
     }
 
     var isRemote: Bool { recipe == .webURL }
+
+    /// 새 모양 Electron 게임 (RedBeanSchemeHandler + Electron 흉내로 연다)
+    var isRedBean: Bool { recipe == .electron && electron != nil }
 
     /// 빙수가 따로 맞춰 둔 웹 게임인가. 기본 제공 카드든 사용자가 주소로 넣은 것이든 호스트로 판별한다
     /// (릴리스 빌드는 기본 카드가 없어서 사용자가 넣은 카드도 같은 패드·진동·화면 조정을 받아야 함).

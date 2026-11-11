@@ -20,23 +20,19 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
     static let maxSaveFiles = 1000
     static let maxSaveTotalBytes = 512 * 1024 * 1024
 
-    private let root: URL
-    private let rootReal: String
+    private let tree: SchemeTree
     private let saves: URL
     private let label: String
     private var stopped: Set<ObjectIdentifier> = []
     private let readQueue = DispatchQueue(label: "bingsu.greentea.read", qos: .userInitiated, attributes: .concurrent)
     private let writeQueue = DispatchQueue(label: "bingsu.greentea.write", qos: .userInitiated)
     private let lock = NSLock()
-    /// 폴더 경로 → (소문자 이름 → 실제 이름)
-    private var listings: [String: [String: String]] = [:]
     private var denied = 0
     private var bodyVia: String?
 
     /// `saves` 는 `Freezer(dish:).directory`. `label` 은 로그용 (게임 id)
     init(gameRoot: URL, saves: URL, label: String) {
-        root = gameRoot.standardizedFileURL
-        rootReal = gameRoot.resolvingSymlinksInPath().standardizedFileURL.path
+        tree = SchemeTree(root: gameRoot)
         self.saves = saves
         self.label = label
     }
@@ -61,12 +57,7 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
         return segments(path: raw)
     }
 
-    static func segments(path raw: String) -> [String]? {
-        if raw.contains("\\") || raw.contains(":") || raw.contains("\0") { return nil }
-        let parts = raw.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
-        if parts.contains(where: { $0 == "." || $0 == ".." || $0.hasPrefix(".") }) { return nil }
-        return parts
-    }
+    static func segments(path raw: String) -> [String]? { SchemeTree.segments(path: raw) }
 
     static func target(_ parts: [String]) -> Target {
         guard let first = parts.first, first.lowercased() == "save" else { return .game(parts) }
@@ -161,68 +152,18 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
         switch t {
         case .saveOther: return (SchemeFile.status(404, url: url), nil)
         case .saveDir:
-            return dirResponse(saves, url: url, head: head, filter: Self.isSaveName)
+            return SchemeTree.dirResponse(saves, url: url, head: head, cors: true, filter: Self.isSaveName)
         case .saveFile(let name):
             file = saves.appendingPathComponent(name)
         case .game(let parts):
             guard let f = locate(parts.isEmpty ? ["index.html"] : parts) else { return (SchemeFile.status(404, url: url), nil) }
             file = f
         }
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: file.path, isDirectory: &isDir) else { return (SchemeFile.status(404, url: url), nil) }
-        if isDir.boolValue { return dirResponse(file, url: url, head: head, filter: { !$0.hasPrefix(".") }) }
-        let mtime = Self.mtime(file)
-        if head {
-            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            return (SchemeFile.status(200, url: url, headers: ["X-Bingsu-Kind": "file", "X-Bingsu-Mtime": mtime, "Content-Length": "\(size)",
-                                                                "Content-Type": Self.mime(for: file), "Access-Control-Allow-Origin": "*"]), nil)
-        }
-        guard let data = try? Data(contentsOf: file, options: .mappedIfSafe) else { return (SchemeFile.status(404, url: url), nil) }
-        return SchemeFile.response(url: url, data: data, mime: Self.mime(for: file), request: request,
-                                   extraHeaders: ["X-Bingsu-Kind": "file", "X-Bingsu-Mtime": mtime])
+        return SchemeTree.serve(file, url: url, request: request, head: head, mime: Self.mime(for: file), cors: true)
     }
 
-    private func dirResponse(_ dir: URL, url: URL, head: Bool, filter: (String) -> Bool) -> (URLResponse, Data?) {
-        let headers = ["X-Bingsu-Kind": "dir", "X-Bingsu-Mtime": Self.mtime(dir), "Content-Type": "application/json",
-                       "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache"]
-        if head { return (SchemeFile.status(200, url: url, headers: headers), nil) }
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter(filter).sorted()
-        let data = (try? JSONSerialization.data(withJSONObject: names)) ?? Data("[]".utf8)
-        return (SchemeFile.status(200, url: url, headers: headers.merging(["Content-Length": "\(data.count)"]) { $1 }), data)
-    }
-
-    /// 게임 루트 안에서 경로를 찾는다. 정확한 경로가 없으면 조각마다 대소문자 무시로 다시 찾는다.
-    /// 심볼릭 링크를 따라 루트 밖으로 나가면 nil
-    func locate(_ parts: [String]) -> URL? {
-        let fm = FileManager.default
-        var cur = root
-        let exact = parts.reduce(root) { $0.appendingPathComponent($1) }
-        if fm.fileExists(atPath: exact.path) {
-            cur = exact
-        } else {
-            for p in parts {
-                let next = cur.appendingPathComponent(p)
-                if fm.fileExists(atPath: next.path) { cur = next; continue }
-                guard let real = listing(cur)[p.lowercased()] else { return nil }
-                cur = cur.appendingPathComponent(real)
-            }
-        }
-        let real = cur.resolvingSymlinksInPath().standardizedFileURL.path
-        guard real == rootReal || real.hasPrefix(rootReal + "/") else { return nil }
-        return cur
-    }
-
-    private func listing(_ dir: URL) -> [String: String] {
-        lock.lock(); defer { lock.unlock() }
-        if let hit = listings[dir.path] { return hit }
-        var map: [String: String] = [:]
-        for n in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [] where !n.hasPrefix(".") {
-            let k = n.lowercased()
-            if map[k] == nil || n < map[k]! { map[k] = n }   // 대소문자만 다른 두 파일이면 늘 같은 쪽
-        }
-        listings[dir.path] = map
-        return map
-    }
+    /// 게임 루트 안에서 경로를 찾는다 (SchemeTree: 대소문자 무시로 다시 찾기, 루트 밖 링크는 nil)
+    func locate(_ parts: [String]) -> URL? { tree.locate(parts) }
 
     private static func mime(for file: URL) -> String {
         let ext = file.pathExtension.lowercased()
@@ -230,11 +171,6 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
         if ["rpgmvp", "rpgmvo", "rpgmvm"].contains(ext) || ext.hasSuffix("_") { return "application/octet-stream" }
         if ext == "wasm" { return "application/wasm" }
         return SchemeFile.mime(for: file)
-    }
-
-    private static func mtime(_ u: URL) -> String {
-        let d = (try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date(timeIntervalSince1970: 0)
-        return String(Int64((d.timeIntervalSince1970 * 1000).rounded()))
     }
 
     // MARK: 쓰기 (저장 데이터 폴더만)
@@ -298,23 +234,7 @@ final class GreenTeaSchemeHandler: NSObject, WKURLSchemeHandler {
 
     /// PUT 본문: `httpBody`, 없으면 `httpBodyStream`. 어느 길로 왔는지 처음 한 번 남긴다 (명세 §2 "본문 수신 확인")
     private func readBody(_ request: URLRequest) -> Data? {
-        var via = "none"
-        var out: Data?
-        if let b = request.httpBody {
-            via = "httpBody"; out = b
-        } else if let s = request.httpBodyStream {
-            via = "stream"
-            s.open(); defer { s.close() }
-            var d = Data()
-            var buf = [UInt8](repeating: 0, count: 64 * 1024)
-            while true {
-                let n = s.read(&buf, maxLength: buf.count)
-                if n <= 0 { break }
-                d.append(buf, count: n)
-                if d.count > Freezer.maxBytes { break }
-            }
-            out = d
-        }
+        let (out, via) = SchemeTree.readBody(request)
         lock.lock()
         let first = bodyVia == nil
         if first { bodyVia = via }

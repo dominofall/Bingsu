@@ -139,6 +139,8 @@ final class MenuBoardStore: ObservableObject {
             if recipe == .rpgMakerMV {
                 dish.mvmz = (m["mvmz"] as? [String: Any]).flatMap(MVMZInfo.init(manifest:)) ?? MVMZProbe.probe(folder: folder)?.info
             }
+            // Electron: 새 모양만 `electron` 항목이 있다. 없으면(레조넌스·예전 가져오기) 옛 경로 그대로
+            if recipe == .electron { dish.electron = (m["electron"] as? [String: Any]).flatMap(ElectronInfo.init(manifest:)) }
             return dish
         }
         let recipe = RecipeDetector.detect(folder: folder)
@@ -147,6 +149,7 @@ final class MenuBoardStore: ObservableObject {
         var dish = Dish(id: id, title: d.title, recipe: recipe, location: folder, dataPathApp: d.dataPathApp)
         if recipe == .mkxp { Self.applyProbe(&dish) }
         if recipe == .rpgMakerMV { dish.mvmz = MVMZProbe.probe(folder: folder)?.info }
+        if recipe == .electron, case .success(let p)? = RedBeanProbe.probe(folder: folder) { dish.electron = p.info }
         return dish
     }
 

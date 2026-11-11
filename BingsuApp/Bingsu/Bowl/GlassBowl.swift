@@ -21,6 +21,8 @@ struct GlassBowl: UIViewRepresentable {
     var onRestart: (PerfRestart.Kind) -> Void = { _ in }
     /// 게임이 스스로 끝냄 (MV·MZ 의 nw.App.quit·window.close → 일시정지 화면의 "게임 종료"와 같게)
     var onQuit: () -> Void = {}
+    /// 팥빙수 게임이 정한 창 크기(레이아웃 크기, CSS 픽셀). 컨테이너가 웹뷰를 이 크기로 만들고 줄여 그린다
+    var onPageSize: (CGSize) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator(dish: dish, thermometer: thermometer, freezer: freezer) }
 
@@ -35,7 +37,14 @@ struct GlassBowl: UIViewRepresentable {
 
         let handler: WKURLSchemeHandler?
         let mvmz = dish.recipe == .rpgMakerMV ? dish.mvmz : nil
-        if dish.recipe == .electron {
+        let redBean = dish.isRedBean ? dish.electron : nil
+        if redBean != nil {
+            // 새 모양 Electron: /app 은 게임 폴더 읽기, /userData 만 저장 데이터 폴더로 쓰기. 켜기 전에 save.json 을 파일로 풀어 둔다
+            IceTray.sync(dish, allowUnpack: true)
+            let h = RedBeanSchemeHandler(gameRoot: dish.location, saves: freezer.directory, label: dish.id)
+            config.setURLSchemeHandler(h, forURLScheme: RedBeanSchemeHandler.scheme)
+            handler = h
+        } else if dish.recipe == .electron {
             let h = PokemonSchemeHandler(gameRoot: dish.location)
             config.setURLSchemeHandler(h, forURLScheme: PokemonSchemeHandler.scheme)
             handler = h
@@ -51,7 +60,8 @@ struct GlassBowl: UIViewRepresentable {
         let ucc = config.userContentController
         let prefix = freezer.keyPrefix
         // MV·MZ 는 저장을 파일(save/ → Saves/)로 하므로 localStorage 스냅샷을 쓰지 않는다 (얼음틀이 save.json 에 묶는다)
-        let freezerEnabled = !dish.isRemote && dish.recipe != .rpgMakerMV
+        // 팥빙수 게임도 파일(userData/)로 저장한다. localStorage 는 게임별 웹 저장소에만 남는다 (구현 기록)
+        let freezerEnabled = !dish.isRemote && dish.recipe != .rpgMakerMV && redBean == nil
         if dish.knownWeb == .pokerogue {
             // 배경음악을 낮은 표본율로 풀어 메모리 쌓임을 줄인다 (BowlScripts.musicDiet, 다른 소리 스크립트보다 먼저)
             let rate = (DishPrefsStore.shared.prefs(for: dish.id).musicRate ?? .default).rawValue
@@ -70,8 +80,16 @@ struct GlassBowl: UIViewRepresentable {
                                                                            keyPrefix: prefix, freezer: freezerEnabled,
                                                                            desktopSpoof: !dish.isRemote,
                                                                            renderScale: quality.renderScale, fpsCap: fpsCap,
-                                                                           volume: BingsuApp.gameVolume, keysToDocument: mvmz != nil),
+                                                                           volume: BingsuApp.gameVolume, keysToDocument: mvmz != nil || redBean != nil),
                                        injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        if let redBean {
+            // Electron 흉내: 메인 스크립트를 먼저 돌리고 require('electron')·Node 를 준비한다 (BowlScripts.electronShim)
+            ucc.addUserScript(WKUserScript(source: BowlScripts.electronShim(redBean), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            // <audio> 의 ogg·일시정지·음량 (BowlScripts.mediaShim)
+            ucc.addUserScript(WKUserScript(source: BowlScripts.mediaShim(volume: BingsuApp.gameVolume), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+            ucc.add(context.coordinator, name: "redbean")
+            context.coordinator.onPageSize = onPageSize
+        }
         if let mvmz {
             // NW.js 흉내: 엔진이 PC 처럼 save/ 에 파일로 저장하게 (BowlScripts.nwShim)
             ucc.addUserScript(WKUserScript(source: BowlScripts.nwShim(engine: mvmz.engine), injectionTime: .atDocumentStart, forMainFrameOnly: true))
@@ -92,6 +110,15 @@ struct GlassBowl: UIViewRepresentable {
         if DevEnv["BINGSU_KEYDEBUG"] == "1" {
             ucc.addUserScript(WKUserScript(source: "window.__bingsuKeyDebug = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
+        if DevEnv["BINGSU_TAPDEBUG"] == "1" {
+            // 디버그: 탭이 페이지의 어디(CSS 픽셀)에 어떤 요소로 들어가는지 (탭 자리 확인용)
+            let js = """
+            (() => { const post = (m) => { try { window.webkit.messageHandlers.bowl.postMessage({ event: "tap", msg: m }); } catch (e) {} };
+              const name = (t) => t && t.tagName ? t.tagName.toLowerCase() + (t.id ? "#" + t.id : "") + (typeof t.className === "string" && t.className ? "." + t.className.trim().split(/\\s+/).slice(0, 3).join(".") : "") : String(t);
+              for (const ty of ["touchstart", "touchend", "pointerdown", "pointerup", "mouseover", "mousedown", "click"]) addEventListener(ty, (e) => { const p = e.touches ? (e.changedTouches[0] || {}) : e; post(ty + " t=" + Math.round(performance.now()) + " " + Math.round(p.clientX) + "," + Math.round(p.clientY) + " " + name(e.target) + " view=" + innerWidth + "x" + innerHeight); }, { capture: true, passive: true }); })();
+            """
+            ucc.addUserScript(WKUserScript(source: js, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
         if dish.knownWeb == .pokerogue {
             // 포켓로그 자체 터치 패드는 숨기고 빙수 가상 패드 입력을 그 버튼의 리스너로 넣는다
             ucc.addUserScript(WKUserScript(source: BowlScripts.pokerogueBridge, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
@@ -106,10 +133,12 @@ struct GlassBowl: UIViewRepresentable {
         }
         #endif
 
-        let wv = WKWebView(frame: .zero, configuration: config)
+        // 팥빙수 게임: 처음부터 BrowserWindow 기본 창 크기로 만든다. 크기 0 이면 첫 레이아웃 전에 도는 페이지 스크립트가
+        // 기본 레이아웃 폭(980)을 innerWidth 로 읽는다 (시험 게임에서 확인)
+        let wv = WKWebView(frame: redBean != nil ? CGRect(x: 0, y: 0, width: 1280, height: 720) : .zero, configuration: config)
         if dish.isRemote { wv.customUserAgent = Self.safariUserAgent }
         // MV·MZ: 휴대폰 UA 면 MV 는 .m4a 를 찾고(PC 판엔 없는 일이 많다) 고정 갱신 간격을 버리며, MZ 는 화면 높이의 90%만 쓴다 → 데스크톱 Safari
-        if mvmz != nil { wv.customUserAgent = Self.desktopSafariUserAgent }
+        if mvmz != nil || redBean != nil { wv.customUserAgent = Self.desktopSafariUserAgent }
         wv.navigationDelegate = context.coordinator
         wv.uiDelegate = context.coordinator
         wv.scrollView.bounces = false
@@ -123,7 +152,11 @@ struct GlassBowl: UIViewRepresentable {
         wv.isInspectable = true
         #endif
 
-        if dish.recipe == .electron {
+        if let redBean {
+            NSLog("[Bowl] recipe=electron main=\(redBean.main) entry=\(redBean.entry) input=\(redBean.inputStyle.rawValue) saves=\(dish.dataPathApp)")
+            let path = redBean.entry.split(separator: "/").map { String($0).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? String($0) }.joined(separator: "/")
+            Self.loadWhenShown(wv, URLRequest(url: URL(string: "\(RedBeanSchemeHandler.origin)/app/\(path)")!))
+        } else if dish.recipe == .electron {
             // 레조넌스는 ?mobile=0 으로 띄워 자체 터치 UI 대신 게임패드 경로를 쓰게 한다 (7.4)
             let query = dish.dataPathApp == "pokemon-resonance" ? "?mobile=0" : ""
             wv.load(URLRequest(url: URL(string: "\(PokemonSchemeHandler.origin)/index.html\(query)")!))
@@ -138,6 +171,18 @@ struct GlassBowl: UIViewRepresentable {
         return wv
     }
 
+    /// 웹뷰가 화면(창)에 붙어 크기를 받은 뒤에 첫 페이지를 연다. 창에 붙기 전에 열면 첫 레이아웃 전에 도는 페이지 스크립트가
+    /// 기본 레이아웃 크기(980 폭)를 innerWidth·innerHeight 로 읽는다 (팥빙수 시험 게임에서 확인). 1초가 지나면 그냥 연다
+    private static func loadWhenShown(_ wv: WKWebView, _ request: URLRequest, tries: Int = 0) {
+        if (wv.window != nil && wv.bounds.width > 0) || tries >= 30 {
+            if tries > 0 { NSLog("[Bowl] load after \(tries) wait(s) shown=\(wv.window != nil)") }
+            // 한 번 더 미뤄 웹킷이 보이는 크기를 받은 다음에 연다
+            DispatchQueue.main.async { wv.load(request) }
+            return
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.033) { loadWhenShown(wv, request, tries: tries + 1) }
+    }
+
     func updateUIView(_ uiView: WKWebView, context: Context) {
         #if DEBUG
         if context.coordinator.paused != paused { context.coordinator.diag?.write(paused ? "paused" : "resumed") }
@@ -145,6 +190,7 @@ struct GlassBowl: UIViewRepresentable {
         context.coordinator.paused = paused
         context.coordinator.onRestart = onRestart
         context.coordinator.onQuit = onQuit
+        if dish.isRedBean { context.coordinator.onPageSize = onPageSize }
     }
 
     static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
@@ -177,6 +223,7 @@ struct GlassBowl: UIViewRepresentable {
         var onExternal: ((URL) -> Void)?
         var onRestart: ((PerfRestart.Kind) -> Void)?
         var onQuit: (() -> Void)?
+        var onPageSize: ((CGSize) -> Void)?
         private var askingOpen = false
         private var declinedOpens = 0
         var paused = false
@@ -275,7 +322,7 @@ struct GlassBowl: UIViewRepresentable {
         }
 
         /// 빙수 주입 스크립트(BowlScripts)가 보내는 사건 이름. 릴리스 로그에는 이것만 적는다
-        static let bowlEvents: Set<String> = ["audio", "dpr", "error", "fps", "key", "mv", "ogg", "pad", "prkey", "ready", "sfxdbg", "stall"]
+        static let bowlEvents: Set<String> = ["audio", "compat", "dpr", "error", "fps", "key", "mv", "ogg", "pad", "prkey", "ready", "redbean", "sfxdbg", "stall"]
 
         func userContentController(_ ucc: WKUserContentController, didReceive message: WKScriptMessage) {
             // 게임 본 화면에서 온 것만 받는다 (광고·임베드 같은 다른 프레임은 무시)
@@ -370,6 +417,22 @@ struct GlassBowl: UIViewRepresentable {
                 } else if op == "open", let raw = d["url"] as? String, raw.count <= 2000, let url = URL(string: raw), ExternalLink.isWeb(url) {
                     askToOpen(url, from: message.webView)
                 }
+            case "redbean":
+                // Electron 흉내(신뢰하지 않음)가 보낸 요청: 종료, 외부 링크(http·https 만, 묻고 사파리로), 창 크기
+                guard dish.isRedBean, let d = message.body as? [String: Any], let op = d["op"] as? String else { return }
+                switch op {
+                case "quit":
+                    NSLog("[Bowl] redbean quit requested")
+                    onQuit?()
+                case "open":
+                    if let raw = d["url"] as? String, raw.count <= 2000, let url = URL(string: raw), ExternalLink.isWeb(url) { askToOpen(url, from: message.webView) }
+                case "window":
+                    guard let w = (d["w"] as? NSNumber)?.doubleValue, let h = (d["h"] as? NSNumber)?.doubleValue,
+                          w.isFinite, h.isFinite, (100...8000).contains(w), (100...8000).contains(h) else { return }
+                    NSLog("[Bowl] redbean window \(Int(w))x\(Int(h))")
+                    onPageSize?(CGSize(width: w.rounded(), height: h.rounded()))
+                default: break
+                }
             #if DEBUG
             case "diag":
                 if let s = message.body as? String { diag?.write(String(s.prefix(600))) }
@@ -390,6 +453,13 @@ struct GlassBowl: UIViewRepresentable {
                     diag?.write("GAME RELOADED ITSELF")
                     #endif
                 }
+            }
+            if dish.isRedBean {
+                // 게임 출처만. 누른 링크(http·https)는 묻고 사파리로 (shell.openExternal 도 같은 길), 하위 프레임의 about:blank 는 둔다
+                if url.scheme == RedBeanSchemeHandler.scheme { return decisionHandler(.allow) }
+                if url.scheme == "about", !(action.targetFrame?.isMainFrame ?? true) { return decisionHandler(.allow) }
+                if action.navigationType == .linkActivated, ExternalLink.isWeb(url) { askToOpen(url, from: webView) }
+                return decisionHandler(.cancel)
             }
             if dish.recipe == .electron {
                 return decisionHandler(url.scheme == PokemonSchemeHandler.scheme ? .allow : .cancel)
@@ -417,6 +487,26 @@ struct GlassBowl: UIViewRepresentable {
                      for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
             if let url = action.request.url, ExternalLink.isWeb(url) { UIApplication.shared.open(url) }
             return nil
+        }
+
+        /// 팥빙수 게임의 alert·confirm (Electron dialog.showMessageBox 도 이 길). 다른 게임은 지금처럼 아무것도 띄우지 않는다
+        func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping () -> Void) {
+            guard dish.isRedBean, frame.isMainFrame, var top = webView.window?.rootViewController else { return completionHandler() }
+            while let next = top.presentedViewController { top = next }
+            let alert = UIAlertController(title: nil, message: String(message.prefix(1000)), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "확인", style: .default) { _ in completionHandler() })
+            top.present(alert, animated: true)
+        }
+
+        func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo,
+                     completionHandler: @escaping (Bool) -> Void) {
+            guard dish.isRedBean, frame.isMainFrame, var top = webView.window?.rootViewController else { return completionHandler(false) }
+            while let next = top.presentedViewController { top = next }
+            let alert = UIAlertController(title: nil, message: String(message.prefix(1000)), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "취소", style: .cancel) { _ in completionHandler(false) })
+            alert.addAction(UIAlertAction(title: "확인", style: .default) { _ in completionHandler(true) })
+            top.present(alert, animated: true)
         }
 
         /// 게임이 사용자의 손길 없이 연 외부 주소는 실제 주소를 보여 주고 묻는다. 떠 있는 동안 온 요청과 두 번 거절한 뒤의 요청은 버린다

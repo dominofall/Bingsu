@@ -16,6 +16,8 @@ enum RecipeDetector {
         // RPG Maker MV/MZ (NW.js): package.json main · www/ · 맨 위 index.html + 엔진 코어 (MVMZProbe).
         // package.nw 는 Delivery 가 먼저 풀어 둔다. NW.js 흔적만 있고 MV/MZ 가 아니면 지원하지 않음
         if MVMZProbe.findRoot(folder) != nil { return .rpgMakerMV }
+        // 새 모양 Electron: package.json main 이 JS 메인 스크립트를 가리킨다 (RedBeanProbe). 시작 화면을 못 찾는 것은 Delivery 가 알린다
+        if RedBeanProbe.looksLikeApp(folder) { return .electron }
         if has("package.nw") || has("nw.pak") { return .unknown }
         if has("index.html") { return .electron }
         return .unknown
@@ -34,7 +36,9 @@ enum RecipeDetector {
             let t = iniTitle(folder) ?? fallback
             return (t, t)
         case .electron:
-            // 저장 폴더 이름은 package.json 의 name, 제목은 dist/index.html 의 <title>
+            // 새 모양: 제목은 productName → 시작 화면 <title> → name, 저장 폴더 이름은 name (RedBeanProbe)
+            if case .success(let p)? = RedBeanProbe.probe(folder: folder) { return (p.title, p.packageName ?? p.title) }
+            // 옛 모양: 저장 폴더 이름은 package.json 의 name, 제목은 dist/index.html 의 <title>
             var dataPath = fallback
             if let data = try? Data(contentsOf: folder.appendingPathComponent("package.json")),
                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

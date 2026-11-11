@@ -17,7 +17,8 @@ if [ -n "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]; then echo
 
 # 공개하지 않는 것: 계획서·세션 메모(팬게임 분석·내부 결정), 디자인 보드(게임 화면 캡처 포함), 엔진 PoC 기록,
 # TestFlight 제출 메모(심사 메모·내부 링크), 심사 확인용 게임(기획·제작 메모. 게임은 mino-bingsu 저장소로 따로 배포)
-EXCLUDE="PLAN.md NEXT_SESSION.md design docs/phase3-mkxp-poc.md docs/beta/testflight-info.md docs/review-game tools/review-game"
+# docs/engines/compat-plan.md: 여러 엔진 호환 계획(팬게임 조사 표·내부 결정이 든 계획서라 PLAN.md 와 같이 뺀다, 2026-11-11)
+EXCLUDE="PLAN.md NEXT_SESSION.md design docs/phase3-mkxp-poc.md docs/beta/testflight-info.md docs/review-game tools/review-game docs/engines/compat-plan.md"
 
 mkdir -p "$DEST"
 git -C "$ROOT" archive --format=tar HEAD | tar -x -C "$DEST"

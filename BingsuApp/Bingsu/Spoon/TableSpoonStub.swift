@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// release/36 전용 빈 껍데기: iPhone↔iPad 컨트롤러(TableSpoon)를 이 빌드에서 뺀다 (사용자 결정 2026-11-10, 36 = 워치 기능 최적화만).
-/// main 의 TableSpoon.swift·TableSpoonLayout.swift·TableSpoonView.swift 대신 이 파일 하나. 다른 파일은 손대지 않아도 되게 이름과 모양만 맞춘다.
-/// canHost·canRemote 가 거짓이라 설정 항목·홈 단추가 안 보이고, 로컬 네트워크(MultipeerConnectivity)는 전혀 쓰지 않는다
+/// 빈 껍데기: iPhone↔iPad 컨트롤러(TableSpoon)는 지금 main 에 없다 (사용자 결정 2026-11-11: 편의 기능이라 나중에, 별도 브랜치로).
+/// 실제 코드(TableSpoon.swift·TableSpoonLayout.swift·TableSpoonView.swift, Bonjour 키, 로컬 네트워크 문구)는 브랜치 `feature/iphone-controller` 에 있다.
+/// 되살릴 때는 이 껍데기를 넣은 커밋을 main 에서 되돌린 뒤(`git revert`) 그 브랜치를 합친다 — 브랜치만 합치면 지운 파일이 돌아오지 않는다.
+/// 다른 파일은 손대지 않아도 되게 이름과 모양만 맞춘다. canHost·canRemote 가 거짓이라 설정 항목·홈 단추가 안 보이고,
+/// 로컬 네트워크(MultipeerConnectivity)는 전혀 쓰지 않는다
 enum TableSpoon {
     static let canHost = false
     static let canRemote = false
