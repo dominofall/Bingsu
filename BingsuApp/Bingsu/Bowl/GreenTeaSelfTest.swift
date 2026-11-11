@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import UIKit
+import ZIPFoundation
 
 /// 디버그 자가 테스트 (`BINGSU_SELFTEST=1`, 앱을 켤 때 한 번). 결과는 `[GreenTea] selftest …` 로그.
 /// - 스킴 핸들러 쓰기 규칙: `save/` 아래 저장 이름만 PUT·DELETE·MOVE, `save` 자체만 MKCOL, 그 밖은 거부
@@ -87,6 +88,75 @@ enum GreenTeaSelfTest {
         check(!ledgerOK([("a/b.txt", false), ("a", false)]), "zip: 폴더와 같은 이름의 파일")
         check(!ledgerOK([("a", true), ("a", false)]), "zip: 폴더 항목과 같은 이름의 파일")
         check(ledgerOK([("Data/a.txt", false), ("data/a.txt", false)]), "zip: 대소문자만 다르면 따로 둔다")
+
+        // zip 항목 이름 풀기
+        let all256 = Data((0...255).map { UInt8($0) })
+        check(String(data: all256, encoding: SafeUnzip.cp437)?.data(using: SafeUnzip.cp437) == all256, "zip 이름: CP437 왕복이 바이트를 그대로 돌려준다")
+        let cp949 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(CFStringEncodings.dosKorean.rawValue)))
+        check(SafeUnzip.decodeName(Data("Docs/조작키 안내.txt".decomposedStringWithCanonicalMapping.utf8)).precomposedStringWithCanonicalMapping == "Docs/조작키 안내.txt", "zip 이름: 표시 없는 UTF-8 한글")
+        check(SafeUnzip.decodeName("Graphics/주인공.png".data(using: cp949)!) == "Graphics/주인공.png", "zip 이름: CP949 한글")
+        check(SafeUnzip.decodeName("Graphics/ゆうしゃ.png".data(using: .shiftJIS)!) == "Graphics/ゆうしゃ.png", "zip 이름: Shift-JIS 가나")
+        func comps(_ s: String) -> [String]? { SafeUnzip.safeComponents(s) }
+        check(comps(#"g/Graphics/Characters/\237W\272\361_\305\326\272\361\265\345.png"#) == ["g", "Graphics", "Characters", "웉비_텅비드.png"], "zip 이름: 맥 8진수 이스케이프 → CP949 이름")
+        check(comps("g/Docs/조작키.txt".decomposedStringWithCanonicalMapping) == ["g", "Docs", "조작키.txt"], "zip 이름: NFD 조각은 NFC 로")
+        check(comps(#"..\..\evil"#) == nil, #"zip 이름: ..\..\evil 거부"#)
+        check(comps(#"a\b"#) == nil, #"zip 이름: a\b 거부"#)
+        check(comps(#"a\057b"#) == nil, #"zip 이름: \057(/) 복원 거부"#)
+        check(comps(#"a\134b"#) == nil, #"zip 이름: \134(\) 복원 거부"#)
+        check(comps(#"\056\056"#) == nil, #"zip 이름: \056\056(..) 복원 거부"#)
+        check(comps(#"a\000b"#) == nil, #"zip 이름: \000 복원 거부"#)
+        check(comps(#"a\400"#) == nil && comps(#"a\12"#) == nil, "zip 이름: 8진수 3자리(0-377)가 아니면 거부")
+        check(comps("a/../b") == nil && comps("/a") == nil && comps("a:b") == nil, "zip 이름: .. · 절대 경로 · 콜론 거부")
+
+        // Info-ZIP Unicode Path (0x7075): 버전 1 + 원래 이름 바이트의 CRC32 + UTF-8 이름
+        do {
+            let orig = Data("Audio/BGM/Route 1.mid".utf8), name = Data("Audio/BGM/Routé 1.mid".utf8)
+            func field(version: UInt8, crc: UInt32) -> Data {
+                var body = Data([version]); withUnsafeBytes(of: crc.littleEndian) { body.append(contentsOf: $0) }; body.append(name)
+                var f = Data([0x75, 0x70, UInt8(body.count & 255), UInt8(body.count >> 8)]); f.append(body); return f
+            }
+            let other = Data([0x0A, 0x00, 0x04, 0x00, 1, 2, 3, 4]) // 앞에 다른 확장 영역(NTFS 시각 등)이 있어도 찾는다
+            let crc = orig.crc32(checksum: 0)
+            check(SafeUnzip.unicodePath(extra: other + field(version: 1, crc: crc), nameBytes: orig) == "Audio/BGM/Routé 1.mid", "0x7075: CRC 가 맞으면 그 이름")
+            check(SafeUnzip.unicodePath(extra: field(version: 1, crc: crc ^ 1), nameBytes: orig) == nil, "0x7075: CRC 가 틀리면 무시")
+            check(SafeUnzip.unicodePath(extra: field(version: 2, crc: crc), nameBytes: orig) == nil, "0x7075: 버전이 1이 아니면 무시")
+            check(SafeUnzip.unicodePath(extra: Data([0x75, 0x70, 0xFF, 0x00, 1]), nameBytes: orig) == nil, "0x7075: 길이가 넘치면 무시")
+        }
+
+        // 같은 경로의 파일이 다시 나올 때: 크기·CRC32 가 같으면 건너뛰고, 다르면 따로 알린다
+        do {
+            typealias ID = SafeUnzip.PathLedger.FileID
+            var l = SafeUnzip.PathLedger()
+            let bgm = ["Audio", "BGM", "Route 1.mid"]
+            check(l.add(bgm, isDirectory: false, id: ID(size: 5822, crc: 1)) == .added, "zip 중복: 첫 항목")
+            check(l.add(bgm, isDirectory: false, id: ID(size: 5822, crc: 1)) == .sameFile, "zip 중복: 같은 크기·CRC 는 건너뜀")
+            check(l.add(["Audio", "BGM", "Route 1.mid".decomposedStringWithCanonicalMapping], isDirectory: false, id: ID(size: 5822, crc: 1)) == .sameFile, "zip 중복: 정규화만 다른 같은 내용")
+            check(l.add(bgm, isDirectory: false, id: ID(size: 5822, crc: 2)) == .differentFile, "zip 중복: CRC 가 다르면 거부")
+            check(l.add(bgm, isDirectory: false, id: ID(size: 5823, crc: 1)) == .differentFile, "zip 중복: 크기가 다르면 거부")
+            check(l.add(bgm, isDirectory: true, id: nil) == .clash, "zip 중복: 같은 이름의 폴더")
+        }
+        func dupZip(_ second: Data) -> Result<[String], Error> {
+            let dir = FileManager.default.temporaryDirectory.appendingPathComponent("greentea-dup-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: dir) }
+            do {
+                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                let zipURL = dir.appendingPathComponent("dup.zip")
+                let archive = try Archive(url: zipURL, accessMode: .create)
+                for body in [Data("MThd same".utf8), second] {
+                    try archive.addEntry(with: "Audio/BGM/Route 1.mid", type: .file, uncompressedSize: Int64(body.count),
+                                         provider: { pos, size in body.subdata(in: Int(pos)..<Int(pos) + size) })
+                }
+                let cn = SafeUnzip.centralNames(zipURL)
+                check(cn?.count == 2 && cn?.allSatisfy { $0.raw == Data("Audio/BGM/Route 1.mid".utf8) && $0.unicode == nil } == true, "중앙 디렉터리 직접 읽기")
+                let out = dir.appendingPathComponent("out")
+                try SafeUnzip.unzip(zipURL, to: out, progress: { _ in })
+                return .success(try FileManager.default.contentsOfDirectory(atPath: out.appendingPathComponent("Audio/BGM").path))
+            } catch { return .failure(error) }
+        }
+        if case .success(let names) = dupZip(Data("MThd same".utf8)) { check(names == ["Route 1.mid"], "zip 중복: 같은 내용이면 하나만 풀림") }
+        else { check(false, "zip 중복: 같은 내용인데 거부됨") }
+        if case .failure(let e) = dupZip(Data("MThd diff".utf8)), case .duplicateName? = e as? SafeUnzip.UnzipError { check(true, "zip 중복: 다른 내용은 거부") }
+        else { check(false, "zip 중복: 다른 내용인데 통과하거나 다른 오류") }
 
         // 게임 밖 주소 (로그인 시트는 실제 로그인 주소만)
         func route(_ s: String, game: String = "game.example", clicked: Bool = false) -> ExternalLink.Route { ExternalLink.route(URL(string: s)!, gameHost: game, clicked: clicked) }

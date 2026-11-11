@@ -14,6 +14,8 @@ final class Delivery: ObservableObject {
         case unpacking(Double)  // asar 풀기
         case checking           // 게임 확인
         case confirmUpdate(Pending) // 이미 있는 게임: 업데이트 / 따로 추가 / 취소
+        /// 게임칩 "새 버전으로 업데이트"로 골랐는데 그 게임과 맞지 않는 파일: 다른 파일 고르기 / 취소
+        case notSameGame(Mismatch)
         case installing         // 게임 파일 바꾸는 중
         case done(Result)
         /// 게임 대신 패드 스킨 zip(`.bingsuskin` 또는 skin.json 이 든 zip)이었다. 스킨 목록에 넣었고, 쓸지는 화면이 묻는다
@@ -32,6 +34,7 @@ final class Delivery: ObservableObject {
             case .unpacking: return "게임 파일 꺼내는 중"
             case .checking: return "게임 확인 중"
             case .confirmUpdate: return "이미 있는 게임이에요"
+            case .notSameGame: return "업데이트할 게임과 달라요"
             case .installing: return "게임 파일 바꾸는 중"
             case .done, .skinDone, .rtpDone: return "준비됐어요"
             case .failed, .skinFailed: return "가져오지 못했어요"
@@ -87,6 +90,14 @@ final class Delivery: ObservableObject {
         static func == (a: Pending, b: Pending) -> Bool { a.staged.work == b.staged.work }
     }
 
+    /// 업데이트하려던 게임(target)과 맞지 않는 가져오기. 같은 게임인지는 저장 폴더 이름(dataPathApp)·제목으로만 알아보므로
+    /// mkxp.json·Game.ini 같은 이름표가 없는 패치 zip 은 폴더 이름("Patch")을 제목으로 써서 여기로 온다
+    struct Mismatch: Equatable {
+        let staged: Staged
+        let target: Dish
+        static func == (a: Mismatch, b: Mismatch) -> Bool { a.staged.work == b.staged.work }
+    }
+
     enum InstallMode: Sendable {
         case new
         case update(Dish, backup: Bool, keepOld: Bool)
@@ -118,6 +129,7 @@ final class Delivery: ObservableObject {
     func cancel() {
         cancelFlag.set(true)
         if case .confirmUpdate(let p) = stage { Self.discard(p.staged) }
+        if case .notSameGame(let m) = stage { Self.discard(m.staged) }
         if case .installing = stage { return } // 이름 바꾸기 몇 번이라 금방 끝난다. 끝까지 둔다.
         stage = .idle
     }
@@ -157,6 +169,12 @@ final class Delivery: ObservableObject {
                     await MainActor.run {
                         if flag.value { Self.discard(staged) } else { self?.stage = .confirmUpdate(Pending(staged: staged, existing: existing, oldVersion: old)) }
                     }
+                } else if let targetID, let target = Self.dish(id: targetID) {
+                    // 업데이트하려던 게임이 아니다: 말없이 새 게임을 만들지 않고 묻는다
+                    NSLog("[Delivery] not the same game: target \(targetID) (\(target.dataPathApp)) ← \(staged.title) (\(staged.dataPathApp)) — waiting for choice")
+                    await MainActor.run {
+                        if flag.value { Self.discard(staged) } else { self?.stage = .notSameGame(Mismatch(staged: staged, target: target)) }
+                    }
                 } else {
                     await self?.install(staged, mode: .new)
                 }
@@ -172,6 +190,18 @@ final class Delivery: ObservableObject {
     func confirm(_ mode: InstallMode) {
         guard case .confirmUpdate(let p) = stage else { return }
         Task { await install(p.staged, mode: mode, previousVersion: p.oldVersion) }
+    }
+
+    /// RPG Maker 로 보이는데 맨 위에 mkxp.json 도 ini(Game.ini 또는 이름 바꾼 exe 의 ini)도 없다 → 패치만 든 zip.
+    /// RGSS 실행에는 ini(Scripts=·Title=)가 꼭 있어야 해서, 실제 게임이 이 둘을 다 빼고 나오는 일은 없다
+    nonisolated static func looksLikePatchOnly(_ root: URL) -> Bool {
+        let names = visibleItems(root).map { $0.lastPathComponent.lowercased() }
+        return !names.contains("mkxp.json") && !names.contains(where: { $0.hasSuffix(".ini") })
+    }
+
+    /// Games/<id> 의 게임 (없으면 nil)
+    nonisolated static func dish(id: String) -> Dish? {
+        MenuBoardStore.dish(forFolder: MenuBoardStore.gamesDir.appendingPathComponent(id, isDirectory: true), id: id)
     }
 
     private func install(_ staged: Staged, mode: InstallMode, previousVersion: String? = nil) async {
@@ -283,6 +313,12 @@ final class Delivery: ObservableObject {
         guard recipe != .unknown else {
             if MVMZProbe.looksPackedInExe(root) { throw DeliveryError.packedInExe }
             throw DeliveryError.unsupported(found: visibleItems(root).map(\.lastPathComponent).sorted())
+        }
+        // 바뀐 파일만 든 패치 zip (예: Data/·Graphics/ 만 있는 어나더 레드 패치): Data/Scripts.rxdata 로 RPG Maker 로는 보이지만
+        // 게임 설정 파일(mkxp.json·Game.ini)이 없어 실행해도 아무것도 안 나온다. 새 게임으로도 업데이트로도 받지 않는다
+        if recipe == .mkxp, Self.looksLikePatchOnly(root) {
+            NSLog("[Delivery] patch-only zip (no mkxp.json · ini): \(visibleItems(root).map(\.lastPathComponent).sorted())")
+            throw DeliveryError.patchOnly
         }
         let desc = RecipeDetector.describe(folder: root, recipe: recipe)
         let version = Self.readVersion(folder: root, recipe: recipe)
@@ -555,8 +591,11 @@ final class Delivery: ObservableObject {
         case noEntry
         /// 온라인 주소를 여는 Electron 앱
         case remoteApp
+        /// 게임 설정 파일 없이 바뀐 파일만 든 패치 zip
+        case patchOnly
         var errorDescription: String? {
             switch self {
+            case .patchOnly: return "바뀐 파일만 든 패치 같아요 · 게임 설정 파일(Game.ini·mkxp.json)이 없어 실행할 수 없어요. 패치가 적용된 게임 전체 zip 을 골라 주세요"
             case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
             case .unsupported(let found):
                 guard !found.isEmpty else { return "지원하지 않는 게임이에요 · 압축 안에 파일이 없어요" }

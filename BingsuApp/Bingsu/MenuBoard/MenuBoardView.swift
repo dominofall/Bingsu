@@ -313,7 +313,8 @@ struct MenuBoardView: View {
         .onChange(of: menu.pendingImport, initial: true) { _, url in
             guard let url else { return }
             menu.pendingImport = nil
-            startImport(url)
+            // 디버그: BINGSU_UPDATE_TARGET=<게임 id> 면 BINGSU_IMPORT 를 그 게임의 "새 버전으로 업데이트"처럼 연다
+            startImport(url, preferring: DevEnv["BINGSU_UPDATE_TARGET"])
         }
     }
 

@@ -17,6 +17,8 @@ struct DeliveryView: View {
     @State private var deleteOld = true
     /// 실패 화면 "다른 파일 고르기": 이 시트 안에서 파일 선택기를 열고 바로 다시 가져온다
     @State private var picking = false
+    /// "업데이트할 게임과 달라요"에서 다른 파일을 고르면 같은 게임을 다시 업데이트 대상으로 삼는다
+    @State private var repickTarget: String?
 
     var body: some View {
         NavigationStack {
@@ -32,6 +34,12 @@ struct DeliveryView: View {
                         ScrollView {
                             VStack(spacing: 14) { confirmInfo(p); confirmButtons(p) }.frame(maxWidth: 420).frame(maxWidth: .infinity)
                         }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if case .notSameGame(let m) = delivery.stage {
+                    ScrollView {
+                        VStack(spacing: 24) { notSameGame(m) }
+                            .frame(maxWidth: 420).frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if case .skinDone(let r) = delivery.stage {
@@ -65,14 +73,17 @@ struct DeliveryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if case .done = delivery.stage {} else if case .rtpDone = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if isSkin {} else {
+                    if case .done = delivery.stage {} else if case .rtpDone = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if case .notSameGame = delivery.stage {} else if isSkin {} else {
                         Button("취소") { delivery.cancel(); onDone(nil) }
                     }
                 }
             }
         }
         .interactiveDismissDisabled()
-        .background(GamePicker(isPresented: $picking, types: [.zip, .bingsuSkin]) { url in if let url { delivery.start(from: url) } }.frame(width: 0, height: 0))
+        .background(GamePicker(isPresented: $picking, types: [.zip, .bingsuSkin]) { url in
+            let target = repickTarget; repickTarget = nil
+            if let url { delivery.start(from: url, preferring: target) }
+        }.frame(width: 0, height: 0))
     }
 
     private var isSkin: Bool {
@@ -193,6 +204,38 @@ struct DeliveryView: View {
                 .keyboardShortcut(.defaultAction)
             Button { delivery.confirm(.copy) } label: { Text("따로 하나 더 추가").frame(maxWidth: .infinity) }
                 .buttonStyle(.bordered)
+            Button("취소", role: .cancel) { delivery.cancel(); onDone(nil) }
+                .padding(.top, 2)
+        }
+    }
+
+    /// 게임칩 "새 버전으로 업데이트"로 고른 파일이 그 게임과 맞지 않을 때. 말없이 새 게임을 만들지 않는다
+    private func notSameGame(_ m: Delivery.Mismatch) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 44)).foregroundStyle(.orange)
+            Text("업데이트할 게임과 달라요").font(.title3.bold())
+            Text("고른 파일은 \u{201C}\(m.target.title)\u{201D}의 새 버전으로 보이지 않아요. 빙수는 게임 안의 이름(저장 폴더 이름·게임 제목)으로 같은 게임인지 알아봐요.")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 4) {
+                row("대상 게임","\(m.target.title) · 저장 폴더 \(m.target.dataPathApp)")
+                row("고른 파일", "\(Receipt.clean(m.staged.sourceName, limit: Receipt.maxTextLength) ?? "") · 이름 \(m.staged.title)")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Palette.card, in: RoundedRectangle(cornerRadius: 14))
+            Text("바뀐 파일만 든 패치 zip 은 게임 이름이 없어서 업데이트할 수 없어요. 게임 전체가 든 zip 을 골라 주세요.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                let target = m.target.id
+                delivery.cancel()
+                repickTarget = target
+                picking = true
+            } label: { Text("다른 파일 고르기").frame(maxWidth: .infinity) }
+                .buttonStyle(.borderedProminent).tint(Palette.accent)
+                .keyboardShortcut(.defaultAction)
+            // 새 게임으로 추가는 두지 않는다: 이름표 없는 패치 zip 은 따로 실행해도 아무것도 안 나온다
             Button("취소", role: .cancel) { delivery.cancel(); onDone(nil) }
                 .padding(.top, 2)
         }

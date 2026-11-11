@@ -48,7 +48,11 @@ enum WhatsNew {
 
     /// 새 빌드는 맨 위에. 빌드마다 세 줄 이하
     static let notes: [Note] = [
-        // 38 글의 두 줄은 사용자 문장 (2026-11-11). 외부 테스터는 36 → 38 이라 아래 37 글도 함께 뜬다
+        // 40 글은 사용자 문장 (2026-11-11). 외부 테스터는 36 → 40 이라 아래 37·38 글도 함께 뜬다 (38·39 는 내부 테스트만)
+        Note(build: 40, title: "zip 불러오기 개선", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "doc.zipper", text: "zip 을 불러오는 과정에서 윈도우 파일 형식과 iOS 파일 형식이 달라 충돌하던 문제를 해결했습니다"),
+        ]),
+        // 38 글의 두 줄은 사용자 문장 (2026-11-11)
         Note(build: 38, title: "터치 조작과 게임 정보", message: "불편한 점은 Q&A로", items: [
             Item(symbol: "hand.tap", text: "터치 조작 게임 기능 개선"),
             Item(symbol: "info.circle", text: "게임 정보 기능 추가"),
