@@ -21,7 +21,7 @@ struct BingsuApp: App {
     /// 소리 설정("무음 모드에서도 소리 재생"·게임별 소리 크기)이 바뀌었을 때. 켜 둔 게임 화면이 받아 바로 적용한다
     static let soundPrefsChanged = Notification.Name("bingsu.soundPrefsChanged")
 
-    /// 게임 소리 크기 (0~1, 기본 1). 모든 게임 공통 — 설정 › 게임 중, 일시정지 화면에서 바꾼다
+    /// 게임 소리 크기 (0~1, 기본 1). 모든 게임 공통 — 설정 › 소리·진동, 일시정지 화면에서 바꾼다
     static let gameVolumeKey = "bingsu.gameVolume"
     static var gameVolume: Double {
         let d = UserDefaults.standard
@@ -36,7 +36,7 @@ struct BingsuApp: App {
     /// 지금 화면에 보이는 게임. 게임별 "무음 모드에서도 소리 재생"을 고를 때 쓴다 (홈이면 nil → 전역 설정)
     @MainActor static var audioDishID: String?
 
-    /// 무음 모드에서도 소리를 낼지: 게임별 설정이 있으면 그것, 없으면 설정 › 게임 중의 값
+    /// 무음 모드에서도 소리를 낼지: 게임별 설정이 있으면 그것, 없으면 설정 › 소리·진동의 값
     @MainActor static func playInSilent(for dishID: String?) -> Bool {
         if let dishID, let own = DishPrefsStore.shared.prefs(for: dishID).playInSilent { return own }
         return UserDefaults.standard.object(forKey: playInSilentKey) as? Bool ?? false
@@ -83,7 +83,8 @@ struct BingsuApp: App {
                 .task {
                     #if DEBUG
                     // 디버그 자가 테스트: 가상 패드 배치 왕복·예전 설정 호환 (게임 쪽 자가 테스트는 GlassBowl)
-                    if DevEnv["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); IglooSelfTest.run(); GreenTeaSelfTest.run(); RedBeanSelfTest.run(); StrawSelfTest.run() }
+                    if DevEnv["BINGSU_KEYMAPTEST"] == "1" { KeyMapSelfTest.run() }
+                    if DevEnv["BINGSU_SELFTEST"] == "1" { SpoonSelfTest.run(); KeyMapSelfTest.run(); IglooSelfTest.run(); GreenTeaSelfTest.run(); RedBeanSelfTest.run(); StrawSelfTest.run(); ToppingSelfTest.run() }
                     // 디버그: BINGSU_DRIVE_CONNECT=1 이면 켤 때 "Google Drive 연결" 을 누른 것처럼 (흉내 서버 동의 화면 → 토큰, 결과는 로그)
                     if DevEnv["BINGSU_DRIVE_CONNECT"] == "1" {
                         try? await Task.sleep(for: .seconds(2))

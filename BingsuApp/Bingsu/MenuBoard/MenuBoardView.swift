@@ -27,12 +27,20 @@ struct MenuBoardView: View {
     @State private var editing: Dish?
     /// 길게 누르기 › 게임 정보 시트
     @State private var info: Dish?
+    /// 패치 적용 시트 ("업데이트"로 고른 zip 이 패치였을 때·패치만 든 zip 가져오기에서 게임을 골랐을 때)
+    @State private var patching: PatchRequest?
+    struct PatchRequest: Identifiable {
+        let id = UUID()
+        let dish: Dish
+        var source: URL? = nil
+        var offer: Delivery.PatchOffer? = nil
+    }
     /// 길게 눌러 "게임 삭제"를 고른 게임. 알림으로 한 번 더 묻는다
     @State private var deleting: Dish?
     /// 실제 컨트롤러로 게임칩 고르기
     @StateObject private var nav = MenuPadNavigator()
     @State private var gridWidth: CGFloat = 0
-    /// 게임칩 "새 버전으로 업데이트"로 파일 선택기를 연 경우 그 게임 id
+    /// 게임칩 "업데이트"로 파일 선택기를 연 경우 그 게임 id
     @State private var updateTarget: String?
     /// 동기화 충돌: 게임을 열기 전에 어느 저장 데이터로 할지 묻는다
     @State private var conflict: IglooConflict?
@@ -53,7 +61,7 @@ struct MenuBoardView: View {
     private let chipMin: CGFloat = 150, chipSpacing: CGFloat = 18
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing, alignment: .top)] }
     /// 홈이 보이고 시트가 하나도 없을 때만 컨트롤러 입력을 받는다
-    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showTableSpoon && !showWhatsNew && editing == nil && deleting == nil && conflict == nil }
+    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showTableSpoon && !showWhatsNew && editing == nil && deleting == nil && conflict == nil && patching == nil }
     /// 칩 수 = 게임 수 + "게임 추가" 칩
     private var chipCount: Int { menu.dishes.isEmpty ? 0 : menu.dishes.count + 1 }
 
@@ -211,13 +219,12 @@ struct MenuBoardView: View {
             // iPad 에선 이 대화상자가 팝오버라, 닫히는 도중에 다른 창을 띄우면 그 창이 터치를 못 받는 채로 남는다 → 닫힌 뒤에 띄운다
             Button("zip 파일 가져오기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
             Button("주소로 zip 내려받기") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showDownload = true } }
-            // RTP zip 도 게임 가져오기가 알아보고 RTP 선반에 넣는다 (Delivery.prepare)
-            Button("RTP 넣기 (zip)") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } }
+            // RTP zip 은 따로 단추 없이 "zip 파일 가져오기"가 알아보고 RTP 선반에 넣는다 (Delivery.prepare, 2026-11-15 사용자 결정으로 단추 뺌)
             // 브라우저 게임은 부가 기능이라 맨 아래 (App Review 4.7: PC용 RPG Maker 게임 실행이 앱의 주 목적)
             Button("주소로 웹 게임 추가") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showAddWeb = true } }
         } message: {
-            // iPhone 가로에서 버튼 넷이 다 보이도록 짧게 (길면 마지막 줄이 잘린다)
-            Text("RPG Maker XP·VX·VX Ace·MV·MZ 로 만든 PC용 게임을 zip 으로 넣어요.")
+            // iPhone 가로에서 버튼이 다 보이도록 짧게 (길면 마지막 줄이 잘린다). 문구는 사용자 문장 (2026-11-15)
+            Text("플레이하고 싶은 게임을 .zip 파일로 불러와요.")
         }
         .sheet(isPresented: $showAddWeb) { AddWebGameView().environmentObject(menu) }
         .fullScreenCover(isPresented: $showTableSpoon) { TableSpoonView() }
@@ -270,7 +277,18 @@ struct MenuBoardView: View {
             if phase == .active { Task { await Igloo.shared.syncAll(except: Set([running?.dataPathApp].compactMap { $0 })) } }
         }
         .sheet(item: $editing) { dish in DishSettingsView(dish: dish) }
-        .sheet(item: $info) { dish in ReceiptView(dish: dish) }
+        .sheet(item: $info) { dish in
+            ReceiptView(dish: dish, onUpdate: {
+                info = nil
+                update(dish)
+            }, onWillChange: closeIfRunning)
+        }
+        .sheet(item: $patching) { req in
+            ToppingView(dish: req.dish, source: req.source, offer: req.offer, onWillChange: closeIfRunning, onDownload: {
+                patching = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showDownload = true }
+            }) { patching = nil; menu.refresh() }
+        }
         .alert("‘\(deleting?.title ?? "")’ 게임을 삭제하시겠습니까?",
                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), presenting: deleting) { dish in
             Button("삭제", role: .destructive) { delete(dish) }
@@ -287,6 +305,10 @@ struct MenuBoardView: View {
                 // 실패 화면 "주소로 다시 받기"/"이어받기": 가져오기 시트를 닫고 내려받기 시트를 연다
                 showDelivery = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showDownload = true }
+            }, onPatch: { dish, offer in
+                // 패치만 든 zip: 가져오기 시트를 닫고 고른 게임의 패치 화면을 연다 (풀어 둔 폴더째 넘김)
+                showDelivery = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { patching = PatchRequest(dish: dish, offer: offer) }
             }) { _ in showDelivery = false; menu.refresh() }
         }
         .onAppear { wireNavigator() }
@@ -309,11 +331,19 @@ struct MenuBoardView: View {
             if editing == nil, let id = DevEnv["BINGSU_EDIT"], let d = dishes.first(where: { $0.id == id }) { editing = d }
             // 디버그: BINGSU_INFO=<게임 id> 면 그 게임 정보 시트를 연다 (시뮬레이터 확인용)
             if info == nil, let id = DevEnv["BINGSU_INFO"], let d = dishes.first(where: { $0.id == id }) { info = d }
+            // 디버그: BINGSU_PATCH="<게임 id>|<zip 경로>" 면 그 게임의 패치 화면을 그 zip 으로 연다 (BINGSU_PATCH_APPLY=1 이면 바로 적용)
+            if patching == nil, let spec = DevEnv["BINGSU_PATCH"], let bar = spec.firstIndex(of: "|"),
+               let d = dishes.first(where: { $0.id == String(spec[..<bar]) }), Topping.records(for: d.id).isEmpty || DevEnv["BINGSU_PATCH_AGAIN"] == "1" {
+                let req = PatchRequest(dish: d, source: URL(fileURLWithPath: String(spec[spec.index(after: bar)...])))
+                NSLog("[Topping] 개발용 패치 화면: \(d.id)")
+                // 켤 때 바로 올리면 첫 화면이 그려지기 전이라 무시될 수 있어 한 박자 뒤에
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { if patching == nil { patching = req } }
+            }
         }
         .onChange(of: menu.pendingImport, initial: true) { _, url in
             guard let url else { return }
             menu.pendingImport = nil
-            // 디버그: BINGSU_UPDATE_TARGET=<게임 id> 면 BINGSU_IMPORT 를 그 게임의 "새 버전으로 업데이트"처럼 연다
+            // 디버그: BINGSU_UPDATE_TARGET=<게임 id> 면 BINGSU_IMPORT 를 그 게임의 "업데이트"처럼 연다
             startImport(url, preferring: DevEnv["BINGSU_UPDATE_TARGET"])
         }
     }
@@ -412,6 +442,17 @@ struct MenuBoardView: View {
         nav.onSettings = { showSettings = true }
     }
 
+    /// 게임칩·게임 정보 "업데이트": 이 게임을 대상으로 zip 을 고른다 (메뉴·시트가 닫힌 뒤에 선택기를 연다)
+    private func update(_ dish: Dish) {
+        updateTarget = dish.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true }
+    }
+
+    /// 게임 파일을 바꾸기 직전: 켜 둔 게임이면 닫는다 (업데이트와 같음)
+    private func closeIfRunning(_ dish: Dish) {
+        if running?.id == dish.id { running = nil; showBowl = false }
+    }
+
     private func startImport(_ url: URL, preferring targetID: String? = nil) {
         // 이미 가져오는 중이면 새 파일은 무시하고 진행 화면만 다시 보여 준다
         if !delivery.stage.isBusy { delivery.start(from: url, preferring: targetID) }
@@ -425,9 +466,9 @@ struct MenuBoardView: View {
         if !dish.isRemote && !MenuBoardStore.isBuiltIn(dish) {
             // 가져온 게임만: 어느 파일(패치)에서 왔는지
             Button { info = dish } label: { Label("게임 정보", systemImage: "info.circle") }
-        }
-        if !dish.isRemote && !MenuBoardStore.isBuiltIn(dish) {
-            Button { updateTarget = dish.id; DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { showPicker = true } } label: { Label("새 버전으로 업데이트", systemImage: "arrow.down.circle") }
+            // 업데이트 하나로: 게임 전체 zip 이면 새 버전으로 바꾸고(저장 유지), 바뀐 파일만 든 zip(한글 패치 등)이면
+            // 원본을 보관하고 덮는다(되돌리기는 게임 정보에서). 어느 쪽인지는 Delivery 가 zip 을 보고 정한다
+            Button { update(dish) } label: { Label("업데이트", systemImage: "arrow.down.circle") }
         }
         if MenuBoardStore.isCustomWeb(dish) || (!dish.isRemote && !MenuBoardStore.isBuiltIn(dish)) {
             // 메뉴가 닫힌 뒤에 알림을 띄운다 (닫히는 중에 띄우면 iPad 에서 무시될 때가 있다)

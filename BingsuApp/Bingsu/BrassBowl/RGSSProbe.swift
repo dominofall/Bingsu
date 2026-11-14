@@ -111,6 +111,9 @@ enum RGSSProbe {
         return nil
     }
 
+    /// `Data/Scripts.rxdata`·`rvdata`·`rvdata2` (대소문자 무시). 암호화 아카이브 안에 있으면 nil
+    static func dataScripts(folder: URL) -> URL? { dataScriptsFile(folder, top: entries(folder))?.0 }
+
     private static func dataScriptsFile(_ folder: URL, top: [String: URL]) -> (URL, RGSSVersion)? {
         guard let data = top["data"] else { return nil }
         let inside = entries(data)
@@ -227,5 +230,208 @@ enum RGSSArchive {
             return nil
         }
         return names
+    }
+}
+
+// MARK: - 스크립트 문법으로 Ruby 판 고르기
+
+/// 게임 스크립트(`Data/Scripts.rxdata`·`rvdata`·`rvdata2`)를 풀어, Ruby 3.1 에서 문법 오류가 되는 Ruby 1.8 문법이 있는지 본다.
+///
+/// 빙수는 mkxp.json 이 있으면 Ruby 3.1 을 고른다(`RubyProfile.detect`). 그런데 옛 Essentials 에 신형 mkxp-z 설정만 같이 담아
+/// 배포한 게임(포켓몬 Z V2.18)은 스크립트가 1.8 문법이라, 3.1 엔진이 그 스크립트를 문법 오류로 통째로 건너뛰고(엔진 로그 `[SKIPPED]`)
+/// 뒤 스크립트가 NameError 로 멈춘다(2026-11-14, tools/rgss-check). 어떤 Ruby 로 돌든 스크립트 코드는 그대로이니 실행 전에 읽어 고른다.
+///
+/// 판단: 1.8 전용 문법(`when x:`, rescue 밖 `retry`)이 있고 1.8 에 없는 신형 문법(`&.`, `->`, 키워드 인자, `{ a: 1 }`)은 없으면 옛 게임.
+/// 둘 다 있으면(한글 패치처럼 옛 게임을 일부 고친 경우) 3.1 그대로 둔다. 기준은 "옛 시절 코드인가" 가 아니라 "3.1 에서 컴파일되는가".
+/// 암호화 아카이브(Game.rgss*) 게임은 읽지 않는다(nil). 결과는 스크립트 파일 크기·수정 시각으로 캐시한다.
+enum RubyScriptScan {
+    struct Result: Codable, Equatable {
+        /// 1.8 전용 문법 위치 몇 개 ("스크립트:줄 종류")
+        var legacyHits: [String]
+        var legacyCount: Int
+        /// 신형 문법 줄 수. 하나라도 나오면 판단이 끝나 거기서 멈추므로 0 아니면 1
+        var modernCount: Int
+        /// 3.1 로 돌리면 스크립트를 건너뛸 옛 게임
+        var legacyOnly: Bool { legacyCount > 0 && modernCount == 0 }
+    }
+
+    private struct CacheEntry: Codable { var size: Int; var mtime: Double; var result: Result }
+
+    private static let cacheFile: URL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("ruby-script-scan.json")
+    private static let lock = NSLock()
+
+    static func scan(folder: URL) -> Result? {
+        guard let file = RGSSProbe.dataScripts(folder: folder),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: file.path) else { return nil }
+        let size = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        lock.lock(); defer { lock.unlock() }
+        var cache = (try? JSONDecoder().decode([String: CacheEntry].self, from: Data(contentsOf: cacheFile))) ?? [:]
+        if let hit = cache[file.path], hit.size == size, hit.mtime == mtime { return hit.result }
+        guard let data = try? Data(contentsOf: file), let scripts = decodeScripts(data) else { return nil }
+        let result = analyze(scripts)
+        cache[file.path] = CacheEntry(size: size, mtime: mtime, result: result)
+        if let out = try? JSONEncoder().encode(cache) { try? out.write(to: cacheFile, options: .atomic) }
+        return result
+    }
+
+    // MARK: 문법 검사 (tools/rgss-check 로 포켓몬 Z·Wishing Star·어나더 레드·파티! 에서 엔진 [SKIPPED] 와 맞춰 봄)
+
+    /// `when 0:`·`when "a", "b":` — 1.8 은 `then` 대신 콜론을 받았다. 3.1 은 문법 오류
+    private static let whenColon = try! NSRegularExpression(
+        pattern: #"^\s*when\s+(?:[^\s:"',#]+|"[^"]*"|'[^']*')(?:\s*,\s*(?:[^\s:"',#]+|"[^"]*"|'[^']*'))*:(?:\s|$)"#)
+    private static let retryWord = try! NSRegularExpression(pattern: #"\bretry\b"#)
+    /// 1.8 에 없는 문법 (하나라도 있으면 이 게임 스크립트는 신형 Ruby 용)
+    private static let modern: [NSRegularExpression] = [
+        #"&\.[a-z_]"#,                                       // 안전 호출
+        #"->\s*[({]"#,                                       // 람다
+        #"^\s*def\s+[\w.?!]+\s*\([^)]*\b[a-z_]\w*:(?!:)"#,     // 키워드 인자
+        #"\{\s*[a-z_]\w*:\s"#,                               // { a: 1 }
+    ].map { try! NSRegularExpression(pattern: $0) }
+
+    static func analyze(_ scripts: [(name: String, code: String)]) -> Result {
+        var hits: [String] = []
+        var legacy = 0, modernCount = 0
+        for (name, code) in scripts {
+            let lines = code.components(separatedBy: "\n")
+            for (i, raw) in lines.enumerated() {
+                let line = stripComment(raw)
+                if line.contains("when"), matches(whenColon, line) {
+                    legacy += 1
+                    if hits.count < 8 { hits.append("\(name):\(i + 1) when:") }
+                }
+                if line.contains("retry"), matches(retryWord, line), retryOutsideRescue(lines, i) {
+                    legacy += 1
+                    if hits.count < 8 { hits.append("\(name):\(i + 1) retry") }
+                }
+                if line.contains("&.") || line.contains("->") || line.contains(":"),
+                   modern.contains(where: { matches($0, line) }) {
+                    // 신형 문법이 하나라도 있으면 3.1 그대로 — 더 볼 필요 없다 (Essentials 20+ 는 첫 스크립트들에서 바로 끝남)
+                    modernCount += 1
+                    return Result(legacyHits: hits, legacyCount: legacy, modernCount: modernCount)
+                }
+            }
+        }
+        return Result(legacyHits: hits, legacyCount: legacy, modernCount: modernCount)
+    }
+
+    private static func matches(_ re: NSRegularExpression, _ s: String) -> Bool {
+        re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
+
+    /// 줄 끝 `# 주석` 을 대충 뗀다 (문자열 안 # 은 그대로 두려고 따옴표가 없을 때만)
+    private static func stripComment(_ s: String) -> String {
+        guard let h = s.firstIndex(of: "#") else { return s }
+        let head = s[..<h]
+        if head.contains("\"") || head.contains("'") { return s }
+        return String(head)
+    }
+
+    private static func indent(_ s: String) -> Int {
+        var n = 0
+        for c in s { if c == " " { n += 1 } else if c == "\t" { n += 2 } else { break } }
+        return n
+    }
+
+    /// 3.1 에서 `retry` 는 rescue 절 안에서만 된다(1.8 은 반복문 안에서도 됨). 들여쓰기로 감싼 줄을 거슬러 올라가
+    /// retry 보다 덜 들여쓴 `rescue` 절이 먼저 나오면 rescue 안, `def` 가 먼저 나오면 밖으로 본다
+    private static func retryOutsideRescue(_ lines: [String], _ at: Int) -> Bool {
+        var cur = indent(lines[at])
+        var j = at - 1
+        while j >= 0 {
+            let l = lines[j]; j -= 1
+            let t = l.trimmingCharacters(in: .whitespaces)
+            if t.isEmpty || t.hasPrefix("#") { continue }
+            let d = indent(l)
+            if d < cur {
+                if t == "rescue" || t.hasPrefix("rescue ") || t.hasPrefix("rescue=") { return false }
+                if t.hasPrefix("def ") { return true }
+                cur = d
+            }
+        }
+        return true
+    }
+
+    // MARK: Scripts.*data 풀기 (Marshal 4.8: [[번호, 이름, zlib 코드], ...])
+
+    static func decodeScripts(_ data: Data) -> [(name: String, code: String)]? {
+        var r = MarshalReader(bytes: [UInt8](data))
+        guard r.bytes.count > 2, r.bytes[0] == 4, r.bytes[1] == 8, case .array(let rows)? = try? r.value() else { return nil }
+        var out: [(String, String)] = []
+        for row in rows {
+            guard case .array(let cols) = row, cols.count >= 3,
+                  case .string(let nameBytes) = cols[1], case .string(let z) = cols[2] else { continue }
+            let name = String(decoding: nameBytes, as: UTF8.self)
+            guard let code = inflate(z) else { continue }
+            out.append((name, code))
+        }
+        return out
+    }
+
+    /// zlib(헤더 2바이트 + deflate + adler32) → 문자열. Apple 의 `.zlib` 은 헤더 없는 deflate 라 앞 2바이트를 뗀다
+    private static func inflate(_ z: [UInt8]) -> String? {
+        guard z.count > 6 else { return z.isEmpty ? "" : nil }
+        let body = Data(z[2...]) as NSData
+        guard let raw = try? body.decompressed(using: .zlib) else { return nil }
+        return String(decoding: raw as Data, as: UTF8.self)
+    }
+
+    private struct MarshalReader {
+        enum Value { case int(Int), string([UInt8]), array([Value]), other }
+        struct Bad: Error {}
+        let bytes: [UInt8]
+        var i = 2
+
+        init(bytes: [UInt8]) { self.bytes = bytes }
+
+        mutating func byte() throws -> UInt8 {
+            guard i < bytes.count else { throw Bad() }
+            defer { i += 1 }
+            return bytes[i]
+        }
+
+        mutating func take(_ n: Int) throws -> [UInt8] {
+            guard n >= 0, i + n <= bytes.count else { throw Bad() }
+            defer { i += n }
+            return Array(bytes[i..<(i + n)])
+        }
+
+        /// Marshal 정수 (w_long)
+        mutating func int() throws -> Int {
+            let c = Int(Int8(bitPattern: try byte()))
+            if c == 0 { return 0 }
+            if c > 4 { return c - 5 }
+            if c < -4 { return c + 5 }
+            let n = abs(c)
+            var x = 0
+            for k in 0..<n { x |= Int(try byte()) << (8 * k) }
+            if c < 0 { x -= 1 << (8 * n) }
+            return x
+        }
+
+        mutating func value() throws -> Value {
+            switch try byte() {
+            case 0x30, 0x54, 0x46: return .other                          // nil true false
+            case 0x69: return .int(try int())                             // i
+            case 0x22: return .string(try take(try int()))                // "
+            case 0x49:                                                    // I (인코딩 같은 ivar 를 단 값)
+                let v = try value()
+                let n = try int()
+                for _ in 0..<n { _ = try value(); _ = try value() }
+                return v
+            case 0x5B:                                                    // [
+                let n = try int()
+                guard n >= 0, n < 100_000 else { throw Bad() }
+                var a: [Value] = []
+                a.reserveCapacity(n)
+                for _ in 0..<n { a.append(try value()) }
+                return .array(a)
+            case 0x3A: _ = try take(try int()); return .other             // : 심볼
+            case 0x3B, 0x40: _ = try int(); return .other                 // ; 심볼 링크, @ 객체 링크
+            case 0x6C: _ = try byte(); _ = try take(try int() * 2); return .other   // l 큰 정수 (스크립트 번호가 2^30 을 넘는 게임, 어나더 레드)
+            default: throw Bad()
+            }
+        }
     }
 }

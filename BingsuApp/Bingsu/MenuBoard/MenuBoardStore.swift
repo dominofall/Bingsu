@@ -167,6 +167,7 @@ final class MenuBoardStore: ObservableObject {
         guard !dish.isRemote, dish.location.resolvingSymlinksInPath().standardizedFileURL.path.hasPrefix(games + "/") else { return }
         // 게임 폴더는 파일이 수만 개라 바로 지우면 화면이 몇 초 멈춘다 → 숨김 이름으로 바꿔(즉시) 목록에서 빼고, 실제 지우기는 뒤에서
         let base = dish.location.deletingLastPathComponent()
+        Topping.forget(dish.id)   // 적용한 패치의 기록·원본 백업
         for folder in [dish.location, base.appendingPathComponent(dish.id + Delivery.oldSuffix, isDirectory: true)] {
             let trash = base.appendingPathComponent(Self.trashPrefix + UUID().uuidString, isDirectory: true)
             if (try? FileManager.default.moveItem(at: folder, to: trash)) == nil { continue }

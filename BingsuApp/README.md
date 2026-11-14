@@ -69,6 +69,9 @@ npx --yes @electron/asar extract <게임 폴더>/resources/app.asar Games/<게�
 | `BINGSU_SELFTEST=1` | 게임 로드 직후 저장 경로 자가 검증 |
 | `BINGSU_MKXP_LOG=1` | RPG Maker XP 엔진 디버그 로그 |
 | `BINGSU_KEYS="초:코드,…"` | RPG Maker XP 게임에 그 시각(초)마다 키 한 번 (코드는 `KeyC`·`ArrowUp` 같은 KeyboardEvent.code) |
+| `BINGSU_HARDKEYS="초:코드,…"` | 하드웨어 키보드로 그 키를 누른 것처럼 (키 설정의 바뀐 키를 거친다, RPG Maker·웹 게임) |
+| `BINGSU_KEYMAPTEST=1` | 키 설정 자가 테스트만 (`[Keys] selftest …`) |
+| `BINGSU_CAPTURE_DEMO=1` | 키 설정 "누르세요" 창이 컨트롤러·키보드가 연결된 것처럼 보이고 "받았어요"를 6초 보인다 (스크린숏용) |
 | `BINGSU_AUTOKEY="코드:간격:횟수"` | 12초 뒤부터 그 키를 간격(초)마다 횟수만큼 (글자 입력 중엔 건너뜀) |
 
 로그 보기: `xcrun simctl spawn <UDID> log show --last 2m --style compact | grep "\[Bowl\]"`. 디버그 빌드는 `isInspectable = true` 라 Mac Safari 개발 메뉴에서 웹뷰 인스펙터를 열 수 있다.

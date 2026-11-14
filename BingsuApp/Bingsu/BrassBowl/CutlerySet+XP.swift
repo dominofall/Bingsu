@@ -52,7 +52,23 @@ enum BrassKeys {
         case "ControlLeft": return 224
         case "ShiftLeft": return 225
         case "AltLeft": return 226
-        default: return nil
+        // 게임 키보드 (Spoon/GameKeyboard.swift)
+        case "Minus": return 45
+        case "Equal": return 46
+        case "BracketLeft": return 47
+        case "BracketRight": return 48
+        case "Backslash": return 49
+        case "Semicolon": return 51
+        case "Quote": return 52
+        case "Backquote": return 53
+        case "Comma": return 54
+        case "Period": return 55
+        case "Slash": return 56
+        case "ControlRight": return 228
+        case "ShiftRight": return 229
+        case "AltRight": return 230
+        // 키 설정에서 고를 수 있는 나머지 키 (F키·숫자패드·편집 키, Spoon/KeyMap.swift 의 KeyCatalog)
+        default: return KeyCatalog.hid(code).map(Int32.init)
         }
     }
 }

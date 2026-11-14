@@ -11,13 +11,15 @@ struct DeliveryView: View {
     var onWillUpdate: (Dish) -> Void = { _ in }
     /// 실패 화면 "주소로 다시 받기"/"이어받기": 이 시트를 닫고 내려받기 시트를 연다 (7.5)
     var onRedownload: () -> Void = {}
+    /// 패치만 든 zip 에서 적용할 게임을 골랐다: 이 시트를 닫고 패치 화면(ToppingView)을 연다
+    var onPatch: (Dish, Delivery.PatchOffer) -> Void = { _, _ in }
     let onDone: (Delivery.Result?) -> Void
 
     @State private var backupFirst = true
     @State private var deleteOld = true
     /// 실패 화면 "다른 파일 고르기": 이 시트 안에서 파일 선택기를 열고 바로 다시 가져온다
     @State private var picking = false
-    /// "업데이트할 게임과 달라요"에서 다른 파일을 고르면 같은 게임을 다시 업데이트 대상으로 삼는다
+    /// "업데이트할 게임과 달라요"에서 다른 파일을 고르면 같은 게임을 다시 업데이트 대상으로 삼는다 (게임 전체·패치 모두)
     @State private var repickTarget: String?
 
     var body: some View {
@@ -39,6 +41,12 @@ struct DeliveryView: View {
                 } else if case .notSameGame(let m) = delivery.stage {
                     ScrollView {
                         VStack(spacing: 24) { notSameGame(m) }
+                            .frame(maxWidth: 420).frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if case .choosePatchGame(let o) = delivery.stage {
+                    ScrollView {
+                        VStack(spacing: 24) { patchChooser(o) }
                             .frame(maxWidth: 420).frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -73,13 +81,17 @@ struct DeliveryView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    if case .done = delivery.stage {} else if case .rtpDone = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if case .notSameGame = delivery.stage {} else if isSkin {} else {
+                    if case .done = delivery.stage {} else if case .rtpDone = delivery.stage {} else if case .failed = delivery.stage {} else if case .confirmUpdate = delivery.stage {} else if case .notSameGame = delivery.stage {} else if case .choosePatchGame = delivery.stage {} else if isSkin {} else {
                         Button("취소") { delivery.cancel(); onDone(nil) }
                     }
                 }
             }
         }
         .interactiveDismissDisabled()
+        // 게임칩 "업데이트"로 고른 zip 이 그 게임의 패치였다: 묻지 않고 패치 화면(미리 보기)으로 넘긴다
+        .onChange(of: delivery.stage, initial: true) { _, stage in
+            if case .patchReady(let o) = stage, let dish = o.candidates.first, let offer = delivery.takePatch() { onPatch(dish, offer) }
+        }
         .background(GamePicker(isPresented: $picking, types: [.zip, .bingsuSkin]) { url in
             let target = repickTarget; repickTarget = nil
             if let url { delivery.start(from: url, preferring: target) }
@@ -123,7 +135,7 @@ struct DeliveryView: View {
                 if r.movedSaves > 0 { row("저장 파일", "게임 폴더에 있던 저장 파일 \(r.movedSaves)개를 옮겼어요") }
                 row("실행", r.dish.recipe.servable ? "iPhone에서 바로 실행할 수 있어요" : "아직 실행할 수 없는 형식이에요 (준비 중)")
                 if r.dish.needsRTP, let rtp = r.dish.rtp, !RTPShelf.isInstalled(rtp) {
-                    row("RTP", "RTP 가 필요해요 · \(rtp). RTP 폴더를 zip 으로 묶어 게임 추가 › RTP 넣기로 넣어 주세요")
+                    row("RTP", "RTP 가 필요해요 · \(rtp). RTP 폴더를 zip 으로 묶어 게임 추가 › zip 파일 가져오기로 넣어 주세요")
                 }
             }
             .padding(16)
@@ -209,7 +221,7 @@ struct DeliveryView: View {
         }
     }
 
-    /// 게임칩 "새 버전으로 업데이트"로 고른 파일이 그 게임과 맞지 않을 때. 말없이 새 게임을 만들지 않는다
+    /// 게임칩 "업데이트"로 고른 파일이 그 게임의 새 버전도, 그 게임에 맞는 패치도 아닐 때. 말없이 새 게임을 만들지 않는다
     private func notSameGame(_ m: Delivery.Mismatch) -> some View {
         VStack(spacing: 14) {
             Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 44)).foregroundStyle(.orange)
@@ -224,7 +236,7 @@ struct DeliveryView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .background(Palette.card, in: RoundedRectangle(cornerRadius: 14))
-            Text("바뀐 파일만 든 패치 zip 은 게임 이름이 없어서 업데이트할 수 없어요. 게임 전체가 든 zip 을 골라 주세요.")
+            Text("이 게임의 새 버전이 든 zip 이나, 이 게임 파일 위에 덮을 바뀐 파일만 든 zip(패치)을 골라 주세요.")
                 .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
@@ -236,6 +248,42 @@ struct DeliveryView: View {
                 .buttonStyle(.borderedProminent).tint(Palette.accent)
                 .keyboardShortcut(.defaultAction)
             // 새 게임으로 추가는 두지 않는다: 이름표 없는 패치 zip 은 따로 실행해도 아무것도 안 나온다
+            Button("취소", role: .cancel) { delivery.cancel(); onDone(nil) }
+                .padding(.top, 2)
+        }
+    }
+
+    /// 패치만 든 zip: 어느 게임에 적용할지 묻는다. 게임 파일과 잘 겹치는 게임이 위에
+    private func patchChooser(_ o: Delivery.PatchOffer) -> some View {
+        VStack(spacing: 14) {
+            Image(systemName: "square.stack.3d.up.fill").font(.system(size: 40)).foregroundStyle(Palette.accent)
+            Text("패치만 든 zip 이에요").font(.title3.bold())
+            Text("게임 전체가 아니라 바뀐 파일만 들어 있어요. 어느 게임에 패치로 적용할까요?")
+                .multilineTextAlignment(.center).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            row("파일", Receipt.clean(o.sourceName, limit: Receipt.maxTextLength) ?? "")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(spacing: 10) {
+                ForEach(Array(o.candidates.enumerated()), id: \.element.id) { i, dish in
+                    Button {
+                        if let offer = delivery.takePatch() { onPatch(dish, offer) }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(dish.title).font(.body.weight(.semibold))
+                            Text(((o.matched[dish.id] ?? 0) > 0 ? "겹치는 파일 \(o.matched[dish.id] ?? 0)개" : "겹치는 파일 없음 · 폴더만 같아요")
+                                 + (o.misfit.contains(dish.id) ? " · 이 게임용이 아닌 것 같아요" : ""))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(i == 0 && !o.misfit.contains(dish.id) ? Palette.accent : .secondary)
+                }
+            }
+            Text("적용하기 전에 바뀌는 파일을 먼저 보여 줘요. 저장 데이터는 건드리지 않아요.")
+                .font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             Button("취소", role: .cancel) { delivery.cancel(); onDone(nil) }
                 .padding(.top, 2)
         }

@@ -11,10 +11,10 @@ final class LongSpoon {
     private var attached: [ObjectIdentifier: GCController] = [:]
     private var observers: [NSObjectProtocol] = []
     /// 게임이 화면에 없을 때(홈으로 나가 멈춘 상태)는 입력을 게임에 보내지 않는다
-    var enabled = true { didSet { if !enabled { held.removeAll(); spoon?.releaseAll() } } }
+    var enabled = true { didSet { if !enabled { held.removeAll(); heldMapped.removeAll(); heldKeys.removeAll(); spoon?.releaseAll() } } }
     /// 일시정지 화면이 열려 있으면 버튼을 게임에 보내지 않고 여기로 넘긴다 (새로 눌린 버튼 하나씩, 스틱은 방향 버튼으로).
     /// 이미 누르고 있던 버튼은 다시 넘기지 않도록 `held` 는 그대로 둔다.
-    var menuInput: ((PadButton) -> Void)? { didSet { spoon?.releaseAll(); stickDir = nil } }
+    var menuInput: ((PadButton) -> Void)? { didSet { spoon?.releaseAll(); heldMapped.removeAll(); heldKeys.removeAll(); stickDir = nil } }
     /// 게임 중 홈 버튼(가운데 로고 버튼): 일시정지 화면 열기 (7.4)
     var onHomeButton: (() -> Void)?
 
@@ -60,15 +60,19 @@ final class LongSpoon {
     private func detach(_ c: GCController) {
         attached[ObjectIdentifier(c)] = nil
         c.extendedGamepad?.valueChangedHandler = nil
+        held.removeAll(); heldMapped.removeAll(); heldKeys.removeAll()
         spoon?.releaseAll()
     }
 
     private var held: Set<PadButton> = []
+    /// 키 설정을 거친 뒤 게임에 보낸 패드 버튼·키 (실제 버튼 `held` 와 따로)
+    private var heldMapped: Set<PadButton> = []
+    private var heldKeys: Set<String> = []
     private var homeHeld = false
     private var stickDir: PadButton?
 
-    private func apply(_ p: GCExtendedGamepad) {
-        guard enabled, let s = spoon else { return }
+    /// 지금 눌린 실제 버튼 (홈 제외). 키 설정의 "버튼을 누르세요"(KeyCapture)도 이것으로 읽는다
+    static func pressed(_ p: GCExtendedGamepad) -> Set<PadButton> {
         var now: Set<PadButton> = []
         if p.buttonA.isPressed { now.insert(.a) }
         if p.buttonB.isPressed { now.insert(.b) }
@@ -86,8 +90,37 @@ final class LongSpoon {
         if p.dpad.down.isPressed { now.insert(.down) }
         if p.dpad.left.isPressed { now.insert(.left) }
         if p.dpad.right.isPressed { now.insert(.right) }
+        return now
+    }
+
+    /// 실제 버튼 → 키 설정(`KeyMap.pad`)을 거친 패드 버튼과 키
+    static func mapped(_ now: Set<PadButton>, _ map: KeyMap) -> (pads: Set<PadButton>, keys: Set<String>) {
+        var pads: Set<PadButton> = [], keys: Set<String> = []
+        for b in now {
+            switch map.target(pad: b) {
+            case .pad(let t): pads.insert(t)
+            case .key(let c): keys.insert(c)
+            case .off: break
+            }
+        }
+        return (pads, keys)
+    }
+
+    private func apply(_ p: GCExtendedGamepad) {
+        guard enabled, let s = spoon else { return }
+        let now = Self.pressed(p)
         let homeDown = p.buttonHome?.isPressed == true
         defer { homeHeld = homeDown }
+        // 키 설정 화면이 떠 있으면 게임에도 일시정지 화면에도 보내지 않는다 (그 화면이 직접 읽는다)
+        if KeyCapture.shared.isOpen {
+            if !heldMapped.isEmpty || !heldKeys.isEmpty { releaseMapped(s) }
+            // 버튼을 기다리는 중이 아니면 B·홈 버튼으로 일시정지에서 연 키 설정을 닫는다 (컨트롤러만 있어도 돌아갈 수 있게)
+            let kc = KeyCapture.shared
+            if kc.waiting == nil, Date().timeIntervalSince(kc.lastCaptureAt) > 0.4,
+               now.subtracting(held).contains(.b) || (homeDown && !homeHeld) { kc.presentFor = nil }
+            held = now
+            return
+        }
         if let menuInput {
             for b in now.subtracting(held) { menuInput(b) }
             if homeDown && !homeHeld { menuInput(.home) }
@@ -99,14 +132,26 @@ final class LongSpoon {
                 stickDir = d; menuInput(d)
             }
             held = now
+            heldMapped = []; heldKeys = []
             return
         }
         if homeDown && !homeHeld { onHomeButton?() }
-        for b in held.subtracting(now) { s.release(b, immediate: true) }
-        for b in now.subtracting(held) { s.press(b, haptic: false) }
-        held = now
+        let (pads, keys) = Self.mapped(now, KeyMapStore.shared.effective(s.keyMapID))
+        for b in heldMapped.subtracting(pads) { s.release(b, immediate: true) }
+        for b in pads.subtracting(heldMapped) { s.press(b, haptic: false) }
+        for k in heldKeys.subtracting(keys) { s.setDirectKey(k, down: false) }
+        for k in keys.subtracting(heldKeys) { s.setDirectKey(k, down: true) }
+        held = now; heldMapped = pads; heldKeys = keys
         // 스틱: GameController 는 위가 +, Gamepad API 는 아래가 + 라 y 를 뒤집는다
         s.setStick(right: false, vector: CGVector(dx: CGFloat(p.leftThumbstick.xAxis.value), dy: CGFloat(-p.leftThumbstick.yAxis.value)))
         s.setStick(right: true, vector: CGVector(dx: CGFloat(p.rightThumbstick.xAxis.value), dy: CGFloat(-p.rightThumbstick.yAxis.value)))
+    }
+}
+
+extension LongSpoon {
+    private func releaseMapped(_ s: SpoonController) {
+        for b in heldMapped { s.release(b, immediate: true) }
+        for k in heldKeys { s.setDirectKey(k, down: false) }
+        heldMapped = []; heldKeys = []
     }
 }

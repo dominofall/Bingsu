@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftGlass
+import GameController
 
 /// 일시정지 화면. 게임 중에 메뉴를 누르는 이유(패드가 불편함·소리/진동·발열·잠깐 나가기)에 맞춰
 /// 목록 대신 그 자리에서 바로 고치는 화면. 가로는 왼쪽 패널이고 오른쪽에 멈춘 게임과 가상 패드가 그대로 보여
@@ -34,6 +35,8 @@ struct PauseBoard: View {
     let onMoreSettings: () -> Void
     /// "배치 편집" (이 게임에 저장). nil 이면 숨김
     var onEditLayout: (() -> Void)? = nil
+    /// "가상 키보드 열기" (게임 키보드로 바꾸기, RPG Maker 게임). nil 이면 숨김
+    var onKeyboard: (() -> Void)? = nil
     /// 컨트롤러 초점 (BowlContainerView 가 버튼 입력을 넘겨 준다)
     @Binding var focus: PauseItem?
 
@@ -43,6 +46,14 @@ struct PauseBoard: View {
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
+    @ObservedObject private var keyCapture = KeyCapture.shared
+    /// 컨트롤러·키보드 연결 (연결됐을 때만 "컨트롤러·키보드" 묶음을 보인다)
+    @State private var keyboardOn = KeyCapture.keyboardConnected
+    private var hasInput: Bool { !controllerNames.isEmpty || keyboardOn || KeyCapture.controllerConnected }
+    private var inputNames: String {
+        let names = controllerNames + (keyboardOn ? ["키보드"] : [])
+        return names.isEmpty ? "컨트롤러" : names.joined(separator: " · ")
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -84,6 +95,11 @@ struct PauseBoard: View {
             }
             .ignoresSafeArea()
         }
+        .sheet(isPresented: Binding(get: { keyCapture.presentFor == dish.id }, set: { if !$0 { keyCapture.presentFor = nil } })) {
+            InputView(dish: dish, asSheet: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in keyboardOn = KeyCapture.keyboardConnected }
+        .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in keyboardOn = KeyCapture.keyboardConnected }
     }
 
     @ViewBuilder
@@ -108,6 +124,15 @@ struct PauseBoard: View {
                         .buttonStyle(.bordered)
                         .focusRing(focus == .close, .capsule).id(PauseItem.close)
                 }
+                // 이름 입력처럼 지금 막힌 일을 푸는 버튼이라 조작 묶음보다 위에
+                if let onKeyboard {
+                    Button(action: onKeyboard) {
+                        HStack { Label("가상 키보드 열기", systemImage: "keyboard"); Spacer(); Image(systemName: "chevron.right").font(.footnote) }
+                            .font(.subheadline)
+                    }
+                    .tint(Palette.accent)
+                    .focusRing(focus == .keyboard).id(PauseItem.keyboard)
+                }
             }
 
             group("조작", wide: wide) {
@@ -119,16 +144,6 @@ struct PauseBoard: View {
                             .accessibilityLabel("패드 종류 \(k.label)")
                             .accessibilityAddTraits(pad.kind == k ? .isSelected : [])
                     }
-                }
-                SkinPicker(prefs: Binding(get: { pad }, set: { setPad($0) }), showsManage: false, compact: true)
-                    .accessibilityLabel("스킨")
-                if let onEditLayout {
-                    Button(action: onEditLayout) {
-                        HStack { Label("배치 편집", systemImage: "hand.draw"); Spacer(); Image(systemName: "chevron.right").font(.footnote) }
-                            .font(.subheadline)
-                    }
-                    .tint(Palette.accent)
-                    .focusRing(focus == .editLayout).id(PauseItem.editLayout)
                 }
                 if pad.kind == .oneHand {
                     if landscape { note("한손은 세로로 들었을 때 쓰여요. 가로에서는 기본 배치로 보여요.") }
@@ -145,12 +160,16 @@ struct PauseBoard: View {
                 if pad.providesStick() {
                     toggle("움직이는 스틱", isOn: Binding(get: { pad.floatingStick }, set: { v in setPad(with { $0.floatingStick = v }) }), item: .floating)
                 }
-                Divider()
-                HStack {
-                    Text("컨트롤러").font(.subheadline)
-                    Spacer()
-                    Text(controllerNames.first ?? "연결 안 됨").font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                if let onEditLayout {
+                    Button(action: onEditLayout) {
+                        HStack { Label("배치 편집", systemImage: "hand.draw"); Spacer(); Image(systemName: "chevron.right").font(.footnote) }
+                            .font(.subheadline)
+                    }
+                    .tint(Palette.accent)
+                    .focusRing(focus == .editLayout).id(PauseItem.editLayout)
                 }
+                SkinPicker(prefs: Binding(get: { pad }, set: { setPad($0) }), showsManage: false, compact: true)
+                    .accessibilityLabel("스킨")
                 HStack(alignment: .firstTextBaseline) {
                     Text(padFollowsGlobal ? "모든 게임 설정을 쓰는 중이에요. 바꾸면 이 게임에만 저장돼요." : "이 게임에만 적용 중이에요.")
                         .font(.caption).foregroundStyle(.secondary)
@@ -182,19 +201,6 @@ struct PauseBoard: View {
                 note("소리 크기와 진동은 모든 게임에, 다른 앱 소리와 함께 듣기는 이 게임에만 적용돼요.")
             }
 
-            group("화면·성능", wide: wide) {
-                if let fpsLimit {
-                    segmented("초당 프레임", item: .fps, options: [(nil, "자동"), (.fps30, "30"), (.fps60, "60")], selection: fpsLimit)
-                }
-                if let quality {
-                    segmented("화질", item: .quality, options: [(nil, "자동"), (.high, "높음"), (.medium, "보통"), (.low, "낮음")], selection: quality)
-                    if let q = quality.wrappedValue, q != runningQuality {
-                        note("화질은 게임을 다시 열 때 바뀌어요.")
-                    }
-                }
-                toggle("성능 표시", isOn: $showHUD, item: .hud)
-            }
-
             if !dish.isRemote {
                 group("저장", wide: wide) {
                     HStack {
@@ -210,6 +216,35 @@ struct PauseBoard: View {
                 }
             }
 
+            group("화면·성능", wide: wide) {
+                if let fpsLimit {
+                    segmented("초당 프레임", item: .fps, options: [(nil, "자동"), (.fps30, "30"), (.fps60, "60")], selection: fpsLimit)
+                }
+                if let quality {
+                    segmented("화질", item: .quality, options: [(nil, "자동"), (.high, "높음"), (.medium, "보통"), (.low, "낮음")], selection: quality)
+                    if let q = quality.wrappedValue, q != runningQuality {
+                        note("화질은 게임을 다시 열 때 바뀌어요.")
+                    }
+                }
+                toggle("성능 표시", isOn: $showHUD, item: .hud)
+            }
+
+            // 키 설정은 미리 한 번 해 두는 일이라 아래에. 컨트롤러나 키보드가 연결됐을 때만
+            if hasInput {
+                Button { keyCapture.presentFor = dish.id } label: {
+                    HStack {
+                        Label("컨트롤러·키보드", systemImage: "gamecontroller")
+                        Spacer(minLength: 8)
+                        Text(inputNames).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+                        Image(systemName: "chevron.right").font(.footnote)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 14)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
+                .font(.subheadline.weight(.medium)).tint(Palette.accent)
+                .focusRing(focus == .keyMap, .rounded(20)).id(PauseItem.keyMap)
+            }
+
             Button(action: onMoreSettings) {
                 HStack { Text("이 게임 설정 더 보기"); Spacer(); Image(systemName: "chevron.right").font(.footnote) }
                     .padding(.horizontal, 16).padding(.vertical, 14)
@@ -217,6 +252,7 @@ struct PauseBoard: View {
             }
             .font(.subheadline.weight(.medium)).tint(Palette.accent)
             .focusRing(focus == .more, .rounded(20)).id(PauseItem.more)
+
         }
     }
 
@@ -286,7 +322,7 @@ struct PauseBoard: View {
 
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
-    case resume, home, close, kind(PadKind), editLayout, leftHand, size, opacity, hidePad, keyStrip, labels, floating, applyAll
+    case resume, home, close, kind(PadKind), editLayout, keyboard, keyMap, leftHand, size, opacity, hidePad, keyStrip, labels, floating, applyAll
     case volume, musicRate, mixAudio, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
 }
 

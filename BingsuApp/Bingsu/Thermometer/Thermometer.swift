@@ -26,7 +26,7 @@ final class Thermometer: ObservableObject {
     @Published var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
     @Published var memoryMB: Double = 0
 
-    /// 소리 진단 (설정 › 게임 중 › 소리 문제 진단): 게임의 AudioContext 상태. 게임이 보낸 값이라 범위를 검증한다
+    /// 소리 진단 (설정 › 문제 해결 › 소리 문제 진단): 게임의 AudioContext 상태. 게임이 보낸 값이라 범위를 검증한다
     struct AudioStat: Equatable {
         var sampleRate: Double
         var state: String

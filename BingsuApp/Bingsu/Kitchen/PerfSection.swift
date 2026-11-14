@@ -119,14 +119,17 @@ struct PerfTrend: View {
     }
 }
 
-/// 설정 › 성능: 화면 표시, 기기, 마지막 벤치마크, 모든 기록 지우기
-struct PerfSettingsSection: View {
+/// 설정 › 화면·성능: 화면 표시, 기기, 마지막 벤치마크, 모든 기록 지우기
+struct PerfSettingsSection<Extra: View>: View {
     @Binding var showPerformance: Bool
+    /// 화면 쪽 설정 (일시정지 버튼 자리 등). 성능 표시 위에 붙는다
+    @ViewBuilder var extra: () -> Extra
     @ObservedObject private var log = PerfLogStore.shared
     @State private var confirmClear = false
 
     var body: some View {
         Section {
+            extra()
             Toggle(isOn: $showPerformance) {
                 Text("화면에 성능 표시")
                 Text("프레임 수와 기기 상태를 화면 구석에 보여줘요")
@@ -144,7 +147,7 @@ struct PerfSettingsSection: View {
                     }
             }
         } header: {
-            Text("성능")
+            Text("화면·성능")
         } footer: {
             Text("성능 기록은 화면 표시와 상관없이 게임마다 남아요. 기기 모델·iOS 버전·수치만 기록해요.")
         }

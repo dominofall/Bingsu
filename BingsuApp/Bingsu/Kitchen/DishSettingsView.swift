@@ -21,8 +21,14 @@ struct DishSettingsView: View {
     @State private var soundFontNote: String?
     @StateObject private var freezerModel: FreezerModel
 
-    init(dish: Dish) {
+    /// 게임 중에 열었을 때: 진단 정보를 지금 화면 상태와 함께 연다 (게임 컨테이너가 넘긴다). 목록에서 열면 nil
+    var onReceipt: (() -> Void)?
+    /// 목록에서 열었을 때 띄우는 진단 정보 (화면 상태 없이 이 게임 기록만)
+    @State private var showReceipt = false
+
+    init(dish: Dish, onReceipt: (() -> Void)? = nil) {
         self.dish = dish
+        self.onReceipt = onReceipt
         _freezerModel = StateObject(wrappedValue: FreezerModel(dish: dish))
     }
 
@@ -97,6 +103,16 @@ struct DishSettingsView: View {
                     Text("가상 패드")
                 }
 
+                Section {
+                    NavigationLink {
+                        InputView(dish: dish)
+                    } label: {
+                        LabeledContent("컨트롤러·키보드", value: KeyMapStore.shared.usesOwn(dish.id) ? "키: 이 게임만" : "키: 모든 게임 설정")
+                    }
+                } header: {
+                    Text("컨트롤러·키보드")
+                }
+
                 // 터치 조작 (docs/engines/IMPLEMENTATION-touch.md §8): 새 모양 Electron 게임만
                 if dish.isRedBean, let found = dish.electron?.inputStyle {
                     Section {
@@ -139,7 +155,7 @@ struct DishSettingsView: View {
                 } header: {
                     Text("소리")
                 } footer: {
-                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 게임 중에서 모든 게임에 같이 정해요."
+                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 소리·진동에서 모든 게임에 같이 정해요."
                          + (dish.recipe == .mkxp ? " MIDI 배경음악은 사운드폰트가 있어야 소리가 나요. 넣은 사운드폰트는 이런 게임 모두가 같이 쓰고, 게임에 들어 있는 사운드폰트가 먼저예요. 게임을 처음 켤 때 적용돼요." : ""))
                 }
 
@@ -174,20 +190,6 @@ struct DishSettingsView: View {
                     } footer: {
                         Text("켜 두면 게임이 인터넷 서버에 접속해 온라인 멀티를 할 수 있어요. 믿을 수 있는 서버에만 접속하세요. 끄면 인터넷이 없는 것처럼 실행돼요. 바꾼 값은 게임을 처음 켤 때 적용돼요. 이미 한 번 켰다면 빙수를 완전히 닫았다 다시 열어 주세요.")
                     }
-
-                    Section {
-                        Picker("Ruby 버전", selection: Binding(get: { prefs.rubyOverride ?? "" },
-                                                             set: { v in store.update(dish.id) { $0.rubyOverride = v.isEmpty ? nil : v } })) {
-                            Text("자동 (\(autoRuby))").tag("")
-                            Text("1.8").tag("18")
-                            Text("1.9").tag("19")
-                            Text("3.1").tag("31")
-                        }
-                    } header: {
-                        Text("고급")
-                    } footer: {
-                        Text("게임이 시작하자마자 스크립트 오류로 멈출 때만 바꿔 보세요. 바꾼 값은 게임을 처음 켤 때 적용돼요.")
-                    }
                 }
 
                 Section {
@@ -215,6 +217,17 @@ struct DishSettingsView: View {
                 PerfSection(dish: dish)
 
                 if !dish.isRemote { FreezerSection(model: freezerModel) }
+
+                // 문제 신고용 기술 정보. 사용자 화면에는 따로 내놓지 않고 여기에만 둔다
+                Section {
+                    Button {
+                        if let onReceipt { onReceipt() } else { showReceipt = true }
+                    } label: {
+                        HStack { Text("진단 정보").foregroundStyle(Color.primary); Spacer(); Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                    }
+                } footer: {
+                    Text("문제를 알릴 때 개발자에게 보낼 기술 정보예요. 내용을 보고 직접 공유해요.")
+                }
             }
             .freezerPresentations(freezerModel)
             .tint(Palette.accent)
@@ -235,6 +248,7 @@ struct DishSettingsView: View {
             guard case .success(let url) = result else { return }
             importRumble(url)
         }
+        .sheet(isPresented: $showReceipt) { ReceiptSlipView(dish: dish) }
         .onAppear(perform: refreshRumble)
         // 창에서 직접 띄우는 선택기 (iPad 에서 시트 안 fileImporter 가 멈추는 문제, GamePicker). 고른 파일은 임시 복사본
         .background(GamePicker(isPresented: $showSoundFontPicker, types: [UTType(filenameExtension: "sf2") ?? .data]) { url in
@@ -256,12 +270,6 @@ struct DishSettingsView: View {
 
     /// 조작 방식 이름 (화면 문구)
     static func styleName(_ s: ElectronInfo.InputStyle) -> String { s == .pointer ? "터치" : "가상 패드" }
-
-    /// 자동일 때 고르는 Ruby (RubyProfile)
-    private var autoRuby: String {
-        let r = RubyProfile.detect(folder: dish.location, rgss: BrassBowlEngine.rgss(for: dish)).ruby
-        return r == "18" ? "1.8" : r == "19" ? "1.9" : "3.1"
-    }
 
     // MARK: 진동표
 

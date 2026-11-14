@@ -214,7 +214,13 @@ enum BowlScripts {
                          KeyQ: ["q", 81], KeyW: ["w", 87], KeyE: ["e", 69], Space: [" ", 32], Enter: ["Enter", 13], Escape: ["Escape", 27],
                          ShiftLeft: ["Shift", 16], Digit1: ["1", 49], Digit2: ["2", 50], Digit3: ["3", 51], Digit4: ["4", 52], Digit5: ["5", 53], Digit6: ["6", 54] };
           const MORE_KEYS = { Tab: ["Tab", 9], Backspace: ["Backspace", 8], Delete: ["Delete", 46], Home: ["Home", 36], End: ["End", 35],
-                              PageUp: ["PageUp", 33], PageDown: ["PageDown", 34], ShiftRight: ["Shift", 16], ControlLeft: ["Control", 17], ControlRight: ["Control", 17] };
+                              PageUp: ["PageUp", 33], PageDown: ["PageDown", 34], ShiftRight: ["Shift", 16], ControlLeft: ["Control", 17], ControlRight: ["Control", 17],
+                              // 키 설정(KeyCatalog)에서 고를 수 있는 나머지 키
+                              AltLeft: ["Alt", 18], Insert: ["Insert", 45], Minus: ["-", 189], Equal: ["=", 187], BracketLeft: ["[", 219], BracketRight: ["]", 221],
+                              Backslash: ["\\\\", 220], Semicolon: [";", 186], Quote: ["'", 222], Backquote: ["`", 192], Comma: [",", 188], Period: [".", 190], Slash: ["/", 191],
+                              Digit7: ["7", 55], Digit8: ["8", 56], Digit9: ["9", 57], Digit0: ["0", 48],
+                              Numpad0: ["0", 96], Numpad1: ["1", 97], Numpad2: ["2", 98], Numpad3: ["3", 99], Numpad4: ["4", 100],
+                              Numpad5: ["5", 101], Numpad6: ["6", 102], Numpad7: ["7", 103], Numpad8: ["8", 104], Numpad9: ["9", 105] };
           // WKWebView 는 웹뷰가 직접 터치를 받기 전까지 document.hasFocus() 가 false 다.
           // 가상 패드가 터치를 가로채면 영원히 false 가 되어 게임의 패드 폴링이 멈추므로 항상 true 로 둔다.
           try { Object.defineProperty(Document.prototype, "hasFocus", { configurable: true, writable: true, value: function () { return true; } }); } catch (e) {}
@@ -291,6 +297,44 @@ enum BowlScripts {
             flush, pause, resume, kickAudio, restartAudio, setFpsCap, setVolume,
           };
           post("bowl", { event: "ready", msg: "restore=" + restored });
+        })();
+        """
+    }
+
+    /// 하드웨어 키보드 키 설정 (Spoon/HardKeys.swift): 바뀐 키(`codes`)의 진짜 키 입력만 게임보다 먼저 막고 `hardkey` 메시지로 넘긴다.
+    /// 빙수가 만든 키(`__bingsu.key`, isTrusted 가 false)는 건드리지 않는다. 글자 칸(input·textarea·contenteditable)에
+    /// 커서가 있으면 막지 않아 글자 입력을 방해하지 않는다. 목록은 `__bingsuHardKeys.set([...])` 로 바꾼다.
+    static func hardKeyGuard(codes: [String]) -> String {
+        let list = (try? JSONSerialization.data(withJSONObject: codes)).flatMap { String(data: $0, encoding: .utf8) } ?? "[]"
+        return """
+        (() => {
+          if (window.__bingsuHardKeys) return;
+          let MAP = new Set(\(list));
+          const held = new Set();
+          const post = (b) => { try { window.webkit.messageHandlers.hardkey.postMessage(b); } catch (e) {} };
+          const NOT_TEXT = ["button", "checkbox", "radio", "range", "submit", "reset", "image", "file", "color"];
+          const typing = () => {
+            const a = document.activeElement;
+            if (!a || a === document.body) return false;
+            if (a.isContentEditable || a.tagName === "TEXTAREA" || a.tagName === "SELECT") return true;
+            return a.tagName === "INPUT" && !NOT_TEXT.includes(String(a.type || "text").toLowerCase());
+          };
+          const on = (e) => {
+            if (!e.isTrusted || !e.code) return;
+            const down = e.type === "keydown";
+            if (window.__bingsuKeyDebug) { try { window.webkit.messageHandlers.bowl.postMessage({ event: "key", msg: "hw " + e.type + " " + e.code + " mapped=" + MAP.has(e.code) + " typing=" + typing() }); } catch (_) {} }
+            if (down) {
+              if (!held.has(e.code) && (!MAP.has(e.code) || typing())) return;
+            } else if (!held.has(e.code)) return;
+            e.preventDefault(); e.stopImmediatePropagation();
+            if (down) { if (held.has(e.code)) return; held.add(e.code); } else held.delete(e.code);
+            post({ code: e.code, down });
+          };
+          window.addEventListener("keydown", on, true);
+          window.addEventListener("keyup", on, true);
+          // 앱을 떠나거나 초점을 잃으면 눌린 채로 남지 않게
+          window.addEventListener("blur", () => { for (const c of held) post({ code: c, down: false }); held.clear(); });
+          Object.defineProperty(window, "__bingsuHardKeys", { value: Object.freeze({ set(l) { MAP = new Set(Array.isArray(l) ? l.slice(0, 200) : []); } }) });
         })();
         """
     }

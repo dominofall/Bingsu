@@ -89,6 +89,8 @@ cd ~/Dev/vendor/mkxp-z-apple-mobile && MAKEFLAGS="MINIMUM_REQUIRED=17.0" tools/b
 | `BINGSU_KEYS="초:코드,…"` | 그 시각마다 키 한 번 (예: `8:KeyC,10:KeyC`) |
 | `BINGSU_AUTOKEY="코드:간격:횟수"` | 12초 뒤부터 그 키를 반복 |
 | `BINGSU_FORCE_PAD=1` | 컨트롤러가 붙어 있다고 나와도(시뮬레이터) 가상 패드 표시 |
+| `BINGSU_RECEIPT=<초>` | 그 뒤 일시정지 화면을 열고 진단 정보를 띄움. 보낼 글은 `Library/Caches/Receipt/debug-last.txt` 에도 (웹 게임도 같음) |
+| `BINGSU_RECEIPT_SHARE=1` | 위와 함께 쓰면 게임 화면을 켜고 공유 시트까지 띄움 |
 
 시뮬레이터에서는 `SIMCTL_CHILD_` 를 붙여 넘긴다. 로그: `xcrun simctl spawn <UDID> log show --last 2m --style compact | grep "BrassBowl\|IceTray"`.
 

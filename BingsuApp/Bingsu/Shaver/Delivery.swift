@@ -14,8 +14,12 @@ final class Delivery: ObservableObject {
         case unpacking(Double)  // asar 풀기
         case checking           // 게임 확인
         case confirmUpdate(Pending) // 이미 있는 게임: 업데이트 / 따로 추가 / 취소
-        /// 게임칩 "새 버전으로 업데이트"로 골랐는데 그 게임과 맞지 않는 파일: 다른 파일 고르기 / 취소
+        /// 게임칩 "업데이트"로 골랐는데 그 게임의 새 버전도, 그 게임에 맞는 패치도 아닌 파일: 다른 파일 고르기 / 취소
         case notSameGame(Mismatch)
+        /// 바뀐 파일만 든 패치 zip: 새 게임으로 넣지 않고 어느 게임에 적용할지 묻는다 (Topping)
+        case choosePatchGame(PatchOffer)
+        /// 게임칩 "업데이트"로 고른 zip 이 그 게임의 바뀐 파일만 든 패치였다: 묻지 않고 그 게임의 패치 화면으로 넘긴다
+        case patchReady(PatchOffer)
         case installing         // 게임 파일 바꾸는 중
         case done(Result)
         /// 게임 대신 패드 스킨 zip(`.bingsuskin` 또는 skin.json 이 든 zip)이었다. 스킨 목록에 넣었고, 쓸지는 화면이 묻는다
@@ -35,6 +39,8 @@ final class Delivery: ObservableObject {
             case .checking: return "게임 확인 중"
             case .confirmUpdate: return "이미 있는 게임이에요"
             case .notSameGame: return "업데이트할 게임과 달라요"
+            case .choosePatchGame: return "패치만 든 zip 이에요"
+            case .patchReady: return "게임 확인 중"
             case .installing: return "게임 파일 바꾸는 중"
             case .done, .skinDone, .rtpDone: return "준비됐어요"
             case .failed, .skinFailed: return "가져오지 못했어요"
@@ -44,7 +50,7 @@ final class Delivery: ObservableObject {
             switch self {
             case .unzipping(let f): return f * 0.6
             case .unpacking(let f): return 0.6 + f * 0.35
-            case .checking: return 0.97
+            case .checking, .patchReady: return 0.97
             case .installing: return 0.99
             case .done, .skinDone, .rtpDone: return 1
             default: return nil
@@ -80,6 +86,21 @@ final class Delivery: ObservableObject {
         case game(Staged)
         case skin(SkinShelf.ImportResult)
         case rtp(String)
+        /// 패치만 든 zip. work 는 남겨 두고(Topping 이 넘겨받음) staged 는 푼 그대로의 맨 위
+        case patch(work: URL, staged: URL)
+    }
+
+    /// 패치만 든 zip 을 적용할 게임 고르기. 고르면 풀어 둔 폴더째 패치 화면(ToppingView)으로 넘긴다
+    struct PatchOffer: Equatable {
+        let work: URL
+        let staged: URL
+        let sourceName: String
+        /// 잘 맞는 순서 (게임, 이미 있는 파일과 겹치는 수)
+        let candidates: [Dish]
+        let matched: [String: Int]
+        /// 지문·닮은 정도로 보아 이 게임용이 아닌 것 같은 게임 id (목록에서 아래로, 표시)
+        var misfit: Set<String> = []
+        static func == (a: PatchOffer, b: PatchOffer) -> Bool { a.work == b.work }
     }
 
     /// 업데이트 확인을 기다리는 가져오기
@@ -130,11 +151,14 @@ final class Delivery: ObservableObject {
         cancelFlag.set(true)
         if case .confirmUpdate(let p) = stage { Self.discard(p.staged) }
         if case .notSameGame(let m) = stage { Self.discard(m.staged) }
+        if case .choosePatchGame(let o) = stage { try? FileManager.default.removeItem(at: o.work) }
+        if case .patchReady(let o) = stage { try? FileManager.default.removeItem(at: o.work) }
         if case .installing = stage { return } // 이름 바꾸기 몇 번이라 금방 끝난다. 끝까지 둔다.
         stage = .idle
     }
 
-    /// `preferring`: 게임칩 "새 버전으로 업데이트"로 연 경우 그 게임을 먼저 비교한다.
+    /// `preferring`: 게임칩 "업데이트"로 연 경우 그 게임 id. 게임 전체 zip 이면 그 게임을 먼저 비교해 업데이트 확인으로,
+    /// 바뀐 파일만 든 zip(또는 게임의 일부만 든 zip)이면 그 게임의 패치 화면으로(`.patchReady`) 보낸다.
     func start(from source: URL, preferring targetID: String? = nil, removeWindowsBinaries: Bool = true) {
         guard !stage.isBusy else { NSLog("[Delivery] busy — ignored new import"); return }
         let flag = CancelFlag()
@@ -160,10 +184,59 @@ final class Delivery: ObservableObject {
                 case .rtp(let name):
                     await MainActor.run { if !flag.value { self?.stage = .rtpDone(name) } }
                     return
+                case .patch(let work, let stagedDir):
+                    // 게임칩 "업데이트"로 연 경우: 그 게임과 겹치면 바로 그 게임의 패치 화면으로
+                    if let targetID, let target = Self.dish(id: targetID),
+                       let hit = Topping.rank(stagedDir, among: [target]).first, hit.matched > 0 {
+                        NSLog("[Delivery] update \(targetID) with patch-only zip (\(hit.matched) files overlap) → patch")
+                        let offer = PatchOffer(work: work, staged: stagedDir, sourceName: source.lastPathComponent,
+                                               candidates: [target], matched: [target.id: hit.matched])
+                        await MainActor.run {
+                            if flag.value { try? FileManager.default.removeItem(at: work) } else { self?.stage = .patchReady(offer) }
+                        }
+                        return
+                    }
+                    var ranked = Topping.rank(stagedDir, among: Self.importedDishes())
+                    // 파일이 겹치는 게임이 있으면 그것만 (폴더 이름만 같은 게임은 빼서 고르기 쉽게)
+                    if ranked.contains(where: { $0.matched > 0 }) { ranked = ranked.filter { $0.matched > 0 } }
+                    NSLog("[Delivery] patch-only zip → candidates \(ranked.map { "\($0.dish.id):\($0.matched)" })")
+                    guard !ranked.isEmpty else {
+                        try? FileManager.default.removeItem(at: work)
+                        throw DeliveryError.patchOnly
+                    }
+                    // 이 게임용 패치 같은 게임을 위로 (Topping.fitWarnings: 지문·닮은 정도). 겹치는 파일 수 순서는 그 안에서 유지
+                    var misfit = Set<String>()
+                    if ranked.count > 1 {
+                        for r in ranked {
+                            if let p = try? Topping.plan(work: work, staged: stagedDir, dish: r.dish, sourceName: source.lastPathComponent),
+                               p.warnings.contains(where: { $0.hasPrefix("이 게임용 패치가 아닌") }) { misfit.insert(r.dish.id) }
+                        }
+                        ranked = ranked.filter { !misfit.contains($0.dish.id) } + ranked.filter { misfit.contains($0.dish.id) }
+                    }
+                    var offer = PatchOffer(work: work, staged: stagedDir, sourceName: source.lastPathComponent,
+                                           candidates: ranked.map(\.dish), matched: Dictionary(ranked.map { ($0.dish.id, $0.matched) }, uniquingKeysWith: { a, _ in a }))
+                    offer.misfit = misfit
+                    await MainActor.run {
+                        if flag.value { try? FileManager.default.removeItem(at: work) } else { self?.stage = .choosePatchGame(offer) }
+                    }
+                    return
                 case .game(let s): staged = s
                 }
                 if flag.value { Self.discard(staged); return }
-                if let existing = Self.findExisting(title: staged.title, dataPathApp: staged.dataPathApp, preferring: targetID) {
+                let existing = Self.findExisting(title: staged.title, dataPathApp: staged.dataPathApp, preferring: targetID)
+                // 게임 이름은 들어 있지만 게임의 일부만 든 zip: 통째로 바꾸면 빠진 파일이 사라지므로 패치로 덮는다
+                if let base = targetID.flatMap(Self.dish(id:)) ?? existing, Topping.isImported(base),
+                   Topping.isPartial(staged.root, comparedTo: base.location),
+                   let hit = Topping.rank(staged.root, among: [base]).first, hit.matched > 0 {
+                    NSLog("[Delivery] \(staged.title) zip is only part of \(base.id) (\(hit.matched) files overlap) → patch")
+                    let offer = PatchOffer(work: staged.work, staged: staged.root, sourceName: source.lastPathComponent,
+                                           candidates: [base], matched: [base.id: hit.matched])
+                    await MainActor.run {
+                        if flag.value { Self.discard(staged) } else { self?.stage = targetID != nil ? .patchReady(offer) : .choosePatchGame(offer) }
+                    }
+                    return
+                }
+                if let existing {
                     let old = Self.manifestVersion(existing.location)
                     NSLog("[Delivery] existing game \(existing.id): \(old ?? "?") → \(staged.version ?? "?") — waiting for choice")
                     await MainActor.run {
@@ -192,11 +265,20 @@ final class Delivery: ObservableObject {
         Task { await install(p.staged, mode: mode, previousVersion: p.oldVersion) }
     }
 
-    /// RPG Maker 로 보이는데 맨 위에 mkxp.json 도 ini(Game.ini 또는 이름 바꾼 exe 의 ini)도 없다 → 패치만 든 zip.
-    /// RGSS 실행에는 ini(Scripts=·Title=)가 꼭 있어야 해서, 실제 게임이 이 둘을 다 빼고 나오는 일은 없다
-    nonisolated static func looksLikePatchOnly(_ root: URL) -> Bool {
-        let names = visibleItems(root).map { $0.lastPathComponent.lowercased() }
-        return !names.contains("mkxp.json") && !names.contains(where: { $0.hasSuffix(".ini") })
+    /// 패치 고르기 화면에서 게임을 골랐다: 풀어 둔 폴더를 지우지 않고 넘긴다 (이제 ToppingRun 이 맡는다)
+    func takePatch() -> PatchOffer? {
+        switch stage {
+        case .choosePatchGame(let o), .patchReady(let o): stage = .idle; return o
+        default: return nil
+        }
+    }
+
+    /// Games/ 아래 가져온 게임 (패치를 적용할 수 있는 것)
+    nonisolated static func importedDishes() -> [Dish] {
+        let folders = ((try? FileManager.default.contentsOfDirectory(at: MenuBoardStore.gamesDir, includingPropertiesForKeys: [.isDirectoryKey])) ?? [])
+            .filter { !$0.lastPathComponent.hasPrefix(".") && !$0.lastPathComponent.hasSuffix(oldSuffix) }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        return folders.compactMap { MenuBoardStore.dish(forFolder: $0, id: $0.lastPathComponent) }.filter(Topping.isImported)
     }
 
     /// Games/<id> 의 게임 (없으면 nil)
@@ -312,13 +394,20 @@ final class Delivery: ObservableObject {
         }
         guard recipe != .unknown else {
             if MVMZProbe.looksPackedInExe(root) { throw DeliveryError.packedInExe }
+            // 게임으로는 모르겠지만 가져온 게임의 파일과 겹친다 → 그 게임의 패치일 수 있다 (예: MV·MZ 의 www/data 만 든 zip)
+            if !importedDishes().isEmpty, Topping.rank(staged, among: importedDishes()).contains(where: { $0.matched > 0 }) {
+                ok = true
+                return .patch(work: work, staged: staged)
+            }
             throw DeliveryError.unsupported(found: visibleItems(root).map(\.lastPathComponent).sorted())
         }
-        // 바뀐 파일만 든 패치 zip (예: Data/·Graphics/ 만 있는 어나더 레드 패치): Data/Scripts.rxdata 로 RPG Maker 로는 보이지만
-        // 게임 설정 파일(mkxp.json·Game.ini)이 없어 실행해도 아무것도 안 나온다. 새 게임으로도 업데이트로도 받지 않는다
-        if recipe == .mkxp, Self.looksLikePatchOnly(root) {
-            NSLog("[Delivery] patch-only zip (no mkxp.json · ini): \(visibleItems(root).map(\.lastPathComponent).sorted())")
-            throw DeliveryError.patchOnly
+        // 바뀐 파일만 든 패치 zip (예: Data/·Graphics/ 만 있는 어나더 레드 패치, 원본 mkxp.json 을 같이 넣은 포켓몬 Z 한글 패치):
+        // Data/Scripts.rxdata 로 RPG Maker 로는 보이지만 게임 본체(Game.ini·System 데이터)가 없어 실행해도 아무것도 안 나온다.
+        // 새 게임으로도 업데이트로도 받지 않고(업데이트로 받으면 게임 파일이 패치만 남는다) 어느 게임에 적용할지 묻는다
+        if recipe == .mkxp, Topping.looksLikeRGSSPatch(root) {
+            NSLog("[Delivery] patch-only zip: \(visibleItems(root).map(\.lastPathComponent).sorted())")
+            ok = true
+            return .patch(work: work, staged: staged)
         }
         let desc = RecipeDetector.describe(folder: root, recipe: recipe)
         let version = Self.readVersion(folder: root, recipe: recipe)
@@ -380,6 +469,8 @@ final class Delivery: ObservableObject {
             .write(to: s.root.appendingPathComponent(manifestName))
 
         let final = gamesDir.appendingPathComponent(id, isDirectory: true)
+        // 이 id 의 패치 기록은 게임 파일이 통째로 바뀌면(업데이트) 쓸 수 없고, 새 게임이면 예전에 지운 같은 id 의 것이다
+        Topping.forget(id)
         var backedUp = false, keptOld = false
         if case .update(let dish, let backup, let keepOld) = mode {
             // 게임 폴더 밖은 절대 건드리지 않는다
@@ -595,7 +686,7 @@ final class Delivery: ObservableObject {
         case patchOnly
         var errorDescription: String? {
             switch self {
-            case .patchOnly: return "바뀐 파일만 든 패치 같아요 · 게임 설정 파일(Game.ini·mkxp.json)이 없어 실행할 수 없어요. 패치가 적용된 게임 전체 zip 을 골라 주세요"
+            case .patchOnly: return "바뀐 파일만 든 패치 같아요 · 이 패치를 적용할 게임을 찾지 못했어요. 게임 전체 zip 을 먼저 가져온 뒤 게임을 길게 눌러 \u{201C}업데이트\u{201D}로 이 zip 을 골라 주세요"
             case .cannotRead(let why): return "파일을 읽어 오지 못했어요 · \(why). iCloud 파일이면 Files 앱에서 먼저 내려받아 주세요"
             case .unsupported(let found):
                 guard !found.isEmpty else { return "지원하지 않는 게임이에요 · 압축 안에 파일이 없어요" }

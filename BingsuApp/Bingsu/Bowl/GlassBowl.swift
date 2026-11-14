@@ -130,7 +130,10 @@ struct GlassBowl: UIViewRepresentable {
             // 포켓로그 자체 터치 패드는 숨기고 빙수 가상 패드 입력을 그 버튼의 리스너로 넣는다
             ucc.addUserScript(WKUserScript(source: BowlScripts.pokerogueBridge, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
         }
-        for name in ["freezer", "thermometer", "bowl", "rumble", "sfx"] { ucc.add(context.coordinator, name: name) }
+        for name in ["freezer", "thermometer", "bowl", "rumble", "sfx", "hardkey"] { ucc.add(context.coordinator, name: name) }
+        // 하드웨어 키보드 키 설정: 바뀐 키만 막고 빙수로 넘긴다 (Spoon/HardKeys.swift)
+        ucc.addUserScript(WKUserScript(source: BowlScripts.hardKeyGuard(codes: HardKeys.shared.webCodes(for: dish)),
+                                       injectionTime: .atDocumentStart, forMainFrameOnly: true))
         #if DEBUG
         // 디버그 빌드: 포켓로그 멈춤·다시 불러옴 측정 (Documents/Diag)
         if dish.knownWeb == .pokerogue || mvmz != nil, let log = DiagLog(dishID: dish.id) {
@@ -394,6 +397,11 @@ struct GlassBowl: UIViewRepresentable {
                 if let d = message.body as? [String: Any] {
                     // 게임이 보낸 문자열이라 길이를 자르고, 릴리스에서는 빙수 스크립트가 보내는 사건 이름만 남긴다
                     func clip(_ v: Any?, _ n: Int) -> String { String(String(describing: v ?? "").prefix(n)) }
+                    // 진단 정보: 페이지 오류를 몇 개만 남긴다 (ReceiptDesk 가 길이 자르기·같은 오류 묶기·경로 지우기)
+                    if (d["event"] as? String) == "error" {
+                        let id = dish.id, msg = clip(d["msg"], 1200), src = d["src"].map { clip($0, 200) }
+                        Task { @MainActor in ReceiptDesk.shared.noteError(dishID: id, kind: .web, message: msg, source: src) }
+                    }
                     #if DEBUG
                     NSLog("[Bowl] %@ %@ %@", clip(d["event"], 40), clip(d["msg"], 300), clip(d["src"], 120))
                     #else
@@ -422,6 +430,11 @@ struct GlassBowl: UIViewRepresentable {
                         }
                     }
                 }
+            case "hardkey":
+                // 주입 스크립트가 막은 하드웨어 키. 페이지가 마음대로 보낼 수도 있으니 표에 있는 키만 받는다
+                guard let d = message.body as? [String: Any], let code = d["code"] as? String, code.count <= 20,
+                      KeyCatalog.isKnown(code), let down = d["down"] as? Bool else { return }
+                Task { @MainActor in HardKeys.shared.webKey(code, down: down) }
             case "mv":
                 // NW.js 흉내(신뢰하지 않음)가 보낸 요청: 종료와 외부 링크(http·https 만, 사파리로)
                 guard dish.recipe == .rpgMakerMV, let d = message.body as? [String: Any], let op = d["op"] as? String else { return }

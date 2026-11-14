@@ -28,15 +28,9 @@ struct SettingsView: View {
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage("bingsu.menuButton") private var menuButtonRaw = MenuButtonPlace.pad.rawValue
     @ObservedObject private var igloo = Igloo.shared
-    /// 지금 연결된 실제 컨트롤러 제품명 (식별자 없이)
-    @State private var controllers = LongSpoon.connectedNames()
+    /// "컨트롤러·키보드" 줄에 보이는 연결된 기기 요약
+    @State private var inputSummary = InputView.summary()
     @State private var showEditor = false
-    /// 애플워치 컨트롤러 (Spoon/TeaSpoon.swift). iPhone 에서만 보인다
-    @ObservedObject private var watch = TeaSpoonLink.shared
-    @AppStorage(TeaSpoonLink.enabledKey) private var watchEnabled = true
-    /// iPhone 을 컨트롤러로 (Spoon/TableSpoon.swift). iPad 에서만 보인다
-    @ObservedObject private var table = TableSpoonLink.shared
-    @AppStorage(TableSpoonLink.enabledKey) private var tableEnabled = true
 
     /// 전역 @AppStorage 값들을 PadPrefs 하나로 묶은 바인딩
     private var globalPad: Binding<PadPrefs> {
@@ -60,39 +54,7 @@ struct SettingsView: View {
                     Text("게임마다 다르게 쓰려면 게임 목록에서 게임을 꾹 눌러 \"이 게임 설정\"을 여세요.")
                 }
 
-                Section {
-                    if controllers.isEmpty {
-                        LabeledContent("연결된 컨트롤러", value: "없음")
-                    } else {
-                        ForEach(controllers.indices, id: \.self) { i in
-                            LabeledContent("연결된 컨트롤러", value: controllers[i])
-                        }
-                    }
-                    if watch.supported {
-                        Toggle(isOn: $watchEnabled) {
-                            Text("애플워치로 조작")
-                            Text("워치의 빙수 앱 버튼과 크라운으로 조작해요. 메뉴·배틀 같은 턴제 조작에 알맞아요. 필드 이동은 조금 늦을 수 있어요")
-                        }
-                        .onChange(of: watchEnabled) { _, _ in watch.refreshContext() }
-                        LabeledContent("애플워치", value: watch.statusLabel)
-                    }
-                    if TableSpoon.canHost {
-                        Toggle(isOn: $tableEnabled) {
-                            Text("iPhone 을 컨트롤러로")
-                            Text("iPhone 의 빙수 홈에서 게임패드 단추를 누르면 이 iPad 를 찾아요. 같은 Wi-Fi 나 블루투스 범위 안에서만 돼요. 연결되면 가상 패드는 숨겨져요")
-                        }
-                        .onChange(of: tableEnabled) { _, _ in table.refresh() }
-                        LabeledContent("iPhone 컨트롤러", value: table.statusLabel)
-                    }
-                } header: {
-                    Text("컨트롤러")
-                } footer: {
-                    Text("다중 모드 패드(8BitDo·IINE 등)는 스위치(Pro 컨트롤러)·PlayStation·Xbox 모드로 켜면 연결돼요. 서드파티 패드는 앱의 진동 세기를 따르지 않는 경우가 많아요. 그럴 땐 패드 자체 진동 단계로 조절하세요(IINE: 스위치 모드에서 IINE 앱 또는 터보+오른쪽 스틱, PlayStation·Xbox 모드에서는 조절 안 됨). DirectInput·안드로이드 모드는 iOS가 인식하지 않아요. 컨트롤러가 연결되면 가상 패드는 숨겨져요.")
-                }
-                .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidConnect)) { _ in controllers = LongSpoon.connectedNames() }
-                .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in controllers = LongSpoon.connectedNames() }
-
-                Section("게임 중") {
+                Section("소리·진동") {
                     VStack(alignment: .leading, spacing: 6) {
                         LabeledContent("게임 소리 크기", value: "\(Int((gameVolume * 100).rounded()))%")
                         HStack(spacing: 10) {
@@ -115,7 +77,7 @@ struct SettingsView: View {
                                 Label("진동 확인", systemImage: "iphone.radiowaves.left.and.right")
                             }
                             .buttonStyle(.bordered).controlSize(.small)
-                            Text("폰 진동과 정품 컨트롤러에 적용돼요. 서드파티 패드는 아래 컨트롤러 안내를 보세요")
+                            Text("폰 진동과 정품 컨트롤러에 적용돼요. 서드파티 패드는 컨트롤러·키보드 › 패드 연결 안내를 보세요")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Toggle(isOn: $rumbleBTSafe) {
@@ -131,21 +93,44 @@ struct SettingsView: View {
                         BingsuApp.configureAudioSession()
                         NotificationCenter.default.post(name: BingsuApp.soundPrefsChanged, object: nil)
                     }
-                    Picker("일시정지 버튼 자리", selection: $menuButtonRaw) {
-                        ForEach(MenuButtonPlace.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
-                    }
-                    Toggle(isOn: $audioDiag) {
-                        Text("소리 문제 진단")
-                        Text("게임 화면 아래 구석에 소리 상태·디코딩 시간·마지막 진동 시각을 띄워요. 소리가 깨질 때 무엇과 겹치는지 볼 때만 켜세요")
-                    }
                 }
 
-                PerfSettingsSection(showPerformance: $showPerformance)
+                // 컨트롤러·키보드는 한 화면에 (연결된 기기·키 설정·애플워치·iPhone 컨트롤러·패드 안내, Kitchen/InputView.swift)
+                Section {
+                    NavigationLink {
+                        InputView(dish: nil)
+                    } label: {
+                        LabeledContent {
+                            Text(inputSummary)
+                        } label: {
+                            Label("컨트롤러·키보드", systemImage: "gamecontroller")
+                        }
+                    }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidConnect)) { _ in inputSummary = InputView.summary() }
+                .onReceive(NotificationCenter.default.publisher(for: .GCControllerDidDisconnect)) { _ in inputSummary = InputView.summary() }
+                .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidConnect)) { _ in inputSummary = InputView.summary() }
+                .onReceive(NotificationCenter.default.publisher(for: .GCKeyboardDidDisconnect)) { _ in inputSummary = InputView.summary() }
 
                 Section("저장 데이터") {
                     NavigationLink("저장 데이터 관리") { SavedDataView(dishes: dishes, onWillWipe: onWillWipe) }
                 }
                 CloudSyncSection(igloo: igloo)
+
+                PerfSettingsSection(showPerformance: $showPerformance) {
+                    Picker("일시정지 버튼 자리", selection: $menuButtonRaw) {
+                        ForEach(MenuButtonPlace.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) }
+                    }
+                }
+
+                Section {
+                    Toggle(isOn: $audioDiag) {
+                        Text("소리 문제 진단")
+                        Text("게임 화면 아래 구석에 소리 상태·디코딩 시간·마지막 진동 시각을 띄워요. 소리가 깨질 때 무엇과 겹치는지 볼 때만 켜세요")
+                    }
+                } header: {
+                    Text("문제 해결")
+                }
 
                 Section("정보") {
                     LabeledContent("버전", value: Self.versionText)

@@ -29,6 +29,8 @@ final class SpoonController: ObservableObject {
     var keySink: ((String, Bool) -> Void)?
     var hapticsEnabled = true
     var eightWay = false
+    /// 키 설정(KeyMap)을 고를 게임 id. nil = 전역 (HardKeys.attach 가 정한다)
+    var keyMapID: String?
 
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private var keyboardHeld: Set<String> = []
@@ -107,9 +109,18 @@ final class SpoonController: ObservableObject {
         sync()
     }
 
+    /// 키 설정에서 버튼·키에 키보드 키를 바로 붙인 것 (패드 버튼을 거치지 않고 그 키를 누른다). 게임 전송 방식과 상관없이 키로 보낸다
+    func setDirectKey(_ code: String, down: Bool) {
+        if down { directHeld[code, default: 0] += 1 } else if let n = directHeld[code] { directHeld[code] = n > 1 ? n - 1 : nil }
+        sync()
+    }
+    private var directHeld: [String: Int] = [:]
+    private var directSent: Set<String> = []
+
     func releaseAll() {
         for w in pendingRelease.values { w.cancel() }
         pendingRelease.removeAll()
+        directHeld.removeAll()
         pressed.removeAll()
         leftStick = StickState(); rightStick = StickState()
         sync()
@@ -119,7 +130,13 @@ final class SpoonController: ObservableObject {
 
     private func sync() {
         switch cutlery.transport {
-        case .gamepad: sendGamepad()
+        case .gamepad:
+            sendGamepad()
+            // 패드로 받는 게임이라도 키 설정에서 붙인 키는 키로
+            let want = Set(directHeld.keys)
+            for k in directSent.subtracting(want) { key(k, down: false) }
+            for k in want.subtracting(directSent) { key(k, down: true) }
+            directSent = want
         case .keyboard: sendKeyboard()
         }
     }
@@ -145,6 +162,7 @@ final class SpoonController: ObservableObject {
     private func sendKeyboard() {
         var want: Set<String> = []
         for b in pressed { if let k = cutlery.keys[b] { want.insert(k) } }
+        want.formUnion(directHeld.keys)
         // 스틱 → 방향키 (4방향 기본, 8방향 옵션)
         let v = leftStick.vector
         if hypot(v.dx, v.dy) > 0.35 {

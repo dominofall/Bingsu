@@ -109,17 +109,20 @@ struct DishPrefs: Codable, Equatable {
     var quality: Quality?         // 사용자가 고른 화질. nil = 자동(벤치마크 권장값)
     var recommendedQuality: Quality?   // 첫 실행 벤치마크가 정한 권장 화질
     var fpsLimit: FpsLimit?       // 사용자가 고른 프레임 제한. nil = 자동(게임 기본값 + 뜨거워지면 30)
-    var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 게임 중의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
+    var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 소리·진동의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
     var musicRate: MusicRate?     // 포켓로그 배경음악 음질. nil = 절약(24kHz) (빌드 23 에서 더함, 예전 파일엔 없음 → nil)
     var audioCache: Bool?         // 포켓로그 소리·그림·JSON 을 기기에 저장해 다시 받지 않기. nil = 켬 (2026-11-01 사용자 결정: 설정에서 끌 수 있게)
     var allowOnline: Bool?        // RPG Maker 게임의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
-    var rubyOverride: String?     // RPG Maker 게임의 Ruby 버전 "18"/"19"/"31". nil = 자동 (빌드 26 에서 더함, 예전 파일엔 없음 → nil)
+    var rubyOverride: String?     // RPG Maker 게임의 Ruby 버전 "18"/"19"/"31". nil = 자동 (빌드 26 에서 더함, 예전 파일엔 없음 → nil). 설정 화면에서 뺐고 더는 읽지 않음 — 저장 파일 호환 때문에 남겨 둠
     var rtpNoticeShown: Bool?     // RTP 가 필요하다는 안내를 이 게임에서 한 번 보였다 (빌드 26)
     var pixelSharp: Bool?         // RPG Maker MV·MZ 화면을 픽셀 그대로(흐리지 않게). nil = 켬 (빌드 27 에서 더함, 예전 파일엔 없음 → nil)
     /// 새 모양 Electron 게임의 조작 방식 "pointer"(터치)·"pad"(가상 패드). nil = 자동(가져올 때 판별한 값).
     /// 모르는 글자가 와도 파일 전체를 못 읽는 일이 없게 글자로 둔다 (빌드 38 에서 더함, 예전 파일엔 없음 → nil)
     var inputStyle: String?
     var keyStrip: Bool?           // 키보드 키 줄 보기. nil = 자동(터치 방식이면 보임) (빌드 38)
+    /// 이 게임만의 키 설정(컨트롤러·하드웨어 키보드, Spoon/KeyMap.swift). nil = 전역 키 설정 (2026-11-14 에 더함, 예전 파일엔 없음 → nil).
+    /// 게임을 지우면 이 파일과 함께 지워진다
+    var keyMap: KeyMap?
 
     /// 실제로 쓸 조작 방식: 직접 고른 값 → 판별 값. 새 모양 Electron 게임이 아니면 nil
     func effectiveInputStyle(_ dish: Dish) -> ElectronInfo.InputStyle? {

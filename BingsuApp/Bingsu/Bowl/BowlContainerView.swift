@@ -53,6 +53,8 @@ struct BowlContainerView: View {
     @State private var pauseFocus: PauseItem?
     @State private var lastBackup: Date?
     @State private var showSettings = false
+    /// 진단 정보 보내기 (ReceiptSlipView)
+    @State private var receipt: ReceiptRequest?
     /// 배치 편집 (일시정지 화면 › 배치 편집). 게임은 멈춘 채 그 위에 편집기를 띄운다
     @State private var showEditor = false
     @State private var authRequest: AuthRequest?
@@ -176,7 +178,8 @@ struct BowlContainerView: View {
         }
         .persistentSystemOverlays(visible ? .hidden : .automatic)
         .statusBarHidden(visible)
-        .sheet(isPresented: $showSettings) { DishSettingsView(dish: dish) }
+        .sheet(isPresented: $showSettings) { DishSettingsView(dish: dish, onReceipt: openReceiptFromSettings) }
+        .sheet(item: $receipt) { r in ReceiptSlipView(dish: dish, live: r.live, screenshot: r.screenshot) }
         .sheet(item: $authRequest) { req in
             AuthPopupView(dish: dish, url: req.url) { webView?.load(URLRequest(url: dish.location)) }
         }
@@ -209,6 +212,7 @@ struct BowlContainerView: View {
             // 게임 중에는 화면이 저절로 꺼지지 않게. 워치·실제 컨트롤러·iPhone 컨트롤러로 하면 iPhone 을 안 건드려 "입력 없음"으로 꺼졌다 (2026-11-10 피드백)
             UIApplication.shared.isIdleTimerDisabled = true
             spoon.cutlery = CutlerySet.forDish(dish); spoon.webView = webView; spoon.hapticsEnabled = padPrefs.haptics
+            HardKeys.shared.attach(dish: dish, spoon: spoon)   // 키 설정 (컨트롤러·하드웨어 키보드)
             keyStrip.webView = webView; keyStrip.haptics = padPrefs.haptics
             if dish.isRedBean { NSLog("[Bowl] input style=\(inputStyle?.rawValue ?? "-") keyStrip=\(keyStripShown) keys=\(stripKeys.joined(separator: ",")) keyboard=\(hardwareKeyboard)") }
             // iPhone 에서 터치 방식 게임을 세로로 켰으면 한 번 알린다 (터치 조작 §8)
@@ -225,6 +229,11 @@ struct BowlContainerView: View {
             TeaSpoonLink.shared.setContext(game: dish.title, state: visible ? .playing : .home)
             // 디버그: BINGSU_PAUSE=1 이면 3초 뒤 일시정지 화면을 연다 (시뮬레이터 확인용)
             if DevEnv["BINGSU_PAUSE"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { openPause() } }
+            ReceiptDesk.shared.noteLaunch(dishID: dish.id, lines: ["quality=\(quality.rawValue) fpsCap=\(baseFpsCap.map(String.init) ?? "-")"])
+            // 디버그: BINGSU_RECEIPT=<초> 면 그 뒤 일시정지 화면을 열고 진단 정보를 띄운다 (시뮬레이터 확인용)
+            if let t = DevEnv["BINGSU_RECEIPT"].flatMap(Double.init) {
+                DispatchQueue.main.asyncAfter(deadline: .now() + t) { openPause(); DispatchQueue.main.asyncAfter(deadline: .now() + 1) { openReceipt() } }
+            }
             // 디버그: BINGSU_LAYOUT=1 이면 3초 뒤 배치 편집기를 연다
             if DevEnv["BINGSU_LAYOUT"] == "1" { DispatchQueue.main.asyncAfter(deadline: .now() + 3) { editLayout() } }
             thermometer.onSample = { [weak recorder] t in
@@ -248,6 +257,7 @@ struct BowlContainerView: View {
         }
         .onDisappear {
             UIApplication.shared.isIdleTimerDisabled = false
+            HardKeys.shared.detach(spoon: spoon)
             recorder.setActive(false)
             // 게임 종료(또는 다른 게임으로 바꿈): 마지막 스냅샷이 파일에 닿은 뒤 iCloud 로 올린다
             packSaveFiles()
@@ -373,6 +383,25 @@ struct BowlContainerView: View {
             focus: $pauseFocus)
     }
 
+    /// 진단 정보: 지금 화면·입력 상태와 게임 화면(웹뷰 스냅숏)을 모아 미리보기를 연다
+    /// 이 게임 설정 › 진단 정보: 설정 시트가 닫힌 뒤 지금 화면 상태를 담아 연다
+    private func openReceiptFromSettings() {
+        showSettings = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { openReceipt() }
+    }
+
+    private func openReceipt() {
+        recorder.save()
+        let frame = webView.flatMap { wv in wv.window.map { _ in wv.convert(wv.bounds, to: nil) } }
+        let live = ReceiptLive(
+            gameFrame: frame,
+            input: ReceiptSlip.inputLines(padShown: padShown, padKind: padPrefs.kind, watch: watchConnected, table: tableConnected,
+                                          gameKeyboard: false),
+            webView: webView)
+        guard let wv = webView else { receipt = ReceiptRequest(live: live); return }
+        wv.takeSnapshot(with: nil) { img, _ in receipt = ReceiptRequest(live: live, screenshot: img) }
+    }
+
     /// 일시정지: 게임을 멈추고 패드 입력을 놓은 뒤 화면을 연다. 컨트롤러 입력은 화면 조작으로 돌린다.
     private func openPause() {
         guard !showMenu else { return }
@@ -478,6 +507,7 @@ struct BowlContainerView: View {
             case .close?: closePause(resume: false); flush(); onClose()
             case .kind(let k)?: p.kind = k; setPadHere(p)
             case .editLayout?: editLayout()
+            case .keyMap?: KeyCapture.shared.presentFor = dish.id
             case .hidePad?: if padShown { showSpoon = false } else { showSpoon = true; padForced = anyController }
             case .keyStrip?: let on = keyStripOn; prefsStore.update(dish.id) { $0.keyStrip = !on }
             case .labels?: p.showLabels.toggle(); setPadHere(p)
@@ -500,13 +530,15 @@ struct BowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + [.editLayout] + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad] + (dish.isRedBean ? [.keyStrip] : []) + [.labels]
+        var out: [PauseItem] = [.resume, .home, .close] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad] + (dish.isRedBean ? [.keyStrip] : []) + [.labels]
         if p.providesStick() { out.append(.floating) }
+        out.append(.editLayout)
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out += [.volume] + (dish.knownWeb == .pokerogue ? [.musicRate] : []) + [.mixAudio, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
-        out += [.fps, .quality, .hud]
         if !dish.isRemote { out.append(.backup) }
+        out += [.fps, .quality, .hud]
+        if KeyCapture.anyInputConnected { out.append(.keyMap) }
         out.append(.more)
         return out
     }
@@ -572,21 +604,12 @@ struct BowlContainerView: View {
     /// 세로 화면의 16:9 게임 자리 (배치 편집기의 자리 표시도 같은 계산). `padTop` 은 패드 맨 위 요소의 윗변
     static func portraitRect(W: CGFloat, H: CGFloat, top: CGFloat, padTop: CGFloat?, orbInPad: Bool, padShown: Bool,
                              aspect: CGFloat = 16 / 9) -> CGRect {
-        var gameW = W - margin * 2
-        var gameH = gameW / aspect
-        let padTop = padTop.map { $0 - 12 } ?? H
-        // 눈송이 줄과 패드 윗줄 사이 남는 세로 공간에서 패드 쪽으로 치우치게(위 3 : 아래 1). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
+        // 눈송이 줄 아래 ~ 패드 윗줄(패드가 없으면 화면 아래) 사이 가운데 (GameFrame 규칙). 눈송이가 패드 안에 있으면 그 줄은 비워 두지 않는다
         let band = orbInPad ? 8 : chrome
-        // 세로로 긴 게임(팥빙수 게임이 정한 비율)은 남는 높이에 맞춰 줄이고 가운데에 둔다
-        let roomH = (padShown ? padTop : H - margin) - top - band
-        if gameH > roomH, roomH > 0 {
-            gameH = roomH; gameW = gameH * aspect
-            return CGRect(x: (W - gameW) / 2, y: top + band, width: gameW, height: gameH)
-        }
-        let slack = max(0, padTop - top - band - gameH)
-        // 패드가 없으면(컨트롤러 연결 등) 창의 위아래 가운데. 눈송이 줄은 가리지 않는다
-        let y = padShown ? top + band + slack * 0.75 : max(top + band, (H - gameH) / 2)
-        return CGRect(x: margin, y: y, width: gameW, height: gameH)
+        let ins = UIEdgeInsets(top: top, left: margin, bottom: margin, right: margin)
+        let area = GameFrame.portraitArea(size: CGSize(width: W, height: H), insets: ins, band: band,
+                                          padTop: padShown ? (padTop ?? H) : nil)
+        return GameFrame.fit(aspect: aspect, in: area)
     }
 
     /// 가로 화면의 16:9 게임 자리: 높이를 채우고, 양옆 여백이 눈송이 줄보다 좁으면 위에 눈송이 줄을 비워 둔다.
@@ -715,7 +738,7 @@ struct ThermometerHUD: View {
     }
 }
 
-/// 소리 문제 진단 HUD (설정 › 게임 중, 기본 끔): 게임 오디오 상태·최근 디코딩·마지막 진동·출력 종류를 한 줄로.
+/// 소리 문제 진단 HUD (설정 › 문제 해결, 기본 끔): 게임 오디오 상태·최근 디코딩·마지막 진동·출력 종류를 한 줄로.
 /// 소리가 깨지는 순간 어느 값이 같이 움직이는지 보려는 용도. 기기·이어폰 이름 같은 식별 정보는 넣지 않는다.
 struct AudioDiagHUD: View {
     static let key = "bingsu.audioDiag"
