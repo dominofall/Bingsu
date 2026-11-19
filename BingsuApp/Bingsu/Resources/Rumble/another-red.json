@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "game": "포켓몬 어나더레드",
+  "source": "Audio/SE (Pokemon Essentials v21.1), Pokemon Another Red_PWT_250821. 전투 소리는 모두 base-essentials 이름 그대로",
+  "detect": {"localNames": ["another red", "another-red"]},
+  "extends": ["base-essentials"],
+  "rules": []
+}

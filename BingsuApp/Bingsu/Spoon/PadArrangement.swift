@@ -35,12 +35,14 @@ struct PadArrangement: Codable, Equatable, Sendable {
     }
 
     struct Element: Codable, Equatable, Identifiable {
-        enum Kind: String, Codable { case button, dpad, stick, orb }
+        enum Kind: String, Codable { case button, dpad, stick, orb, custom }
         var type: Kind
         /// type == .button. JSON 에는 이름("a","lb",…)으로 쓴다
         var button: PadButton? = nil
         /// type == .stick: "left" | "right"
         var side: String? = nil
+        /// type == .custom: 누르면 보낼 입력. `KeyTarget.stored` 형식("key:Digit5" · "pad:a"). 사용자가 더한 "커스텀 키"
+        var send: String? = nil
         var anchor: Anchor
         var x: Double, y: Double
         /// 배치 포인트. 알약은 반높이, 스틱은 바닥 반지름, 십자키는 반지름
@@ -55,8 +57,11 @@ struct PadArrangement: Codable, Equatable, Sendable {
             case .stick: return "stick." + (side ?? "left")
             case .dpad: return "dpad"
             case .orb: return "orb"
+            case .custom: return "custom." + (send ?? "?")
             }
         }
+        /// type == .custom 의 입력 (`send` 를 풀어서)
+        var customTarget: KeyTarget? { send.flatMap(KeyTarget.init(stored:)) }
         var isRightStick: Bool { type == .stick && side == "right" }
 
         /// 화면에 보일 이름 (편집기·접근성)
@@ -66,6 +71,7 @@ struct PadArrangement: Codable, Equatable, Sendable {
             case .dpad: return "십자키"
             case .stick: return isRightStick ? "오른쪽 스틱" : "왼쪽 스틱"
             case .orb: return "일시정지 버튼"
+            case .custom: return "커스텀 키 · " + (customTarget.map(PadArrangement.customTitle) ?? "?")
             }
         }
 
@@ -76,14 +82,15 @@ struct PadArrangement: Codable, Equatable, Sendable {
             case .dpad: return 40...90
             case .stick: return 32...70
             case .orb: return 16...16
+            case .custom: return 16...44
             }
         }
 
-        enum CodingKeys: String, CodingKey { case type, button, side, anchor, x, y, radius, pill, stretch, label, floating }
+        enum CodingKeys: String, CodingKey { case type, button, side, send, anchor, x, y, radius, pill, stretch, label, floating }
 
-        init(type: Kind, button: PadButton? = nil, side: String? = nil, anchor: Anchor, x: Double, y: Double, radius: Double,
+        init(type: Kind, button: PadButton? = nil, side: String? = nil, send: String? = nil, anchor: Anchor, x: Double, y: Double, radius: Double,
              pill: Bool? = nil, stretch: Double? = nil, label: String? = nil, floating: Bool? = nil) {
-            self.type = type; self.button = button; self.side = side; self.anchor = anchor
+            self.type = type; self.button = button; self.side = side; self.send = send; self.anchor = anchor
             self.x = x; self.y = y; self.radius = radius
             self.pill = pill; self.stretch = stretch; self.label = label; self.floating = floating
         }
@@ -113,6 +120,13 @@ struct PadArrangement: Codable, Equatable, Sendable {
                 guard s == "left" || s == "right" else { throw DecodingError.dataCorruptedError(forKey: .side, in: c, debugDescription: "side") }
                 side = s
                 floating = try c.decodeIfPresent(Bool.self, forKey: .floating)
+            case .custom:
+                // 키 코드는 웹뷰 스크립트에 들어가므로 KeyTarget 이 아는 버튼·키만 (끄기 제외)
+                guard let v = try c.decodeIfPresent(String.self, forKey: .send), let t = KeyTarget(stored: v), t != .off else {
+                    throw DecodingError.dataCorruptedError(forKey: .send, in: c, debugDescription: "send")
+                }
+                send = t.stored
+                if let l = try c.decodeIfPresent(String.self, forKey: .label) { label = String(l.prefix(8)) }
             case .dpad, .orb: break
             }
             let r = try c.decodeIfPresent(Double.self, forKey: .radius) ?? PadArrangement.defaultRadius(type, button: button)
@@ -126,6 +140,7 @@ struct PadArrangement: Codable, Equatable, Sendable {
             try c.encode(type, forKey: .type)
             try c.encodeIfPresent(button?.name, forKey: .button)
             try c.encodeIfPresent(side, forKey: .side)
+            try c.encodeIfPresent(send, forKey: .send)
             try c.encode(anchor, forKey: .anchor)
             // 배치 포인트는 소수 한 자리면 충분하다 (파일이 작아지고 사람이 읽기 쉽게)
             try c.encode((x * 10).rounded() / 10, forKey: .x)
@@ -230,6 +245,28 @@ struct PadArrangement: Codable, Equatable, Sendable {
         case .dpad: return 62
         case .stick: return 48
         case .orb: return 16
+        case .custom: return 22
+        }
+    }
+
+    /// 한 배치에 놓을 수 있는 커스텀 키 수
+    static let maxCustom = 12
+
+    /// 커스텀 키 위에 쓰는 짧은 글자: 키보드 키는 키 이름("5", "Esc"), 게임 버튼은 버튼 글자("A", "R3")
+    static func customGlyph(_ t: KeyTarget) -> String {
+        switch t {
+        case .key(let c): return KeyCatalog.label(c)
+        case .pad(let b): return buttonTitle(b, label: nil)
+        case .off: return ""
+        }
+    }
+
+    /// 편집기·접근성에 쓰는 이름: "키보드 5" · "A 버튼"
+    static func customTitle(_ t: KeyTarget) -> String {
+        switch t {
+        case .key(let c): return "키보드 " + KeyCatalog.label(c)
+        case .pad(let b): return b.displayName + " 버튼"
+        case .off: return "없음"
         }
     }
 

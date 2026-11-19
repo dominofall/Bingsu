@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>진동 1차 표</title>
+<style>
+  /* 빙수는 로컬 게임을 16:9 상자에 띄운다 → 64 × 36 rem 에 맞춘다 (진동 실험실과 같음) */
+  :root { --bg: #10141f; --card: #1b2233; --line: #2d3750; --text: #e8ecf5; --dim: #8b95ad; --accent: #7cc4ff;
+          --hit: #ff9a7c; --ball: #ffd36b; --etc: #9be38f; --mix: #c9a2ff; --no: #8b95ad;
+          font-size: min(calc(100vw / 64), calc(100vh / 36)); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, system-ui, sans-serif; -webkit-user-select: none; user-select: none; overflow: hidden; }
+  main { display: flex; flex-direction: column; gap: 0.8rem; padding: 0.9rem 1.3rem; width: 64rem; height: 36rem; margin: 0 auto; }
+  header { display: flex; gap: 1.4rem; align-items: baseline; }
+  h1 { font-size: 1.8rem; margin: 0; }
+  .status { color: var(--dim); font-size: 1.1rem; }
+  .status b { color: var(--text); font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: 1fr; gap: 0.6rem; flex: 1; }
+  button { position: relative; background: var(--card); color: var(--text); border: 0.2rem solid transparent; border-radius: 0.8rem;
+           padding: 0.3rem 0.5rem 0.3rem 0.9rem; font: inherit; font-size: 1.3rem; line-height: 1.15; text-align: left; }
+  button::before { content: ""; position: absolute; left: 0.35rem; top: 0.6rem; bottom: 0.6rem; width: 0.25rem; border-radius: 1rem; background: var(--c); }
+  button small { display: block; color: var(--dim); font-size: 0.9rem; margin-top: 0.2rem; }
+  button .num { color: var(--c); }
+  button.focus { border-color: var(--accent); }
+  button.flash { background: #3a4a70; }
+  #log { color: var(--dim); font: 0.95rem/1.3 ui-monospace, Menlo, monospace; white-space: pre; overflow: hidden; height: 2.5rem; }
+  .legend { display: flex; gap: 1rem; font-size: 0.95rem; color: var(--dim); margin-left: auto; }
+  .legend i { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 1rem; background: var(--c); margin-right: 0.3rem; vertical-align: -0.05rem; }
+  @keyframes quake { 0%,100% { transform: translate(0,0); } 25% { transform: translate(calc(var(--q) * -1), 0); } 75% { transform: translate(var(--q), 0); } }
+  main.quake { animation: quake 0.08s linear infinite; }
+</style>
+</head>
+<body>
+<main id="main">
+  <header>
+    <h1>진동 1차 표</h1>
+    <span class="status">소리 <b id="snd">꺼짐</b> · 기본 표로 울림</span>
+    <span class="legend">
+      <span style="--c:var(--hit)"><i></i>타격</span><span style="--c:var(--ball)"><i></i>몬스터볼</span>
+      <span style="--c:var(--etc)"><i></i>그 밖</span><span style="--c:var(--mix)"><i></i>연출·흔들림</span>
+    </span>
+  </header>
+  <div class="grid" id="grid"></div>
+  <div id="log">십자키로 고르고 A 로 누르세요. 화면을 눌러도 돼요. 숫자는 묵직·가벼움·길이(초).</div>
+</main>
+<script>
+"use strict";
+// docs/rumble/TABLE-v1.md 의 상황. 파일 이름이 Essentials 효과음 이름과 같아서 빙수 기본 표(base-essentials)로 울린다
+// [제목, 상황, 효과음 파일(확장자 뺌), 묵직, 가벼움, 길이, 색]
+const ONE = [
+  ["효과 별로", "hit_weak", "Battle damage weak", 0.25, 0.3, 0.10, "hit"],
+  ["보통 타격", "hit_normal", "Battle damage normal", 0.6, 0.4, 0.16, "hit"],
+  ["효과 굉장", "hit_super", "Battle damage super", 1.0, 0.6, 0.28, "hit"],
+  ["기절", "faint", "Pkmn faint", 0.8, 0.2, 0.45, "hit"],
+  ["볼 던지기", "ball_throw", "Battle throw", 0.2, 0.5, 0.10, "ball"],
+  ["크리티컬 던지기", "crit_throw", "Battle critical catch throw", 0.5, 0.7, 0.14, "ball"],
+  ["볼이 맞음", "ball_hit", "Battle ball hit", 0.5, 0.3, 0.08, "ball"],
+  ["빨려 들어감", "catch_absorb", "Battle jump to ball", 0.35, 0.4, 0.12, "ball"],
+  ["볼 떨어짐", "ball_drop", "Battle ball drop", 0.3, 0.3, 0.08, "ball"],
+  ["볼 흔들림", "ball_shake", "Battle ball shake", 0.45, 0.2, 0.12, "ball"],
+  ["포획 확정", "catch_click", "Battle catch click", 0.7, 0.5, 0.30, "ball"],
+  ["내보내기", "recall", "Battle recall", 0.2, 0.4, 0.10, "ball"],
+  ["도망", "flee", "Battle flee", 0.3, 0.3, 0.18, "etc"],
+  ["레벨 업", "level_up", "Pkmn level up", 0.2, 0.5, 0.20, "etc"],
+  ["메뉴 커서", "표에 없음 · 안 울려야 정상", "GUI sel cursor", null, null, null, "no"],
+];
+// 연출: [제목, 설명, [[시각(초), 할 일], ...]]  할 일은 효과음 이름 또는 {shake: power, frames}
+const SEQ = [
+  ["포획 전체", "던지기 → 딸깍 (흔들림 3번)", [[0, "Battle throw"], [0.45, "Battle ball hit"], [0.8, "Battle jump to ball"], [1.5, "Battle ball drop"],
+    [2.3, "Battle ball shake"], [3.2, "Battle ball shake"], [4.1, "Battle ball shake"], [5.0, "Battle catch click"]]],
+  ["한 턴", "굉장한 공격 → 기절", [[0, "Battle damage super"], [1.0, "Pkmn faint"]]],
+  ["흔들림 약", "power 3 · 20프레임 (0.33 · 0.5초)", [[0, { shake: 3, frames: 20 }]]],
+  ["흔들림 강", "power 9 · 20프레임 (1.0 · 0.5초)", [[0, { shake: 9, frames: 20 }]]],
+  ["겹침", "흔들림 9 + 보통 타격 → 한 번만", [[0, { shake: 9, frames: 20 }], [0.05, "Battle damage normal"]]],
+];
+
+const $ = (id) => document.getElementById(id);
+const lines = [];
+function log(m) { lines.unshift(new Date().toLocaleTimeString("ko-KR", { hour12: false }) + "  " + m); lines.length = Math.min(lines.length, 2); $("log").textContent = lines.join("\n"); }
+
+// 효과음: fetch → decodeAudioData → AudioBufferSourceNode.start (빙수가 이 경로에서 파일 이름을 본다)
+let ctx = null;
+const buffers = {};
+function audio() {
+  if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (ctx.state !== "running") ctx.resume?.().catch(() => {});
+  $("snd").textContent = ctx.state === "running" ? "켜짐" : ctx.state;
+  return ctx;
+}
+const url = (name) => "assets/" + encodeURIComponent(name + ".wav");
+async function load(name) {
+  if (!buffers[name]) buffers[name] = await audio().decodeAudioData(await (await fetch(url(name))).arrayBuffer());
+  return buffers[name];
+}
+async function play(name) {
+  const c = audio(), s = c.createBufferSource();
+  s.buffer = await load(name); s.connect(c.destination); s.start();
+}
+
+// 화면 흔들림: RPG Maker MV·MZ 와 같은 이름의 함수. 빙수가 이 함수를 감싸 진동을 보낸다
+window.Game_Screen = function () {};
+Game_Screen.prototype.startShake = function (power, speed, duration) {
+  const m = $("main");
+  m.style.setProperty("--q", (power * 0.12) + "rem");
+  m.classList.add("quake");
+  clearTimeout(this.t); this.t = setTimeout(() => m.classList.remove("quake"), duration / 60 * 1000);
+};
+const screen = new Game_Screen();
+
+function run(step) {
+  if (typeof step === "string") play(step).catch((e) => log("소리 오류: " + e));
+  else screen.startShake(step.shake, 5, step.frames);
+}
+
+const all = [];
+function add(title, sub, color, action) {
+  const b = document.createElement("button");
+  b.style.setProperty("--c", "var(--" + color + ")");
+  b.innerHTML = title + "<small>" + sub + "</small>";
+  b.addEventListener("click", () => { focus(all.indexOf(b)); press(); });
+  b.action = action; $("grid").appendChild(b); all.push(b);
+}
+for (const [t, ev, file, st, wk, sec, color] of ONE) {
+  const nums = st == null ? ev : `<span class="num">${st} · ${wk} · ${sec}</span> ${ev}`;
+  add(t, nums, color, () => { run(file); log(`${t}: "${file}" → ${st == null ? "진동 없음이 정상" : ev + " (" + st + " · " + wk + " · " + sec + "초)"}`); });
+}
+for (const [t, sub, steps] of SEQ) {
+  add(t, sub, "mix", () => { for (const [at, step] of steps) setTimeout(() => run(step), at * 1000); log(t + ": " + sub); });
+}
+
+let cur = 0;
+function focus(i) { all[cur]?.classList.remove("focus"); cur = (i + all.length) % all.length; all[cur].classList.add("focus"); }
+function press() { const b = all[cur]; b.classList.add("flash"); setTimeout(() => b.classList.remove("flash"), 150); audio(); b.action(); }
+focus(0);
+function move(dx, dy) {
+  const col = cur % 5;
+  if (dx) focus(col + dx < 0 || col + dx > 4 ? cur : cur + dx);
+  if (dy) { const n = cur + dy * 5; if (n >= 0 && n < all.length) focus(n); }
+}
+
+// 패드 읽기: 눌린 순간만
+function pad() { const l = navigator.getGamepads ? navigator.getGamepads() : []; for (const p of l) if (p) return p; return null; }
+let prev = [];
+function tick() {
+  const p = pad();
+  if (p) {
+    const now = p.buttons.map((b) => b.pressed);
+    const hit = (i) => now[i] && !prev[i];
+    if (hit(12)) move(0, -1); if (hit(13)) move(0, 1); if (hit(14)) move(-1, 0); if (hit(15)) move(1, 0);
+    if (hit(0)) press();
+    prev = now;
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+addEventListener("keydown", (e) => {
+  const k = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] }[e.key];
+  if (k) { move(...k); e.preventDefault(); } else if (e.key === "Enter" || e.key === " " || e.key === "z") { press(); e.preventDefault(); }
+});
+// 효과음은 미리 받아 둔다 (첫 재생 지연 줄이기)
+for (const r of ONE) fetch(url(r[2])).catch(() => {});
+</script>
+</body>
+</html>

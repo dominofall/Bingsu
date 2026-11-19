@@ -21,6 +21,8 @@ struct DeliveryView: View {
     @State private var picking = false
     /// "업데이트할 게임과 달라요"에서 다른 파일을 고르면 같은 게임을 다시 업데이트 대상으로 삼는다 (게임 전체·패치 모두)
     @State private var repickTarget: String?
+    /// 진행 그림이 100% 에서 딸기까지 마저 그렸다. 그 전까지는 "준비됐어요"여도 그릇을 보여 준다
+    @State private var bowlFinished = false
 
     var body: some View {
         NavigationStack {
@@ -64,7 +66,8 @@ struct DeliveryView: View {
                     VStack(spacing: 24) {
                         Spacer()
                         switch delivery.stage {
-                        case .done(let r): resultCard(r)
+                        // 그릇에 딸기까지 올라간 뒤에 결과로 넘긴다 (100% 가 되자마자 바꾸면 그림이 뚝 끊긴다)
+                        case .done(let r) where bowlFinished: resultCard(r).transition(.opacity)
                         case .rtpDone(let name): rtpCard(name)
                         case .failed(let msg): failure(msg)
                         case .skinFailed(let msg): failure(msg, skin: true)
@@ -91,6 +94,11 @@ struct DeliveryView: View {
         // 게임칩 "업데이트"로 고른 zip 이 그 게임의 패치였다: 묻지 않고 패치 화면(미리 보기)으로 넘긴다
         .onChange(of: delivery.stage, initial: true) { _, stage in
             if case .patchReady(let o) = stage, let dish = o.candidates.first, let offer = delivery.takePatch() { onPatch(dish, offer) }
+            if stage.isBusy { bowlFinished = false }
+            // 그림이 끝났다는 알림이 안 와도(웹 뷰가 안 떴을 때 등) 잠시 뒤에는 결과를 보여 준다
+            if case .done = stage, !bowlFinished {
+                Task { try? await Task.sleep(for: .seconds(4)); finishBowl() }
+            }
         }
         .background(GamePicker(isPresented: $picking, types: [.zip, .bingsuSkin]) { url in
             let target = repickTarget; repickTarget = nil
@@ -105,9 +113,15 @@ struct DeliveryView: View {
         }
     }
 
+    private func finishBowl() {
+        guard case .done = delivery.stage, !bowlFinished else { return }
+        withAnimation(.easeInOut(duration: 0.35)) { bowlFinished = true }
+    }
+
     private var progress: some View {
         VStack(spacing: 16) {
-            IceBowl(fraction: delivery.stage.fraction ?? 0, indeterminate: delivery.stage.fraction == nil)
+            IceBowl(fraction: delivery.stage.fraction ?? 0, indeterminate: delivery.stage.fraction == nil,
+                    onFinished: { finishBowl() })
                 .frame(width: 200, height: 200)
             Text(delivery.stage.title).font(.headline)
             if let f = delivery.stage.fraction {
@@ -346,12 +360,15 @@ struct DeliveryView: View {
 struct IceBowl: UIViewRepresentable {
     let fraction: Double
     var indeterminate = false
+    /// 100% 에서 딸기까지 다 올라갔다 (결과 화면을 이때 넘기면 그림이 끊기지 않는다)
+    var onFinished: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> Stage {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
-        // 장면이 첫 화면을 그렸다는 알림만 받는다 (내용은 보지 않음)
+        // 장면이 첫 화면을 그렸다·다 채웠다는 알림만 받는다 (내용은 보지 않음)
         config.userContentController.add(context.coordinator, name: "bowlReady")
+        config.userContentController.add(context.coordinator, name: "bowlDone")
         let web = WKWebView(frame: .zero, configuration: config)
         web.isOpaque = false
         web.backgroundColor = .clear
@@ -370,12 +387,14 @@ struct IceBowl: UIViewRepresentable {
 
     func updateUIView(_ stage: Stage, context: Context) {
         context.coordinator.latest = (fraction, indeterminate)
+        context.coordinator.onFinished = onFinished
         context.coordinator.push(to: stage.web)
         stage.accessibilityLabel = indeterminate ? "가져오는 중" : "\(Int(fraction * 100))퍼센트"
     }
 
     static func dismantleUIView(_ stage: Stage, coordinator: Coordinator) {
         stage.web.configuration.userContentController.removeScriptMessageHandler(forName: "bowlReady")
+        stage.web.configuration.userContentController.removeScriptMessageHandler(forName: "bowlDone")
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -408,6 +427,7 @@ struct IceBowl: UIViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var latest: (Double, Bool) = (0, true)
+        var onFinished: (() -> Void)?
         weak var stage: Stage?
         private var loaded = false
 
@@ -424,6 +444,7 @@ struct IceBowl: UIViewRepresentable {
 
         func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "bowlReady" { stage?.sceneReady() }
+            if message.name == "bowlDone" { onFinished?() }
         }
 
         /// 번들 안 파일 말고는 열지 않는다

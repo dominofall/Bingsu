@@ -86,6 +86,8 @@ final class BrassBowlEngine: ObservableObject {
     private typealias SetMsgCbFn = @convention(c) (MsgCb?, UnsafeMutableRawPointer?) -> Void
     private typealias SetModeCbFn = @convention(c) (ModeCb?, UnsafeMutableRawPointer?) -> Void
     private typealias SetRectCbFn = @convention(c) (RectCb?, UnsafeMutableRawPointer?) -> Void
+    typealias SfxCb = @convention(c) (UnsafePointer<CChar>?) -> Void
+    private typealias SfxHandlerSetFn = @convention(c) (SfxCb?) -> Void
 
     private var handle: UnsafeMutableRawPointer?
     /// 이번 프로세스에서 켠 게임 (끝나면 저장 파일을 묶어 올린다)
@@ -179,6 +181,11 @@ final class BrassBowlEngine: ObservableObject {
         gameRect = nil
         game.withUnsafeFileSystemRepresentation { sym("mkxp_setGamePath", StrFn.self)?($0) }
         guard let run = sym("mkxp_run_app", RunFn.self) else { phase = .idle; return "게임 실행기가 맞지 않아요" }
+        guard raiseFence(game: game, saves: launch.savesDir,
+                         online: DishPrefsStore.shared.prefs(for: launch.dish.id).allowOnline != false) else {
+            phase = .idle
+            return "게임 실행기가 맞지 않아요"
+        }
         // 메인 큐 블록이 아니라 런루프 콜아웃에서 (app_bridge.h mkxp_run_app 주석)
         RunLoop.main.perform {
             let code = run(CommandLine.argc, CommandLine.unsafeArgv)
@@ -187,6 +194,121 @@ final class BrassBowlEngine: ObservableObject {
         }
         return nil
     }
+
+    // MARK: 울타리 (빌드 46, docs/security/rgss-files.md)
+
+    private typealias FenceAddFn = @convention(c) (UnsafePointer<CChar>?, Int32) -> Void
+
+    /// 게임 스크립트가 닿을 수 있는 곳을 엔진 안 울타리(BrassBowl/fence.c)에 알려 주고 켠다.
+    /// 쓰기: 그 게임 폴더, 저장 폴더, 임시 폴더(빙수 preload 스크립트·소리 크기 파일), 진단 기록 파일.
+    /// 읽기만: 앱 번들(엔진 Ruby·글꼴), 사운드폰트, RTP. 그 밖의 앱 데이터(다른 게임·설정·웹 로그인)는 막는다.
+    /// 울타리가 없는 옛 프레임워크면 게임을 켜지 않는다 (막지 못한 채로 돌리지 않음)
+    private func raiseFence(game: URL, saves: URL, online: Bool) -> Bool {
+        guard let add = sym("mkxp_fenceAdd", FenceAddFn.self), let enable = sym("mkxp_fenceEnable", IntSetFn.self),
+              let net = sym("mkxp_fenceSetNetwork", IntSetFn.self) else {
+            NSLog("[BrassBowl] 울타리 없는 엔진 — 실행 안 함")
+            return false
+        }
+        call("mkxp_fenceReset")
+        func put(_ url: URL?, _ kind: Int32) { url?.withUnsafeFileSystemRepresentation { add($0, kind) } }
+        put(game, 1)
+        put(saves, 1)
+        // 엔진이 저장 폴더 이름 바로 뒤에 붙여 쓰는 키 설정 파일 (keybindings.cpp 가 '/' 없이 이어 붙임)
+        for v in 1...3 { put(URL(fileURLWithPath: saves.path + "keybindings.mkxp\(v)"), 1) }
+        put(FileManager.default.temporaryDirectory, 1)
+        put(Self.receiptTraceFile, 1)
+        put(SoundFontShelf.current?.url, 0)
+        put(RTPShelf.dir, 0)
+        put(Bundle.main.bundleURL, 2)
+        // 보호 구역: 이 앱의 데이터 컨테이너와, 같은 사용자의 다른 컨테이너(앱 그룹 등)를 품은 위 폴더
+        let home = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+        put(home, 3)
+        if home.path.contains("/Containers/Data/Application/") {
+            put(home.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent(), 3)
+        }
+        // BINGSU_FENCE_NET_OFF=1(개발용): 엔진 설정은 온라인 그대로 두고 울타리만 막아, 엔진을 지나친 호출을 울타리가 잡는지 본다
+        net(online && DevEnv["BINGSU_FENCE_NET_OFF"] != "1" ? 1 : 0)
+        enable(DevEnv["BINGSU_NO_FENCE"] == "1" ? 0 : 1)
+        return true
+    }
+
+    static let fenceProbeScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-fence-probe.rb")
+    static let fenceProbeResultFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-fence-probe.txt")
+    /// 울타리 시험 스크립트 (Ruby 1.8·1.9·3.1 공통 문법). 막혀야 할 것과 되어야 할 것을 한 줄씩 적는다
+    private static let fenceProbeScript = #"""
+    module BingsuFenceProbe
+      def self.try(name)
+        r = yield
+        @out << "#{name}=OK #{r.inspect[0, 60]}"
+      rescue Exception => e
+        @out << "#{name}=BLOCKED #{e.class}"
+      end
+      def self.run
+        @out = []
+        home = ENV['HOME'].to_s
+        saves = ENV['BINGSU_SAVE_DIR'].to_s
+        try('own.game.list') { Dir.entries('.').length }
+        try('own.saves.write') { File.open(File.join(saves, 'fence-ok.txt'), 'w') { |f| f.write('ok') }; true }
+        try('own.saves.delete') { File.delete(File.join(saves, 'fence-ok.txt')) }
+        try('other.prefs.list') { Dir.entries(File.join(home, 'Documents', 'Prefs')) }
+        try('other.prefs.read') { File.read(File.join(home, 'Library', 'Preferences', 'com.minwoo.bingsu.plist')).length }
+        try('other.saves.list') { Dir.entries(File.join(saves, '..')) }
+        try('other.relative') { Dir.entries('../..') }
+        try('other.webkit') { Dir.entries(File.join(home, 'Library', 'WebKit')) }
+        try('other.write') { File.open(File.join(home, 'Documents', 'fence-probe.txt'), 'w') { |f| f.write('x') }; true }
+        try('other.stat') { File.exist?(File.join(home, 'Documents', 'Prefs')) ? 'exists' : raise('hidden') }
+        try('symlink') { File.symlink(home, File.join(saves, 'lnk')) }
+        try('syscall') { syscall(20) }
+        try('spawn') { `echo hi` }
+        try('system.read') { File.exist?('/System/Library/CoreServices/SystemVersion.plist') ? 'exists' : raise('missing') }
+        try('socket') { require 'socket'; s = TCPSocket.new('example.com', 80); s.close; true }
+        try('socket.raw') { require 'socket'; s = Socket.new(2, 1, 0); s.close; true }
+        try('socket.resolve') { require 'socket'; Socket.getaddrinfo('example.com', 80).length }
+        try('socket.class') { TCPSocket.instance_method(:initialize).owner.to_s + ' ' + $LOADED_FEATURES.grep(/socket/).join(',') }
+        File.open(ENV['TMPDIR'].to_s + '/bingsu-fence-probe.txt', 'w') { |f| f.write(@out.join("\n")) }
+      rescue Exception => e
+        File.open(ENV['TMPDIR'].to_s + '/bingsu-fence-probe.txt', 'w') { |f| f.write("probe failed #{e.class} #{e.message}") } rescue nil
+      end
+    end
+    BingsuFenceProbe.run
+    # VX Ace: 타이틀이 뜨면 게임 자신의 저장·불러오기를 한 번 불러 본다 (울타리 아래 실제 저장 길)
+    module BingsuFenceSave
+      @done = false
+      def self.tick
+        return if @done
+        @ticks = (@ticks || 0) + 1
+        return unless @ticks > 120
+        @done = true
+        r = []
+        begin
+          if defined?(SaveFile) && SaveFile.respond_to?(:write)
+            # 빙수 시험 게임(미노): 자체 SaveFile 이 게임 폴더에 Save01.rvdata2 → 빙수가 저장 폴더로 돌림
+            SaveFile.write({ 'fence' => 1 })
+            r << "save.write=OK"
+            r << "save.exists=#{SaveFile.exist? ? 'OK' : 'FAILED'}"
+            r << "save.load=#{SaveFile.read['fence'] == 1 ? 'OK' : 'FAILED'}"
+          elsif defined?(DataManager) && $data_system
+            DataManager.setup_new_game
+            r << "save.write=#{DataManager.save_game(0) ? 'OK' : 'FAILED'}"
+            r << "save.exists=#{DataManager.save_file_exists? ? 'OK' : 'FAILED'}"
+            r << "save.load=#{DataManager.load_game(0) ? 'OK' : 'FAILED'}"
+          else
+            r << "save=SKIPPED (no save module)"
+          end
+        rescue Exception => e
+          r << "save=ERROR #{e.class} #{e.message[0, 80]}"
+        end
+        File.open(ENV['TMPDIR'].to_s + '/bingsu-fence-probe.txt', 'a') { |f| f.write("\n" + r.join("\n")) }
+      end
+    end
+    class << Graphics
+      alias_method :bingsu_fence_save_update, :update
+      def update(*a)
+        BingsuFenceSave.tick
+        bingsu_fence_save_update(*a)
+      end
+    end
+    """#
 
     // MARK: 게임 소리 크기 (모든 게임 공통)
 
@@ -428,6 +550,745 @@ final class BrassBowlEngine: ObservableObject {
       end
     end
     """
+    // MARK: 빠른 저장/불러오기 (빌드 49, Freezer/Scoop.swift)
+
+    static let scoopScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-scoop.rb")
+    static let scoopRequestFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-quick-req")
+    static let scoopResultFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-quick-res")
+
+    /// 빙수가 요청 파일에 "save <번호> [칸 파일 이름]"·"load <번호> [칸 파일 이름]" 을 쓰면, 맵 장면이 한 프레임을 시작할 때(Scene_Map#update 맨 앞,
+    /// 장면의 맨 위 루프에서만 불린다) 게임 자신의 저장 코드로 빙수 전용 파일에 저장하거나 그 파일에서 불러온다.
+    /// 파일은 빠른 저장 파일(BINGSU_QUICK_FILE)과 같은 폴더의 `Bingsu-quick.*`·`Bingsu-state-NN.*` 만 (다른 이름이면 빠른 저장 파일).
+    /// 답은 답 파일에 "<번호> <결과>". 이벤트·메시지·이동 중이면 45프레임까지 기다렸다가 "busy …".
+    /// 게임별 저장 코드:
+    /// - Essentials v19~21: `Game.save(경로)` / `Game.load(SaveData.read_from_file(경로))`
+    /// - Essentials v16~18: `pbSave`(저장 파일 이름 함수 `RTP.getSaveFileName` 을 잠깐 빙수 파일로 돌림) / 불러오기 화면의 이어하기와 같은 순서
+    /// - VX Ace: `DataManager.make_save_header`·`make_save_contents` / `extract_save_contents`·`reload_map_if_updated`·`on_after_load`
+    /// - VX: `Scene_File#write_save_data`·`read_save_data`, XP: `Scene_Save#write_save_data`·`Scene_Load#read_save_data`
+    /// 맵 장면 감싸기는 첫 요청 때 건다(게임 스크립트가 다 읽힌 뒤). Ruby 1.8 문법 안에서만 쓴다
+    private static let scoopScript = #"""
+    # 빙수: 빠른 저장/불러오기 (BrassBowlEngine.scoopScript)
+    module BingsuScoop
+      REQ = ENV["BINGSU_QUICK_REQ"].to_s
+      RES = ENV["BINGSU_QUICK_RES"].to_s
+      FILE = ENV["BINGSU_QUICK_FILE"].to_s
+      LIMIT = 45
+      @pending = nil
+      @why = nil
+      @wait = 0
+      @n = 0
+      @busy = false
+      @hooked = false
+      @rtp_hooked = false
+      @redirect = false
+      @file = FILE
+
+      def self.file
+        @file
+      end
+
+      # 요청의 칸 파일 이름 → 빠른 저장 파일과 같은 폴더의 경로. 빙수 칸 이름이 아니면 빠른 저장 파일
+      def self.slot_file(name)
+        n = name.to_s.strip
+        ext = File.extname(FILE)
+        return FILE unless n =~ /\ABingsu-(quick|auto|state-\d\d)(\.[a-z0-9]+)\z/ && $2 == ext
+        File.join(File.dirname(FILE), n)
+      end
+
+      def self.redirect
+        @redirect
+      end
+
+      def self.tmp
+        @file + ".tmp"
+      end
+
+      def self.log(s)
+        System.puts("[bingsu] quick #{s}") if defined?(System) && System.respond_to?(:puts)
+      rescue Exception
+      end
+
+      def self.answer(text)
+        p = @pending
+        @pending = nil
+        @why = nil
+        return unless p
+        File.open(RES + ".tmp", "w") { |f| f.write("#{p[1]} #{text}") }
+        File.rename(RES + ".tmp", RES)
+        log("#{p[0]} #{text}")
+      rescue Exception
+      end
+
+      # Graphics.update 마다: 요청을 받아 두고, 맵 장면이 받아 가지 않으면(메뉴·전투·메시지 중) 거절한다
+      def self.tick
+        return if @busy || REQ.empty?
+        @n += 1
+        if @pending
+          @wait += 1
+          answer("busy #{@why || 'scene'}") if @wait > LIMIT
+          return
+        end
+        return unless @n % 6 == 0
+        return unless File.exist?(REQ)
+        s = File.read(REQ).to_s.strip
+        File.delete(REQ) rescue nil
+        op, id, name = s.split(" ", 3)
+        return unless op == "save" || op == "load"
+        @pending = [op, id.to_s]
+        @file = slot_file(name)
+        @wait = 0
+        @why = nil
+        hook_map
+      rescue Exception
+        @pending = nil
+      end
+
+      def self.hook_map
+        return if @hooked || !defined?(Scene_Map)
+        @hooked = true
+        Scene_Map.class_eval do
+          alias_method :bingsu_scoop_update, :update
+          def update(*a)
+            return if BingsuScoop.on_map(self)
+            bingsu_scoop_update(*a)
+          end
+        end
+      end
+
+      def self.has(c, m)
+        c.method_defined?(m) || c.private_method_defined?(m)
+      end
+
+      def self.on?(o, m)
+        return false if o.nil? || !o.respond_to?(m)
+        o.send(m) ? true : false
+      rescue Exception
+        false
+      end
+
+      # 게임의 저장 코드 종류
+      def self.kind
+        if defined?(SaveData) && defined?(Game) && Game.respond_to?(:save) && Game.respond_to?(:load) &&
+           SaveData.respond_to?(:read_from_file)
+          "ess_new"
+        elsif defined?(PokemonGlobalMetadata) && has(Object, :pbSave) && defined?(RTP) && RTP.respond_to?(:getSaveFileName)
+          "ess_old"
+        elsif defined?(DataManager) && DataManager.respond_to?(:make_save_contents) && DataManager.respond_to?(:extract_save_contents)
+          "ace"
+        elsif defined?(Scene_File) && has(Scene_File, :write_save_data) && has(Scene_File, :read_save_data)
+          "vx"
+        elsif defined?(Scene_Save) && defined?(Scene_Load) && has(Scene_Save, :write_save_data) && has(Scene_Load, :read_save_data)
+          "xp"
+        end
+      end
+
+      # 저장해도 되는가: 맵 장면이 지금 장면이고, 이벤트·메시지·장소 이동·메뉴 호출·이동 중이 아니고, 저장 금지가 아님
+      def self.blocked(op, scene)
+        if defined?(SceneManager) && SceneManager.respond_to?(:scene)
+          return "scene" unless SceneManager.scene.equal?(scene)
+          return "scene" if on?(SceneManager, :scene_changing?)
+        else
+          return "scene" unless $scene.equal?(scene)
+        end
+        return "event" if $game_map.respond_to?(:interpreter) && on?($game_map.interpreter, :running?)
+        return "event" if $game_system.respond_to?(:map_interpreter) && on?($game_system.map_interpreter, :running?)
+        return "event" if on?($game_message, :busy?) || on?($game_message, :visible)
+        return "event" if starting
+        # Essentials: 주인공(트레이너)이 아직 없으면 시작 연출 중이다 (안내문·이름 정하기 등은 병렬 이벤트로 돌기도 한다)
+        if defined?(PokemonGlobalMetadata)
+          return "event" if $PokemonGlobal.nil? || ($Trainer.nil? && (!defined?($player) || $player.nil?))
+          # 저장은 게임 메뉴 안에 있다. 게임이 메뉴를 막아 둔 동안(시작 연출 등)은 저장하지 않는다
+          return "disabled" if op == "save" && on?($game_system, :menu_disabled)
+        end
+
+        %w(message_window_showing player_transferring transition_processing battle_calling shop_calling name_calling
+           menu_calling save_calling debug_calling in_menu in_battle next_scene to_title).each do |m|
+          return "event" if on?($game_temp, m)
+        end
+        return "event" if on?($game_player, :transfer?) || on?($game_player, :move_route_forcing)
+        return "event" if on?($game_party, :in_battle)
+        return "move" if on?($game_player, :moving?)
+        return "disabled" if op == "save" && on?($game_system, :save_disabled)
+        nil
+      end
+
+      # 자동 실행 이벤트 사이의 빈 프레임: 해석기는 쉬지만 다음 이벤트가 곧 시작한다
+      # (맵 이벤트가 시작 대기 중이거나 자동 실행, 또는 스위치가 켜진 자동 실행 공통 이벤트)
+      def self.starting
+        if $game_map.respond_to?(:events) && $game_map.events.is_a?(Hash)
+          $game_map.events.each_value do |e|
+            return true if on?(e, :starting)
+            return true if e.respond_to?(:trigger) && e.trigger == 3 && !on?(e, :erased)
+          end
+        end
+        if defined?($data_common_events) && $data_common_events.is_a?(Array) && $game_switches
+          $data_common_events.each do |c|
+            next if c.nil? || !c.respond_to?(:trigger) || !c.respond_to?(:switch_id)
+            return true if c.trigger == 1 && $game_switches[c.switch_id]
+          end
+        end
+        false
+      rescue Exception
+        false
+      end
+
+      # 맵 장면 update 맨 앞. 불러왔으면 true (그 프레임의 원래 update 는 건너뛴다)
+      def self.on_map(scene)
+        return false if @pending.nil? || @busy
+        op = @pending[0]
+        why = blocked(op, scene)
+        if why
+          @why = why
+          answer("busy disabled") if why == "disabled"
+          return false
+        end
+        k = kind
+        unless k
+          answer("unsupported")
+          return false
+        end
+        @busy = true
+        if op == "save"
+          answer(save(k) ? "ok #{k}" : "error save #{k}")
+          return false
+        end
+        unless File.exist?(@file)
+          answer("none")
+          return false
+        end
+        load(k)
+        answer("ok #{k}")
+        true
+      rescue Exception => e
+        File.delete(tmp) rescue nil
+        answer("error #{e.class}: #{e.message}".gsub(/\s+/, " ")[0, 160])
+        false
+      ensure
+        @busy = false
+      end
+
+      # Essentials v16~18 의 pbSave 는 저장 파일 이름을 RTP.getSaveFileName("Game….rxdata") 로 정한다. 저장하는 동안만 빙수 파일로
+      def self.hook_rtp
+        return if @rtp_hooked
+        @rtp_hooked = true
+        class << RTP
+          alias_method :bingsu_scoop_save_name, :getSaveFileName
+          def getSaveFileName(name)
+            return BingsuScoop.tmp if BingsuScoop.redirect && name.to_s =~ /\AGame(_\d+)?\.rxdata\z/i
+            bingsu_scoop_save_name(name)
+          end
+        end
+      end
+
+      # 옛 Essentials 의 pbSave 는 저장 칸 말고도 작은 파일을 건드린다 (Pokemon Z: 게임 폴더의 LastSave.dat = "이어하기"가 고를 칸).
+      # 빠른 저장이 게임 쪽 기록을 바꾸지 않게, 게임 폴더·저장 폴더 맨 위의 작은 파일을 저장 전 그대로 되돌린다
+      def self.snapshot_dirs
+        d = [Dir.pwd]
+        d << File.dirname(RTP.bingsu_scoop_save_name("Game.rxdata")) rescue nil
+        d.compact.uniq.select { |x| File.directory?(x) }
+      end
+
+      def self.snapshot
+        files = {}
+        snapshot_dirs.each do |dir|
+          Dir.glob(File.join(dir, "*")).each do |f|
+            next unless File.file?(f) && File.size(f) <= 65536
+            files[f] = (File.open(f, "rb") { |x| x.read } rescue nil)
+          end
+        end
+        files
+      rescue Exception
+        nil
+      end
+
+      def self.restore(files)
+        return unless files
+        snapshot_dirs.each do |dir|
+          Dir.glob(File.join(dir, "*")).each do |f|
+            next if f == tmp || f == @file || !File.file?(f)
+            if files.key?(f)
+              old = files[f]
+              File.open(f, "wb") { |x| x.write(old) } if old && (File.size(f) != old.size || File.open(f, "rb") { |x| x.read } != old)
+            elsif File.size(f) <= 65536
+              File.delete(f) # 빠른 저장이 새로 만든 작은 파일
+            end
+          end
+        end
+      rescue Exception
+      end
+
+      def self.save(k)
+        File.delete(tmp) if File.exist?(tmp)
+        ok = true
+        case k
+        when "ess_new"
+          if SaveData.respond_to?(:get_full_path) && multi_save?
+            # 여러 칸 저장 플러그인(Auto Multi Save 등): Game.save(칸 이름, 자동) 이 칸 이름으로 경로를 만든다.
+            # 그 경로 함수를 잠깐 빙수 임시 파일로 돌리고, 자동 저장으로 불러 게임의 "지금 칸"은 그대로 둔다
+            ok = multi_save
+          else
+            ok = Game.save(tmp)
+          end
+        when "ess_old"
+          hook_rtp
+          keep = snapshot
+          @redirect = true
+          begin
+            ok = send(:pbSave)
+          ensure
+            @redirect = false
+            restore(keep)
+          end
+        when "ace"
+          File.open(tmp, "wb") do |f|
+            $game_system.on_before_save
+            Marshal.dump(DataManager.make_save_header, f)
+            Marshal.dump(DataManager.make_save_contents, f)
+          end
+        when "vx"
+          File.open(tmp, "wb") { |f| Scene_File.allocate.send(:write_save_data, f) }
+        when "xp"
+          File.open(tmp, "wb") { |f| Scene_Save.allocate.send(:write_save_data, f) }
+        end
+        return false unless ok && File.exist?(tmp) && File.size(tmp) > 0
+        File.rename(tmp, @file)
+        BingsuCard.later(@file) if defined?(BingsuCard)
+        true
+      end
+
+      # Game.save 첫 인자가 경로가 아니라 칸 이름인 게임 (Essentials 여러 칸 저장 플러그인)
+      def self.multi_save?
+        defined?(SaveData::MANUAL_SLOTS) || defined?(SaveData::AUTO_SLOTS) ? true : false
+      end
+
+      def self.multi_save
+        t = tmp
+        sd = class << SaveData; self; end
+        sd.send(:alias_method, :bingsu_scoop_full_path, :get_full_path)
+        sd.send(:define_method, :get_full_path) { |f| f == :bingsu_scoop ? t : bingsu_scoop_full_path(f) }
+        begin
+          Game.save(:bingsu_scoop, true)
+        ensure
+          sd.send(:alias_method, :get_full_path, :bingsu_scoop_full_path)
+          sd.send(:remove_method, :bingsu_scoop_full_path)
+        end
+      end
+
+      def self.load(k)
+        case k
+        when "ess_new"
+          data = SaveData.read_from_file(@file)
+          $game_temp = Game_Temp.new
+          Game.load(data)
+        when "ess_old"
+          load_old
+        when "ace"
+          contents = nil
+          File.open(@file, "rb") { |f| Marshal.load(f); contents = Marshal.load(f) }
+          $game_temp = Game_Temp.new
+          DataManager.extract_save_contents(contents)
+          DataManager.reload_map_if_updated if DataManager.respond_to?(:reload_map_if_updated)
+          Sound.play_load if defined?(Sound) && Sound.respond_to?(:play_load)
+          $game_system.on_after_load if $game_system.respond_to?(:on_after_load)
+          SceneManager.goto(Scene_Map)
+        when "vx"
+          sf = Scene_File.allocate
+          $game_temp = Game_Temp.new
+          File.open(@file, "rb") { |f| sf.send(:read_save_data, f) }
+          Sound.play_load if defined?(Sound) && Sound.respond_to?(:play_load)
+          bgm = sf.instance_variable_get(:@last_bgm)
+          bgs = sf.instance_variable_get(:@last_bgs)
+          bgm.play if bgm.respond_to?(:play)
+          bgs.play if bgs.respond_to?(:play)
+          $scene = Scene_Map.new
+        when "xp"
+          $game_temp = Game_Temp.new
+          File.open(@file, "rb") { |f| Scene_Load.allocate.send(:read_save_data, f) }
+          $game_system.se_play($data_system.load_se) if $data_system.respond_to?(:load_se)
+          $game_system.bgm_play($game_system.playing_bgm)
+          $game_system.bgs_play($game_system.playing_bgs)
+          $game_map.update
+          $scene = Scene_Map.new
+        end
+      end
+
+      # Essentials v16~18: pbSave 가 쓴 순서 그대로 읽고, 불러오기 화면의 "이어하기" 와 같은 순서로 맞춘다.
+      # 다 읽고 모양을 확인한 뒤에만 지금 게임 객체를 바꾼다
+      def self.load_old
+        objs = []
+        File.open(@file, "rb") { |f| objs << Marshal.load(f) until f.eof? }
+        trainer, frames, sys, psys, mapid, sw, var, ssw, screen, factory, player, global, pmap, bag, storage = objs
+        unless objs.length >= 15 && frames.is_a?(Integer) && sys.is_a?(Game_System) && mapid.is_a?(Integer) &&
+               sw.is_a?(Game_Switches) && var.is_a?(Game_Variables) && player.is_a?(Game_Player) && factory.respond_to?(:map)
+          raise "unknown save layout #{objs.length}"
+        end
+        $PokemonTemp = PokemonTemp.new if defined?(PokemonTemp)
+        $game_temp = Game_Temp.new
+        $Trainer = trainer
+        Graphics.frame_count = frames
+        $game_system = sys
+        $PokemonSystem = psys
+        $game_switches = sw
+        $game_variables = var
+        $game_self_switches = ssw
+        $game_screen = screen
+        $MapFactory = factory
+        $game_map = factory.map
+        $game_player = player
+        $PokemonGlobal = global
+        $PokemonBag = bag
+        $PokemonStorage = storage
+        magic = $data_system.respond_to?(:magic_number) ? $data_system.magic_number : $data_system.version_id
+        if $game_system.magic_number != magic || (global.respond_to?(:safesave) && global.safesave)
+          send(:pbMapInterpreter).setup(nil, 0) if has(Object, :pbMapInterpreterRunning?) && send(:pbMapInterpreterRunning?)
+          $MapFactory.setup($game_map.map_id)
+          $game_player.center($game_player.x, $game_player.y)
+        else
+          $MapFactory.setMapChanged($game_map.map_id)
+        end
+        $PokemonMap = pmap
+        if defined?(PokemonEncounters)
+          $PokemonEncounters = PokemonEncounters.new
+          $PokemonEncounters.setup($game_map.map_id)
+        end
+        send(:pbAutoplayOnSave) if has(Object, :pbAutoplayOnSave)
+        $game_map.update
+        $PokemonMap.updateMap if $PokemonMap.respond_to?(:updateMap)
+        $scene = Scene_Map.new
+      end
+    end
+
+    class << Graphics
+      alias_method :bingsu_scoop_gupdate, :update
+      def update(*a)
+        BingsuScoop.tick
+        bingsu_scoop_gupdate(*a)
+      end
+    end
+    """#
+
+    // MARK: 세이브 카드 (빌드 49, Freezer/SaveCard.swift)
+
+    static let cardScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-card.rb")
+
+    /// 게임이 세이브 파일을 쓸 때(게임 자신의 저장, 빙수 상태 저장 모두) 옆 정보를 남긴다: 맵 이름·플레이 시간·파티 캐릭터
+    /// (Essentials 는 트레이너·배지·포켓몬), 캐릭터 그림·포켓몬 아이콘 한 칸씩, 메뉴가 덮기 전 마지막 맵 화면.
+    /// 그림은 게임 안에서 잘라 쓰므로 암호화 묶음(Game.rgss2a 등) 게임도 된다. 쓰는 자리는 임시 폴더 `bingsu-cards/`(BINGSU_CARD_DIR,
+    /// 울타리 쓰기 허용) 이고, 빙수가 `SaveCard.ingest` 로 이 게임 자리로 옮긴다. 파일이 닫힌 뒤 쓰도록 다음 프레임에 처리한다.
+    /// 맵 화면은 맵 장면 update 맨 앞에서 1초마다 떠 둔다 (Essentials 메뉴는 맵 장면 안에서 돌지만 그동안 update 는 불리지 않는다).
+    /// 실패해도 게임에는 영향이 없게 모두 rescue. Ruby 1.8 문법 안에서만 쓴다
+    private static let cardScript = #"""
+    # 빙수: 세이브 카드 (BrassBowlEngine.cardScript)
+    module BingsuCard
+      DIR = ENV["BINGSU_CARD_DIR"].to_s
+      @snap = nil
+      @n = 0
+      @frames = 0
+      @queue = []
+      @done = {}
+      @maps = nil
+
+      def self.log(s)
+        System.puts("[bingsu] card #{s}") if defined?(System) && System.respond_to?(:puts)
+      rescue Exception
+      end
+
+      def self.later(path)
+        @queue << path.to_s if path
+      rescue Exception
+      end
+
+      # Graphics.update 마다: 훅 걸기(스크립트가 다 읽힌 뒤 몇 번 다시 시도), 쌓인 세이브 처리
+      def self.tick
+        return if DIR.empty?
+        @frames += 1
+        install if @frames % 60 == 1 && @frames < 6000
+        unless @queue.empty?
+          q = @queue.uniq
+          @queue = []
+          q.each { |p| note(p) }
+        end
+      rescue Exception => e
+        log("tick #{e.class}")
+      end
+
+      def self.map_frame
+        @n += 1
+        return unless @n % 60 == 1 && Graphics.respond_to?(:snap_to_bitmap)
+        old = @snap
+        @snap = Graphics.snap_to_bitmap
+        old.dispose if old && !old.disposed?
+      rescue Exception
+      end
+
+      def self.has(c, m)
+        c.method_defined?(m) || c.private_method_defined?(m)
+      end
+
+      def self.install
+        if !@done[:map] && defined?(Scene_Map) && has(Scene_Map, :update)
+          @done[:map] = true
+          Scene_Map.class_eval do
+            alias_method :bingsu_card_update, :update
+            def update(*a)
+              BingsuCard.map_frame
+              bingsu_card_update(*a)
+            end
+          end
+        end
+        # XP·VX: Scene_Save#write_save_data(file) / Scene_File#write_save_data(file)
+        [:Scene_Save, :Scene_File].each do |cn|
+          next if @done[cn] || !Object.const_defined?(cn)
+          c = Object.const_get(cn)
+          next unless c.instance_methods(false).map { |m| m.to_s }.include?("write_save_data") ||
+                      c.private_instance_methods(false).map { |m| m.to_s }.include?("write_save_data")
+          @done[cn] = true
+          c.class_eval do
+            alias_method :bingsu_card_write, :write_save_data
+            def write_save_data(file, *a)
+              r = bingsu_card_write(file, *a)
+              BingsuCard.later(file.path) if file.respond_to?(:path)
+              r
+            end
+          end
+        end
+        # VX Ace: DataManager.save_game_without_rescue(index)
+        if !@done[:ace] && defined?(DataManager) && DataManager.respond_to?(:save_game_without_rescue) && DataManager.respond_to?(:make_filename)
+          @done[:ace] = true
+          class << DataManager
+            alias_method :bingsu_card_save, :save_game_without_rescue
+            def save_game_without_rescue(index)
+              r = bingsu_card_save(index)
+              BingsuCard.later(make_filename(index)) if r
+              r
+            end
+          end
+        end
+        # Essentials v19~21: Game.save(경로 = SaveData::FILE_PATH, safe: …)
+        if !@done[:ess_new] && defined?(Game) && Game.respond_to?(:save) && defined?(SaveData)
+          @done[:ess_new] = true
+          class << Game
+            alias_method :bingsu_card_gsave, :save
+            def save(*a, &b)
+              r = bingsu_card_gsave(*a, &b)
+              f = BingsuCard.ess_path(a.first)
+              BingsuCard.later(f) if r && f
+              r
+            end
+            send(:ruby2_keywords, :save) if respond_to?(:ruby2_keywords, true)
+          end
+        end
+        # Essentials v16~18: pbSave → RTP.getSaveFileName("Game.rxdata")
+        if !@done[:ess_old] && !@done[:ess_new] && defined?(PokemonGlobalMetadata) && has(Object, :pbSave) && defined?(RTP) &&
+           RTP.respond_to?(:getSaveFileName)
+          @done[:ess_old] = true
+          Object.class_eval do
+            alias_method :bingsu_card_pbsave, :pbSave
+            def pbSave(*a)
+              r = bingsu_card_pbsave(*a)
+              redirect = defined?(BingsuScoop) && BingsuScoop.respond_to?(:redirect) && BingsuScoop.redirect
+              BingsuCard.later(RTP.getSaveFileName("Game.rxdata")) if r && !redirect
+              r
+            end
+          end
+        end
+      rescue Exception => e
+        log("install #{e.class}: #{e.message}")
+      end
+
+      # Essentials Game.save 인자 → 세이브 파일 경로. 여러 칸 저장 플러그인은 칸 이름(없으면 지금 칸)을 받는다
+      def self.ess_path(arg)
+        if SaveData.respond_to?(:get_full_path) && (defined?(SaveData::MANUAL_SLOTS) || defined?(SaveData::AUTO_SLOTS))
+          slot = arg.nil? ? on(trainer, :save_slot) : arg
+          return slot ? SaveData.get_full_path(slot) : nil
+        end
+        arg.is_a?(String) ? arg : (SaveData::FILE_PATH rescue nil)
+      rescue Exception
+        nil
+      end
+
+      def self.on(o, m)
+        o && o.respond_to?(m) ? o.send(m) : nil
+      rescue Exception
+        nil
+      end
+
+      def self.clean(v)
+        v.to_s.gsub(/[\t\r\n]/, " ")[0, 200]
+      end
+
+      def self.essentials?
+        defined?(PokemonGlobalMetadata) ? true : false
+      end
+
+      def self.trainer
+        t = nil
+        t = $player if defined?($player) && $player
+        t = $Trainer if t.nil? && defined?($Trainer)
+        t
+      end
+
+      def self.map_name(id)
+        n = nil
+        if has(Object, :pbGetMapNameFromId)
+          n = (send(:pbGetMapNameFromId, id) rescue nil)
+        end
+        if (n.nil? || n.to_s.empty?) && $game_map.respond_to?(:display_name)
+          n = ($game_map.display_name rescue nil)
+        end
+        if n.nil? || n.to_s.empty?
+          if @maps.nil?
+            @maps = {}
+            ["Data/MapInfos.rvdata2", "Data/MapInfos.rvdata", "Data/MapInfos.rxdata"].each do |f|
+              begin
+                @maps = load_data(f)
+                break
+              rescue Exception
+              end
+            end
+          end
+          mi = @maps[id] rescue nil
+          n = mi.name if mi && mi.respond_to?(:name)
+        end
+        n
+      end
+
+      def self.info
+        kv = {}
+        id = on($game_map, :map_id)
+        kv["map"] = clean(map_name(id)) if id
+        play = nil
+        play = $stats.play_time.to_i if defined?($stats) && $stats && $stats.respond_to?(:play_time)
+        play = $game_system.playtime.to_i if play.nil? && $game_system.respond_to?(:playtime)
+        play = Graphics.frame_count / Graphics.frame_rate if play.nil? && Graphics.frame_rate.to_i > 0
+        kv["play"] = play.to_i.to_s if play
+        chars = []
+        if essentials?
+          t = trainer
+          if t
+            kv["trainer"] = clean(on(t, :name))
+            b = on(t, :badge_count) || on(t, :numbadges)
+            kv["badges"] = b.to_i.to_s if b
+            party = (on(t, :party) || [])[0, 6].compact
+            kv["party"] = party.map { |pk| clean(on(pk, :species)) }.join(";")
+          end
+          c = on($game_player, :character_name)
+          chars << [c, 0] if c && !c.empty?
+        elsif $game_party.respond_to?(:members)
+          $game_party.members[0, 4].each { |a| chars << [a.character_name, a.character_index] if a && a.character_name.to_s != "" }
+        elsif $game_party.respond_to?(:actors)
+          $game_party.actors[0, 4].each { |a| chars << [a.character_name, 0] if a && a.character_name.to_s != "" }
+        end
+        kv["chars"] = chars.map { |c| "#{clean(c[0]).gsub(/[|;]/, '')}|#{c[1].to_i}" }.join(";")
+        [kv, chars]
+      end
+
+      # 캐릭터 그림 한 칸: XP·Essentials 4×4, VX·Ace 8명 시트(이름이 $ 로 시작하면 1명) — 아래를 보는 가운데 자세
+      def self.crop_char(name, index, out)
+        src = Bitmap.new("Graphics/Characters/" + name)
+        xp4 = essentials? || !defined?(Game_Interpreter)
+        if xp4
+          w = src.width / 4; h = src.height / 4; x = 0; y = 0
+        else
+          single = name =~ /\A[!]?\$/
+          w = single ? src.width / 3 : src.width / 12
+          h = single ? src.height / 4 : src.height / 8
+          i = single ? 0 : [[index.to_i, 0].max, 7].min
+          x = ((i % 4) * 3 + 1) * w
+          y = (i / 4) * 4 * h
+        end
+        b = Bitmap.new(w, h)
+        b.blt(0, 0, src, Rect.new(x, y, w, h))
+        b.to_file(out)
+        b.dispose
+        src.dispose
+        true
+      rescue Exception
+        false
+      end
+
+      def self.crop_icon(pk, out)
+        path = nil
+        if defined?(GameData) && GameData.const_defined?(:Species) && GameData::Species.respond_to?(:icon_filename_from_pokemon)
+          path = GameData::Species.icon_filename_from_pokemon(pk)
+        elsif has(Object, :pbPokemonIconFile)
+          path = send(:pbPokemonIconFile, pk)
+        end
+        return false if path.nil? || path.to_s.empty?
+        src = Bitmap.new(path)
+        side = [src.width, src.height].min
+        b = Bitmap.new(side, side)
+        b.blt(0, 0, src, Rect.new(0, 0, side, side))
+        b.to_file(out)
+        b.dispose
+        src.dispose
+        true
+      rescue Exception
+        false
+      end
+
+      def self.note(path)
+        path = BingsuSaves.map(path) if defined?(BingsuSaves) && BingsuSaves.respond_to?(:map)
+        path = File.expand_path(path.to_s)
+        return if path =~ /\.tmp\z/ || !File.file?(path)
+        Dir.mkdir(DIR) unless File.directory?(DIR)
+        base = File.join(DIR, File.basename(path))
+        kv, chars = info
+        kv["file"] = path
+        # 사진: 떠 둔 맵 화면, 없으면 지금 화면
+        snap = (@snap && !@snap.disposed?) ? @snap : nil
+        fresh = nil
+        fresh = Graphics.snap_to_bitmap if snap.nil? && Graphics.respond_to?(:snap_to_bitmap)
+        pic = snap || fresh
+        (pic.to_file(base + ".photo.jpg") rescue nil) if pic
+        fresh.dispose if fresh
+        n = 0
+        chars.each { |c| n += 1 if crop_char(c[0].to_s, c[1], "#{base}.c#{n}.png") }
+        if essentials? && trainer
+          m = 0
+          ((on(trainer, :party) || [])[0, 6].compact).each { |pk| m += 1 if crop_icon(pk, "#{base}.p#{m}.png") }
+        end
+        File.open(base + ".txt.tmp", "w") { |f| kv.each { |k, v| f.write("#{k}\t#{v}\n") } }
+        File.rename(base + ".txt.tmp", base + ".txt")
+        log("#{File.basename(path)} map=#{kv['map']} chars=#{n}")
+      rescue Exception => e
+        log("note #{e.class}: #{e.message}")
+      end
+    end
+
+    class << Graphics
+      alias_method :bingsu_card_gupdate, :update
+      def update(*a)
+        BingsuCard.tick
+        bingsu_card_gupdate(*a)
+      end
+    end
+    """#
+
+    /// 빠른 저장/불러오기·상태 저장 칸 요청. 엔진이 돌고 있어야 답한다(일시정지 화면을 닫은 뒤 부른다). 8초 안에 답이 없으면 시간 초과
+    func scoop(_ op: Scoop.Op, _ slot: Scoop.Slot = .quick, dish: Dish) async -> Scoop.Outcome {
+        guard runningDishID != nil else { return .failed("not running") }
+        let id = String(UUID().uuidString.prefix(8))
+        let fm = FileManager.default
+        try? fm.removeItem(at: Self.scoopResultFile)
+        let name = Scoop.fileName(dish, slot) ?? ""
+        do { try "\(op.rawValue) \(id) \(name)".write(to: Self.scoopRequestFile, atomically: true, encoding: .utf8) }
+        catch { return .failed("request \(error.localizedDescription)") }
+        for _ in 0..<80 {
+            try? await Task.sleep(for: .milliseconds(100))
+            guard let s = try? String(contentsOf: Self.scoopResultFile, encoding: .utf8) else { continue }
+            let parts = s.split(separator: " ", maxSplits: 1).map(String.init)
+            guard parts.first == id else { continue }
+            try? fm.removeItem(at: Self.scoopResultFile)
+            let answer = parts.count > 1 ? parts[1] : ""
+            NSLog("[BrassBowl] quick \(op.rawValue) → \(answer)")
+            return Scoop.parse(answer)
+        }
+        try? fm.removeItem(at: Self.scoopRequestFile)
+        NSLog("[BrassBowl] quick \(op.rawValue) → 시간 초과")
+        return .timeout
+    }
+
     private var volumeObserver: NSObjectProtocol?
 
     /// 실행할 RGSS 판: 디버그 BINGSU_RGSS → 가져올 때 적은 값 → 폴더 판별
@@ -472,6 +1333,16 @@ final class BrassBowlEngine: ObservableObject {
                 scripts.insert(Self.screenFitScriptFile.path, at: 0)
             }
             scripts.append(Self.volumeScriptFile.path)
+            // 효과음 진동 (빌드 51): 진동표에 있는 이름만 Ruby 가 걸러 엔진 울타리(fence.c)를 거쳐 빙수로 넘긴다
+            sfxSet = RumbleSet.forDish(dish)
+            let rules = Self.sfxRules(sfxSet)
+            let sfxAll = DevEnv["BINGSU_KEYDEBUG"] == "1"
+            setenv("BINGSU_SFX_ALL", sfxAll ? "1" : "0", 1)
+            setenv("BINGSU_SFX_SHAKE", sfxSet.shake ? "1" : "0", 1)
+            if !rules.isEmpty || sfxAll || sfxSet.shake, (try? Self.sfxScript.write(to: Self.sfxScriptFile, atomically: true, encoding: .utf8)) != nil {
+                setenv("BINGSU_SFX_RULES", rules, 1)
+                scripts.append(Self.sfxScriptFile.path)
+            }
             let online = DishPrefsStore.shared.prefs(for: dish.id).allowOnline != false
             let extra = online ? (Self.hostScript, Self.hostScriptFile) : (Self.offlineScript, Self.offlineScriptFile)
             if (try? extra.0.write(to: extra.1, atomically: true, encoding: .utf8)) != nil {
@@ -482,6 +1353,22 @@ final class BrassBowlEngine: ObservableObject {
             if (try? Self.entryScript.write(to: Self.entryScriptFile, atomically: true, encoding: .utf8)) != nil {
                 scripts.append(Self.entryScriptFile.path)
             }
+            // 빠른 저장/불러오기 (빌드 49). 지난 실행이 남긴 요청·답은 지운다
+            try? FileManager.default.removeItem(at: Self.scoopRequestFile)
+            try? FileManager.default.removeItem(at: Self.scoopResultFile)
+            if let quick = Scoop.url(dish),
+               (try? Self.scoopScript.write(to: Self.scoopScriptFile, atomically: true, encoding: .utf8)) != nil {
+                setenv("BINGSU_QUICK_REQ", Self.scoopRequestFile.path, 1)
+                setenv("BINGSU_QUICK_RES", Self.scoopResultFile.path, 1)
+                setenv("BINGSU_QUICK_FILE", quick.path, 1)
+                scripts.append(Self.scoopScriptFile.path)
+            }
+            // 세이브 카드 (빌드 49): 게임이 세이브를 쓸 때 옆 정보를 임시 폴더에. 지난 실행이 남긴 것은 그대로 (다음에 옮김)
+            try? FileManager.default.createDirectory(at: SaveCard.inbox, withIntermediateDirectories: true)
+            if (try? Self.cardScript.write(to: Self.cardScriptFile, atomically: true, encoding: .utf8)) != nil {
+                setenv("BINGSU_CARD_DIR", SaveCard.inbox.path, 1)
+                scripts.append(Self.cardScriptFile.path)
+            }
             // 진단 정보: 화면 크기·resize·게임이 원하는 크기를 몇 줄만 적는다 (지난 실행 기록은 지운다)
             try? FileManager.default.createDirectory(at: ReceiptDesk.folder, withIntermediateDirectories: true)
             try? FileManager.default.removeItem(at: Self.receiptTraceFile)
@@ -489,9 +1376,16 @@ final class BrassBowlEngine: ObservableObject {
                 setenv("BINGSU_RECEIPT_FILE", Self.receiptTraceFile.path, 1)
                 scripts.append(Self.receiptScriptFile.path)
             }
-            // VX·VX Ace: 게임 폴더에 쓰는 Save*.rvdata2 를 저장 데이터 폴더로. 엔진 preload(windows_fs.rb) 뒤에 돈다
-            if rgss >= .vx, (try? Self.savesScript.write(to: Self.savesScriptFile, atomically: true, encoding: .utf8)) != nil {
+            // 게임 폴더에 쓰는 저장(XP Save1.rxdata, 옛 Essentials Game.rxdata, VX·Ace Save*.rvdata2)을 저장 데이터 폴더로.
+            // 엔진 preload(windows_fs.rb) 뒤에 돈다
+            if (try? Self.savesScript.write(to: Self.savesScriptFile, atomically: true, encoding: .utf8)) != nil {
                 scripts.append(Self.savesScriptFile.path)
+            }
+            // 개발용: 울타리 시험 (BINGSU_FENCE_PROBE=1). 결과는 임시 폴더 bingsu-fence-probe.txt
+            if DevEnv["BINGSU_FENCE_PROBE"] == "1",
+               (try? Self.fenceProbeScript.write(to: Self.fenceProbeScriptFile, atomically: true, encoding: .utf8)) != nil {
+                try? FileManager.default.removeItem(at: Self.fenceProbeResultFile)
+                scripts.append(Self.fenceProbeScriptFile.path)
             }
             overlay["preloadScript"] = scripts
         }
@@ -619,6 +1513,157 @@ final class BrassBowlEngine: ObservableObject {
     end
     """
 
+    // MARK: 효과음 진동 (빌드 51, docs/rumble/PLAN-defaults.md 2단계)
+
+    private static let sfxScriptFile = FileManager.default.temporaryDirectory.appendingPathComponent("bingsu-sfx.rb")
+    /// 이번 게임의 진동표 (게임을 켤 때 정한다)
+    private var sfxSet = RumbleSet.none
+    /// 1초에 받는 효과음 신호 수 상한 (게임 스크립트가 신호 경로를 직접 두드려도 진동이 쏟아지지 않게)
+    private static let sfxPerSecond = 15
+    private var sfxWindow = (start: Date.distantPast, count: 0)
+
+    /// Ruby 에 넘길 규칙: 줄마다 "<e|p|s|c>\t<이름>" (이름은 RumbleSet 이 이미 정규화한 소문자)
+    static func sfxRules(_ set: RumbleSet) -> String {
+        set.rules.compactMap { r -> String? in
+            guard !r.sound.contains("\t"), !r.sound.contains("\n"), !r.sound.contains("\0") else { return nil }
+            let k: String
+            switch r.match { case .exact: k = "e"; case .prefix: k = "p"; case .suffix: k = "s"; case .contains: k = "c" }
+            return k + "\t" + r.sound
+        }.joined(separator: "\n")
+    }
+
+    /// 엔진이 넘긴 효과음 이름 (Ruby 가 이미 표로 걸렀지만 믿지 않고 다시 맞춘다)
+    fileprivate func sfx(_ name: String) {
+        guard runningDishID != nil, name.count <= 80 else { return }
+        let now = Date()
+        if now.timeIntervalSince(sfxWindow.start) >= 1 { sfxWindow = (now, 0) }
+        sfxWindow.count += 1
+        guard sfxWindow.count <= Self.sfxPerSecond else { return }
+        let debug = DevEnv["BINGSU_KEYDEBUG"] == "1"
+        // 화면 흔들림: "!shake:<power>:<프레임>" (Game_Screen#start_shake 훅)
+        if name.hasPrefix("!shake:") {
+            let parts = name.split(separator: ":")
+            guard sfxSet.shake, parts.count == 3, let power = Int(parts[1]), let frames = Int(parts[2]),
+                  let p = RumbleSet.shakePattern(power: power, frames: frames) else { return }
+            let ok = Rumble.shared.play(p, from: .shake)
+            if debug { NSLog("[BrassBowl] shake power=\(power) frames=\(frames) \(ok ? "-> rumble" : "(겹침으로 건너뜀)")") }
+            return
+        }
+        if let hit = sfxSet.match(name) {
+            let ok = Rumble.shared.play(hit, from: .sfx)
+            if debug { NSLog("[BrassBowl] sfx \(name) \(ok ? "-> rumble" : "(겹침으로 건너뜀)")") }
+        } else if debug { NSLog("[BrassBowl] sfx \(name) (표에 없음)") }
+    }
+
+    /// 진동표에 있는 효과음이 날 때만 `File.exist?("/.bingsu-sfx/<이름>")` 을 부른다. 그 경로는 디스크에 닿지 않고
+    /// 놋그릇 울타리(fence.c)가 빙수에 이름을 넘긴다. 이름은 RumbleSet.normalize 와 같게(폴더·오디오 확장자 빼고 소문자).
+    /// 같은 이름이 40ms 안에 또 오면 한 번만. Ruby 1.8 문법 안에서만 쓴다
+    private static let sfxScript = #"""
+    # 빙수: 효과음 진동 (BrassBowlEngine.sfxScript)
+    module BingsuSfx
+      @rules = []
+      (ENV["BINGSU_SFX_RULES"] || "").split("\n").each do |line|
+        k, s = line.split("\t", 2)
+        @rules << [k, s] if k && s && !s.empty?
+      end
+      @exts = %w(ogg wav mp3 m4a mid midi flac aac opus webm wma caf)
+      @last = nil
+      @last_at = 0.0
+      @all = ENV["BINGSU_SFX_ALL"] == "1"   # 개발용: 표에 없는 이름도 넘겨 로그로 본다
+      @shake = ENV["BINGSU_SFX_SHAKE"] == "1"
+      @ready = !@shake   # 화면 흔들림 훅을 걸었거나 포기했는가
+      @tries = 0
+      class << self
+        attr_reader :ready
+        # 화면 흔들림: Game_Screen 은 게임 스크립트에 있어 이 파일보다 늦게 생긴다. 첫 화면 갱신부터 찾아 한 번 건다
+        def install
+          @tries += 1
+          @ready = true if @tries > 600
+          return unless defined?(Game_Screen) && Game_Screen.method_defined?(:start_shake)
+          @ready = true
+          Game_Screen.class_eval do
+            alias_method :bingsu_sfx_start_shake, :start_shake
+            def start_shake(*a)
+              BingsuSfx.shake(a[0], a[2])
+              bingsu_sfx_start_shake(*a)
+            end
+          end
+        rescue StandardError
+          @ready = true
+        end
+        def shake(power, frames)
+          p = power.to_i
+          d = frames.to_i
+          return if p <= 0 || d <= 0
+          File.exist?("/.bingsu-sfx/!shake:" + [p, 9].min.to_s + ":" + [d, 600].min.to_s)
+        rescue StandardError
+        end
+        def norm(name)
+          s = name.to_s.split(/[\/\\]/).last || ""
+          s = s.downcase.strip
+          if s =~ /\.([a-z0-9]+)\z/ && @exts.include?($1)
+            s = s[0, s.length - $1.length - 1]
+          end
+          s
+        end
+        def match?(n)
+          @rules.each do |k, s|
+            case k
+            when "e" then return true if n == s
+            when "p" then return true if n[0, s.length] == s
+            when "s" then return true if n.length >= s.length && n[n.length - s.length, s.length] == s
+            when "c" then return true if n.index(s)
+            end
+          end
+          false
+        end
+        def hit(name)
+          return if @rules.empty? && !@all
+          n = norm(name)
+          return if n.empty? || n.length > 80 || (!@all && !match?(n))
+          now = Time.now.to_f
+          return if n == @last && now - @last_at < 0.04
+          @last = n
+          @last_at = now
+          File.exist?("/.bingsu-sfx/" + n)
+        rescue StandardError
+        end
+      end
+    end
+
+    # 옛 Essentials(포켓몬 Z 등)는 게임 스크립트에서 Audio.se_play 를 통째로 다시 정의한다.
+    # 그래서 다시 정의될 때마다(singleton_method_added) 그 새 함수를 다시 감싼다
+    class << Audio
+      def bingsu_sfx_wrap(m)
+        return if @bingsu_sfx_wrapping || !respond_to?(m)
+        @bingsu_sfx_wrapping = true
+        sc = class << self; self; end
+        orig = m == :se_play ? :bingsu_sfx_se_play : :bingsu_sfx_me_play
+        sc.send(:alias_method, orig, m)
+        sc.send(:define_method, m) do |name, *rest|
+          BingsuSfx.hit(name)
+          send(orig, name, *rest)
+        end
+      ensure
+        @bingsu_sfx_wrapping = false
+      end
+      def singleton_method_added(m)
+        bingsu_sfx_wrap(m) if m == :se_play || m == :me_play
+        super rescue nil
+      end
+    end
+    Audio.bingsu_sfx_wrap(:se_play)
+    Audio.bingsu_sfx_wrap(:me_play)
+
+    class << Graphics
+      alias_method :bingsu_sfx_gupdate, :update
+      def update(*a)
+        BingsuSfx.install unless BingsuSfx.ready
+        bingsu_sfx_gupdate(*a)
+      end
+    end
+    """#
+
     /// 한국어 번역 플러그인의 두벌식 키보드 이름 입력 (2026-11-13, 소원의 별). 그 화면(PokemonEntryScene)은 키를 직접 읽고
     /// `Input.text_input` 을 켜지 않아 빙수 글자 입력 창이 안 뜨고, Enter·Esc 로만 끝난다. 플러그인은 게임 설정 `textinput` 이
     /// 키보드(1)일 때만 이 화면을, 아니면 커서 화면(PokemonEntryScene2)을 연다 — 게임이 정한 대로 둔다.
@@ -731,8 +1776,44 @@ final class BrassBowlEngine: ObservableObject {
       rescue StandardError
         @te_hooked = true
       end
+      # 키보드 글자 칸(Window_TextEntry_Keyboard)은 Input.gets 로 글자를 받는데, mkxp-z 로 옮긴 옛 게임(Pokemon Z)은
+      # Input.text_input 을 켜지 않는다. PC 의 SDL 은 처음부터 글자 입력이 켜져 있어 되지만 iOS 는 꺼져 있어
+      # 키보드도 안 뜨고 하드웨어 키보드 글자도 안 들어온다. 칸이 생길 때 꺼져 있으면 켜고, 닫힐 때 우리가 켠 것만 끈다.
+      # 두벌식 이름 입력 화면(@scene)은 키를 직접 읽으므로 건드리지 않는다
+      def self.hook_keyboard_entry
+        return unless defined?(Window_TextEntry_Keyboard)
+        @kb_hooked = true
+        return unless Input.respond_to?(:text_input=) && Input.respond_to?(:text_input)
+        Window_TextEntry_Keyboard.class_eval do
+          alias_method :bingsu_kb_init, :initialize
+          alias_method :bingsu_kb_dispose, :dispose
+          def initialize(*a, &b)
+            bingsu_kb_init(*a, &b)
+            BingsuEntry.text_on(self)
+          end
+          def dispose(*a)
+            BingsuEntry.text_off(self)
+            bingsu_kb_dispose(*a)
+          end
+        end
+      rescue StandardError
+        @kb_hooked = true
+      end
+      def self.text_on(w)
+        return if @scene || Input.text_input
+        Input.text_input = true
+        @text_owner = w
+      rescue StandardError
+      end
+      def self.text_off(w)
+        return unless @text_owner && @text_owner.equal?(w)
+        @text_owner = nil
+        Input.text_input = false
+      rescue StandardError
+      end
       def self.tick
         hook_textentry unless @te_hooked
+        hook_keyboard_entry unless @kb_hooked
         hook unless @hooked
         hook_options unless @opts_hooked
         if @scene
@@ -762,12 +1843,16 @@ final class BrassBowlEngine: ObservableObject {
     /// 파일 API 를 감싸 상대 경로 `Save<숫자>.rvdata2|rvdata|rxdata` 만 저장 데이터 폴더(BINGSU_SAVE_DIR)로 돌린다.
     /// `Dir.glob("Save*.rvdata2")` 는 그 폴더에서 찾아 원래 모양(상대 이름)으로 돌려준다(게임이 이름에서 번호를 뽑는다).
     /// 엔진 windows_fs.rb 뒤에 돌아 그 감싸기(대소문자 무시) 위에 얹힌다. windows_fs 의 "예전 빌드 저장 되살리기"는 저장 데이터 폴더의
-    /// 맨 이름 저장 파일을 게임 폴더로 옮겨 버리므로 이 게임에서는 끈다. RGSS2/3 에서만 넣는다. Ruby 1.8 문법 안에서만 쓴다
+    /// 맨 이름 저장 파일을 게임 폴더로 옮겨 버리므로 이 게임에서는 끈다. 2026-11-17 부터 XP 에도 넣는다: 일반 XP 의 `Save1.rxdata`, 그리고
+    /// 옛 Essentials(v16~18)는 `RTP.getSaveFolder` 가 Windows '저장된 게임' 폴더를 못 찾으면 게임 폴더(".")를 써서 `./Game.rxdata` 가
+    /// 게임 폴더에 남았다(Pokemon Z). v19 이상은 System.data_directory 절대 경로라 걸리지 않는다. Ruby 1.8 문법 안에서만 쓴다
     private static let savesScript = """
     # 빙수: VX·VX Ace 저장 파일을 저장 데이터 폴더로 (BrassBowlEngine.savesScript)
     module BingsuSaves
-      NAME = /\\A(?:\\.[\\\\\\/])?Save\\d*\\.(?:rvdata2|rvdata|rxdata)\\z/i
-      GLOB = /\\A(?:\\.[\\\\\\/])?Save[^\\\\\\/]*\\.(?:rvdata2|rvdata|rxdata)\\z/i
+      # Save1.rxdata(XP)·Save1.rvdata(VX)·Save01.rvdata2(Ace), 옛 Essentials(v16~18)의 Game.rxdata·Game_2.rxdata·
+      # Game_autosave.rxdata·Game.rxdata.bak (RTP.getSaveFolder 가 Windows 저장 폴더를 못 찾으면 "." = 게임 폴더를 써서 "./Game.rxdata")
+      NAME = /\\A(?:\\.[\\\\\\/])?(?:Save\\d*\\.(?:rvdata2|rvdata|rxdata)|Game(?:_[A-Za-z0-9]+)*\\.rxdata(?:\\.bak)?)\\z/i
+      GLOB = /\\A(?:\\.[\\\\\\/])?(?:Save[^\\\\\\/]*\\.(?:rvdata2|rvdata|rxdata)|Game[^\\\\\\/]*\\.rxdata)\\z/i
       @dir = nil
       def self.dir
         return @dir if @dir
@@ -1004,6 +2089,12 @@ final class BrassBowlEngine: ObservableObject {
         sym("mkxp_setTextInputModeCallback", SetModeCbFn.self)?({ active, _ in
             Task { @MainActor in BrassBowlEngine.shared.textInputActive = active != 0 }
         }, nil)
+        // 효과음 진동: 울타리(fence.c)가 넘기는 효과음 이름 (게임 스크립트가 고를 수 있는 값이라 길이만 보고 문자열로 복사)
+        sym("mkxp_sfxSetHandler", SfxHandlerSetFn.self)?({ name in
+            guard let name, strnlen(name, 256) < 256 else { return }
+            let text = String(cString: name)
+            Task { @MainActor in BrassBowlEngine.shared.sfx(text) }
+        })
         // 게임 그림이 그려지는 자리(점 단위). 엔진이 빙수가 준 자리 안에 비율을 지켜 넣으므로 가로/세로가 곧 게임 해상도 비율
         sym("mkxp_setGameRectChangedCallback", SetRectCbFn.self)?({ x, y, w, h, _ in
             guard w > 8, h > 8 else { return }

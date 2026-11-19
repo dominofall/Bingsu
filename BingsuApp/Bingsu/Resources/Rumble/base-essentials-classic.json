@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "kind": "base",
+  "game": "Pokemon Essentials 구형 (v16~18)",
+  "source": "Audio/SE 이름, Pokemon Z V2.18 기준. 독특한 이름만 (throw·faint·recall 같은 흔한 이름은 게임 표에)",
+  "fallback": true,
+  "rules": [
+    {"sound": "jumptoball",    "match": "exact", "event": "catch_absorb"},
+    {"sound": "superdamage",   "match": "exact", "event": "hit_super"},
+    {"sound": "normaldamage",  "match": "exact", "event": "hit_normal"},
+    {"sound": "notverydamage", "match": "exact", "event": "hit_weak"},
+    {"sound": "ballshake",     "match": "exact", "event": "ball_shake"},
+    {"sound": "balldrop",      "match": "exact", "event": "ball_drop"},
+    {"sound": "expfull",       "match": "exact", "event": "level_up"}
+  ]
+}

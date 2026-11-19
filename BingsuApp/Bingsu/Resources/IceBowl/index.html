@@ -8,7 +8,8 @@
      85% 에서 파란 시럽이 꼭대기에 얹히고, 다 되면 꼭대기에 딸기 하나가 올라간다.
      앱은 window.setProgress(진행률 0~1, 모름 여부)만 부른다. 외부 요청 없음.
      cup.png 는 drawCup() 으로 그린 빈 굽잔 (64×64). 웹 뷰·Phaser 가 뜨는 동안 앱이 먼저 보여 주고,
-     첫 화면을 그리면 bowlReady 로 알려 넘겨받는다. drawCup 을 고치면 cup.png 도 다시 뽑는다. -->
+     첫 화면을 그리면 bowlReady 로 알려 넘겨받는다. drawCup 을 고치면 cup.png 도 다시 뽑는다.
+     100% 에서 딸기까지 올라가고 나면 bowlDone 으로 알린다 (앱이 결과 화면을 그때 보여 준다). -->
 <title>IceBowl</title>
 <style>
   html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
@@ -173,9 +174,11 @@ class Bowl extends Phaser.Scene {
     // 진행률을 모를 때(파일 복사 중 등)는 얼음을 미리 채우지 않고 지금 높이 그대로, 가루만 계속 떨어진다.
     // 그래서 0% 는 늘 빈 그릇에서 시작한다
     const target = state.indeterminate ? this.level : state.target;
-    // 기본 게임처럼 갈린 얼음이 한 번에 솟지 않고 서서히 쌓인다
+    // 기본 게임처럼 갈린 얼음이 한 번에 솟지 않고 고른 빠르기로 서서히 쌓인다.
+    // 진행률이 확 뛰어도 초당 RISE 를 넘지 않고, 끝(100%)이 오면 조금 서둘러 마저 채운다
     const gap = target - this.level;
-    this.level += Math.sign(gap) * Math.min(Math.abs(gap), dt * 0.4 + Math.abs(gap) * dt * 1.5);
+    const RISE = target >= 1 ? 0.5 : 0.22;
+    this.level += Math.sign(gap) * Math.min(Math.abs(gap), dt * Math.min(RISE, 0.06 + Math.abs(gap) * 0.8));
     if (!state.indeterminate && target >= 1 && 1 - this.level < 0.003) this.level = 1;
     const apex = RIM_Y - Math.min(this.level, 1) * (RIM_Y - TOP_Y);
 
@@ -204,7 +207,9 @@ class Bowl extends Phaser.Scene {
       }
       if (want >= 2) {
         this.berry.setVisible(true).setScale(0);
-        this.tweens.add({ targets: this.berry, scale: 1, duration: 320, delay: 250, ease: "Back.easeOut" });
+        // 딸기가 앉고 잠깐 보여 준 뒤 앱에 "다 됐다"를 알린다 (앱은 그때 결과 화면으로 넘긴다)
+        this.tweens.add({ targets: this.berry, scale: 1, duration: 320, delay: 250, ease: "Back.easeOut",
+          onComplete: () => this.time.delayedCall(650, () => window.webkit?.messageHandlers?.bowlDone?.postMessage(1)) });
       }
       this.toppings = want;
     }

@@ -8,6 +8,8 @@ import GameController
 /// 진동은 모든 게임 공통 설정이다. 실제 컨트롤러로도 고를 수 있다(`handle(_:)`).
 struct PauseBoard: View {
     let dish: Dish
+    /// 주소로 넣은 게임만: 지금 게임 화면의 실제 주소 (페이지가 빙수 화면을 흉내 내도 여기서 진짜 사이트를 확인한다, 보안 3차)
+    var pageURL: URL? = nil
     @ObservedObject var thermometer: Thermometer
     /// 지금 쓰는 패드 설정과, 그 값이 전역 설정을 따르는 중인지
     let pad: PadPrefs
@@ -27,22 +29,30 @@ struct PauseBoard: View {
     /// 이번 실행의 화질 (웹뷰를 만들 때 정해짐)
     let runningQuality: Quality
     @Binding var showHUD: Bool
-    let lastBackup: Date?
     let onResume: () -> Void
     let onHome: () -> Void
     let onClose: () -> Void
-    let onBackup: () -> Void
     let onMoreSettings: () -> Void
+    /// 저장 묶음 (빌드 50: 가장 최근 저장 카드 · 저장 · 불러오기). 상태 저장을 지원하는 게임만, nil 이면 묶음을 숨긴다
+    /// 저장: 바로 새 칸에. 불러오기: 칸 목록(불러오기·이름 바꾸기·지우기)
+    var onSave: (() -> Void)? = nil
+    var onLoad: (() -> Void)? = nil
+    /// 가장 최근 저장 칸 (자동 저장·예전 빠른 저장 포함)과 저장된 칸 수
+    var latestSave: Scoop.Entry? = nil
+    var saveCount: Int = 0
     /// "배치 편집" (이 게임에 저장). nil 이면 숨김
     var onEditLayout: (() -> Void)? = nil
     /// "가상 키보드 열기" (게임 키보드로 바꾸기, RPG Maker 게임). nil 이면 숨김
     var onKeyboard: (() -> Void)? = nil
+    /// "카메라 피하기" 줄 (iPhone Duo 에서만)
+    var showsCameraOption = false
     /// 컨트롤러 초점 (BowlContainerView 가 버튼 입력을 넘겨 준다)
     @Binding var focus: PauseItem?
 
     @AppStorage(BingsuApp.gameVolumeKey) private var gameVolume = 1.0
     @AppStorage(BingsuApp.playInSilentKey) private var globalPlayInSilent = false
     @ObservedObject private var prefsStore = DishPrefsStore.shared
+    @AppStorage(GameFrame.avoidCameraKey) private var avoidCamera = false
     @AppStorage(Rumble.key) private var rumble = true
     @AppStorage(Rumble.strengthKey) private var rumbleStrength = 0.7
     @AppStorage(Rumble.btSafeKey) private var rumbleBTSafe = true
@@ -55,6 +65,8 @@ struct PauseBoard: View {
         return names.isEmpty ? "컨트롤러" : names.joined(separator: " · ")
     }
 
+    @ObservedObject private var hinge = HingeStore.shared
+
     var body: some View {
         GeometryReader { geo in
             let landscape = geo.size.width > geo.size.height
@@ -62,6 +74,9 @@ struct PauseBoard: View {
             // iPad 처럼 넓은 화면은 패널을 화면 비율로 키우고 여백·간격도 넉넉하게 (2026-10-30 여백·구분이 부족하다는 의견)
             let wide = min(geo.size.width, geo.size.height) >= 600
             let gap: CGFloat = wide ? 28 : 22
+            // 반 접기(노트북 모양): 접히는 선을 넘지 않게 아래 절반에만 (경첩 위 글자는 읽기도 누르기도 힘들다)
+            let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
+            let fold = hinge.pose.halfFoldLine(size: full, insets: GameFrame.windowInsets())
             ZStack(alignment: landscape ? .leading : .bottom) {
                 // 패널 밖을 누르면 계속하기. 가로는 게임과 패드가 잘 보이게 아주 옅게
                 Color.black.opacity(landscape ? 0.15 : 0.35)
@@ -84,10 +99,13 @@ struct PauseBoard: View {
                         withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(f, anchor: .center) }
                     }
                 }
-                .frame(width: landscape ? (wide ? min(max(geo.size.width * 0.42, 440), 540) : 370) + ins.leading
+                // 가로 폭이 좁은 화면(iPhone Duo 바깥 화면 678pt 등)은 패널을 줄여 게임이 반 넘게 보이게
+                .frame(width: landscape ? (wide ? min(max(geo.size.width * 0.42, 440), 540)
+                                                : (geo.size.width + ins.leading + ins.trailing < 760 ? 350 : 370)) + ins.leading
                                         : geo.size.width + ins.leading + ins.trailing,
                        height: landscape ? geo.size.height + ins.top + ins.bottom
-                                         : min((geo.size.height + ins.bottom) * (wide ? 0.6 : 0.66), wide ? 820 : 640))
+                                         : fold.map { full.height - $0 - 10 }
+                                         ?? min((geo.size.height + ins.bottom) * (wide ? 0.6 : 0.66), wide ? 820 : 640))
                 // 유리 패널 (SwiftGlass: iOS 26 은 Liquid Glass). 글자가 읽히도록 카드색을 진하게 섞는다
                 .glass(radius: 28, color: Palette.card, colorOpacity: 0.72, material: .regularMaterial,
                        strokeWidth: 1, shadowColor: .black, shadowOpacity: 0.28, shadowRadius: 20, shadowY: 0)
@@ -111,6 +129,13 @@ struct PauseBoard: View {
                     Spacer()
                     chillChip
                 }
+                if let url = pageURL, let host = url.host, !host.isEmpty {
+                    let secure = url.scheme?.lowercased() == "https"
+                    Label(host, systemImage: secure ? "lock.fill" : "lock.open.fill")
+                        .font(.footnote).foregroundStyle(secure ? Color.secondary : Color.orange)
+                        .lineLimit(1).truncationMode(.middle)
+                        .accessibilityLabel("지금 주소 \(host)" + (secure ? "" : ", 암호화 안 됨"))
+                }
                 Button(action: onResume) {
                     Label("계속하기", systemImage: "play.fill").font(.headline).frame(maxWidth: .infinity).padding(.vertical, wide ? 8 : 6)
                 }
@@ -124,6 +149,10 @@ struct PauseBoard: View {
                         .buttonStyle(.bordered)
                         .focusRing(focus == .close, .capsule).id(PauseItem.close)
                 }
+                // Duo: 게임이 카메라에 가리면 바로 끄고 켜도록 계속하기 바로 아래 (사용자 2026-11-18)
+                if showsCameraOption && GameFrame.isDuo {
+                    toggle("카메라 피하기", sub: "iPhone Duo 바깥 화면에서 게임이 카메라에 가리지 않게 조금 작아져요", isOn: $avoidCamera, item: .avoidCamera)
+                }
                 // 이름 입력처럼 지금 막힌 일을 푸는 버튼이라 조작 묶음보다 위에
                 if let onKeyboard {
                     Button(action: onKeyboard) {
@@ -133,6 +162,11 @@ struct PauseBoard: View {
                     .tint(Palette.accent)
                     .focusRing(focus == .keyboard).id(PauseItem.keyboard)
                 }
+            }
+
+            // 게임 중 가장 자주 누르는 일이라 계속하기·홈으로 바로 아래 (사용자 2026-11-17)
+            if let onSave, let onLoad {
+                group("저장", wide: wide) { saveRows(save: onSave, load: onLoad) }
             }
 
             group("조작", wide: wide) {
@@ -201,21 +235,6 @@ struct PauseBoard: View {
                 note("소리 크기와 진동은 모든 게임에, 다른 앱 소리와 함께 듣기는 이 게임에만 적용돼요.")
             }
 
-            if !dish.isRemote {
-                group("저장", wide: wide) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("백업하기").font(.subheadline)
-                            Text(lastBackup.map { "마지막 백업 " + $0.formatted(.relative(presentation: .named)) } ?? "아직 백업이 없어요")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Button("백업", action: onBackup).buttonStyle(.bordered).tint(Palette.accent)
-                            .focusRing(focus == .backup, .capsule).id(PauseItem.backup)
-                    }
-                }
-            }
-
             group("화면·성능", wide: wide) {
                 if let fpsLimit {
                     segmented("초당 프레임", item: .fps, options: [(nil, "자동"), (.fps30, "30"), (.fps60, "60")], selection: fpsLimit)
@@ -264,6 +283,46 @@ struct PauseBoard: View {
                 .padding(wide ? 18 : 16)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+
+    // MARK: 저장 (빌드 50)
+
+    /// 가장 최근 저장 카드 + [저장] [불러오기 N개] (사용자 2026-11-18: 빠른 저장·상태 저장·백업을 이 셋으로)
+    private func saveRows(save: @escaping () -> Void, load: @escaping () -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let e = latestSave, let name = Scoop.fileName(dish, e.slot) {
+                SaveCardView(dish: dish, fileName: name, date: e.date, name: e.name)
+            } else {
+                HStack(spacing: 12) {
+                    Image(systemName: "photo").font(.title3).foregroundStyle(.secondary)
+                        .frame(width: 104, height: 78)
+                        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("아직 저장한 게 없어요").font(.subheadline.weight(.semibold))
+                        Text("맵에서 자유롭게 움직일 수 있을 때 저장돼요").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            HStack(spacing: 10) {
+                Button(action: save) {
+                    Label("저장", systemImage: "square.and.arrow.down").frame(maxWidth: .infinity).padding(.vertical, 4)
+                }
+                .buttonStyle(.borderedProminent).tint(Palette.accent)
+                .focusRing(focus == .save, .capsule).id(PauseItem.save)
+                Button(action: load) {
+                    HStack(spacing: 6) {
+                        Label("불러오기", systemImage: "arrow.uturn.backward")
+                        if saveCount > 0 { Text("\(saveCount)").font(.footnote.weight(.bold)).monospacedDigit().opacity(0.7) }
+                    }
+                    .frame(maxWidth: .infinity).padding(.vertical, 4)
+                }
+                .buttonStyle(.bordered).tint(Palette.accent)
+                .focusRing(focus == .load, .capsule).id(PauseItem.load)
+                .accessibilityLabel("불러오기, 저장 \(saveCount)개")
+            }
+            .font(.subheadline.weight(.semibold))
+            .buttonBorderShape(.capsule)
         }
     }
 
@@ -322,8 +381,8 @@ struct PauseBoard: View {
 
 /// 일시정지 화면에서 컨트롤러 초점이 갈 수 있는 것들 (위에서 아래 순서)
 enum PauseItem: Hashable {
-    case resume, home, close, kind(PadKind), editLayout, keyboard, keyMap, leftHand, size, opacity, hidePad, keyStrip, labels, floating, applyAll
-    case volume, musicRate, mixAudio, rumble, rumbleStrength, btSafe, fps, quality, hud, backup, more
+    case resume, home, close, avoidCamera, save, load, kind(PadKind), editLayout, keyboard, keyMap, leftHand, size, opacity, hidePad, keyStrip, labels, floating, applyAll
+    case volume, musicRate, mixAudio, rumble, rumbleStrength, btSafe, fps, quality, hud, more
 }
 
 /// 패드 종류 고르기 칸 (이름만)

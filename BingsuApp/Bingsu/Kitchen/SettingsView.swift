@@ -212,7 +212,7 @@ struct PadPrefsControls: View {
 
     /// 이 기기에서 직접 바꾼 배치가 몇 개인지
     private var layoutStatus: String {
-        let prefix = UIDevice.current.userInterfaceIdiom == .pad ? "pad." : "phone."
+        let prefix = SpoonLayout.currentIdiom == .pad ? "pad." : "phone."
         let n = prefs.layouts?.keys.filter { $0.hasPrefix(prefix) }.count ?? 0
         return n == 0 ? "기본 배치" : "직접 바꾼 배치 \(n)개"
     }
@@ -241,7 +241,7 @@ struct SpoonPreview: View {
     var showZone = true
     private var kind: PadKind { prefs.kind }
 
-    private var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+    private var isPad: Bool { SpoonLayout.currentIdiom == .pad }
     /// 기준 화면(pt)과 안전 영역
     private var screen: CGSize {
         let s = isPad ? CGSize(width: 1376, height: 1032) : CGSize(width: 852, height: 393)

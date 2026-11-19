@@ -31,6 +31,8 @@ struct SpoonFace: View {
     let scale: Double
     var skin = SpoonSkin.ice
     var pressed: Set<PadButton> = []
+    /// 눌린 커스텀 키 (요소 id)
+    var pressedCustom: Set<String> = []
     /// nil 이면 쉬는 자리(미리보기)
     var leftStick: SpoonController.StickState? = nil
     var rightStick: SpoonController.StickState? = nil
@@ -46,6 +48,7 @@ struct SpoonFace: View {
             if let s = layout.rightStick { stick(s, state: rightStick) }
             if let c = layout.dpadCenter { dpad(center: c, r: layout.dpadRadius) }
             ForEach(layout.buttons) { button($0) }
+            ForEach(layout.customs) { custom($0) }
         }
         .allowsHitTesting(false)
     }
@@ -172,6 +175,26 @@ struct SpoonFace: View {
             }
         }
         .position(x: s.center.x, y: s.center.y + (tagText != nil ? 7 * scale : 0))
+    }
+}
+
+extension SpoonFace {
+    /// 커스텀 키: 스킨 모양의 둥근 버튼에 보낼 키 이름. 스킨 그림은 쓰지 않는다 (버튼별 그림이 없는 요소)
+    fileprivate func custom(_ s: CustomKeySlot) -> some View {
+        let on = pressedCustom.contains(s.id)
+        let shape: AnyShape = {
+            if case .squircle(let corner) = skin.shape { return AnyShape(RoundedRectangle(cornerRadius: s.radius * corner * 2, style: .continuous)) }
+            return AnyShape(Circle())
+        }()
+        return Text(s.glyph)
+            .font(.system(size: min(s.radius * 0.66, 20 * scale), weight: .bold, design: skin.font))
+            .lineLimit(1).minimumScaleFactor(0.4)
+            .foregroundStyle(on ? (skin.press.luminance > 0.82 ? Color.black : .white) : skin.textColor.opacity(min(1, opacity + 0.4)))
+            .shadow(color: .black.opacity(0.35), radius: 1)
+            .padding(.horizontal, 3)
+            .frame(width: s.radius * 2, height: s.radius * 2)
+            .spoonSurface(shape, skin: skin, pressed: on, opacity: opacity, fill: skin.fill)
+            .position(s.center)
     }
 }
 

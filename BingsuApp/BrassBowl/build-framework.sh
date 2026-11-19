@@ -48,6 +48,10 @@ rm -rf "$FW"
 mkdir -p "$FW"
 
 echo "[BrassBowl] $SDK 링크 중..."
+# 울타리(fence.c): 게임 스크립트의 파일·네트워크 호출을 프레임워크 안에서만 가로챈다 (빌드 46, docs/security/rgss-files.md)
+FENCE_O="$OUT/fence.o"
+"$(xcrun --sdk "$SDK" -f clang)" -c -O2 -Wall -Wno-unused-function -isysroot "$SYSROOT" -target "$TARGET" -arch "$ARCH" \
+    -o "$FENCE_O" "$HERE/fence.c"
 # -force_load: app_bridge.h 함수 대부분은 링크 안에서 아무도 부르지 않아 빠지기 쉽다(포크 package-ios.sh 와 같은 이유)
 # shellcheck disable=SC2086
 "$CXX" -dynamiclib -isysroot "$SYSROOT" -target "$TARGET" -arch "$ARCH" \
@@ -57,6 +61,7 @@ echo "[BrassBowl] $SDK 링크 중..."
     -L"$LIB" -L"$ANGLE/lib" \
     -o "$FW/BrassBowl" \
     -Wl,-force_load,"$LIB/libmkxpz-core.a" \
+    "$FENCE_O" \
     "$LIB/mkxp18-merged.o" "$LIB/mkxp19-merged.o" "$LIB/mkxp31-merged.o" \
     -lSDL2 -lSDL2_image -lSDL2_sound -lSDL2_ttf -lfreetype -lpixman-1 -lpng16 \
     -logg -lvorbis -lvorbisfile -ltheora -ltheoradec -lphysfs -luchardet \

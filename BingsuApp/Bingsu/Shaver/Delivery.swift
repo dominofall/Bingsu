@@ -508,7 +508,8 @@ final class Delivery: ObservableObject {
 
     /// VX·VX Ace 는 저장 파일을 게임 폴더에 쓴다. 빙수는 엔진 쪽 preload(BrassBowlEngine.savesScript)로 저장 데이터 폴더에 쓰게 하므로,
     /// PC 에서 하던 게임을 저장 파일째 가져오면 그 파일을 저장 데이터 폴더로 옮긴다. 이미 같은 이름이 있으면 덮어쓰지 않고
-    /// 저장 데이터 폴더의 `backups/` 에 넣는다(지금 저장이 이긴다). XP 는 건드리지 않는다(Essentials 는 자기 저장 폴더를 쓴다)
+    /// 저장 데이터 폴더의 `backups/` 에 넣는다(지금 저장이 이긴다). XP 의 `Save1.rxdata`, 옛 Essentials 의 맨 위 `Game*.rxdata` 도 같다(2026-11-17).
+    /// 가져올 때와 게임을 켤 때(`BrassBowlEngine.start`) 부른다 — 이 규칙 전 빌드에서 게임 폴더에 쌓인 저장을 옮기려고
     /// MV·MZ 는 PC 에서 `<루트>/save/` 에 저장한다(`file1.rpgsave`·`global.rmmzsave` 등). 빙수는 스킴 핸들러가 그 경로를 저장 데이터 폴더로 돌리므로 같은 규칙으로 옮긴다
     nonisolated static func moveGameFolderSaves(_ dish: Dish) -> Int {
         let fm = FileManager.default
@@ -521,7 +522,7 @@ final class Delivery: ObservableObject {
             folder = dish.gameRoot.appendingPathComponent(saveDir, isDirectory: true)
             names = ((try? fm.contentsOfDirectory(atPath: folder.path)) ?? []).filter(isMVMZSave)
         } else {
-            guard dish.recipe == .mkxp, let v = dish.rgss, v >= .vx else { return 0 }
+            guard dish.recipe == .mkxp, dish.rgss != nil else { return 0 }
             folder = dish.location
             names = ((try? fm.contentsOfDirectory(atPath: dish.location.path)) ?? []).filter(isGameFolderSave)
         }
@@ -544,9 +545,11 @@ final class Delivery: ObservableObject {
         return moved
     }
 
-    /// `Save1.rvdata`·`Save01.rvdata2` 모양 (엔진 preload 가 돌리는 이름과 같은 규칙)
+    /// `Save1.rxdata`·`Save1.rvdata`·`Save01.rvdata2`, 옛 Essentials 의 `Game.rxdata`·`Game_2.rxdata`·`Game_autosave.rxdata`·`Game.rxdata.bak`
+    /// 모양 (엔진 preload `BrassBowlEngine.savesScript` 가 돌리는 이름과 같은 규칙). 게임 데이터는 `Data/` 안이라 맨 위 이 이름은 저장이다
     nonisolated static func isGameFolderSave(_ name: String) -> Bool {
-        name.range(of: #"^Save\d*\.(rvdata2|rvdata)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+        name.range(of: #"^(Save\d*\.(rvdata2|rvdata|rxdata)|Game(_[A-Za-z0-9]+)*\.rxdata(\.bak)?)$"#,
+                   options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// `file1.rpgsave`·`global.rmmzsave` 모양 (스킴 핸들러가 받는 저장 이름에서 임시 `_`·`.bak` 를 뺀 것)

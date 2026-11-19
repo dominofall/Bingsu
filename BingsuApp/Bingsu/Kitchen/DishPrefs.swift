@@ -25,7 +25,7 @@ struct PadPrefs: Codable, Equatable {
     }
 
     /// LT·RT 가 있는 배치인지: 가로·세로 중 하나라도 (사용자 배치가 있으면 그것, 없으면 종류의 기본 배치에) LT·RT 가 둘 다 있으면 true
-    func providesTriggers(idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> Bool {
+    func providesTriggers(idiom: UIUserInterfaceIdiom = SpoonLayout.currentIdiom) -> Bool {
         [true, false].contains { o in
             arrangement(idiom: idiom, landscape: o).map { $0.element("button.lt") != nil && $0.element("button.rt") != nil }
                 ?? (o && kind == .oneHand ? false : kind.hasTriggers)
@@ -33,7 +33,7 @@ struct PadPrefs: Codable, Equatable {
     }
 
     /// 왼쪽 스틱이 있는 배치인지 ("움직이는 스틱" 설정이 의미 있음). 같은 방식으로 가로·세로를 본다
-    func providesStick(idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> Bool {
+    func providesStick(idiom: UIUserInterfaceIdiom = SpoonLayout.currentIdiom) -> Bool {
         [true, false].contains { o in
             arrangement(idiom: idiom, landscape: o).map { $0.element("stick.left") != nil } ?? kind.hasStick
         }
@@ -112,7 +112,7 @@ struct DishPrefs: Codable, Equatable {
     var playInSilent: Bool?       // 무음 모드에서도 소리 재생. nil = 설정 › 소리·진동의 값 (빌드 21 에서 더함, 예전 파일엔 없음 → nil)
     var musicRate: MusicRate?     // 포켓로그 배경음악 음질. nil = 절약(24kHz) (빌드 23 에서 더함, 예전 파일엔 없음 → nil)
     var audioCache: Bool?         // 포켓로그 소리·그림·JSON 을 기기에 저장해 다시 받지 않기. nil = 켬 (2026-11-01 사용자 결정: 설정에서 끌 수 있게)
-    var allowOnline: Bool?        // RPG Maker 게임의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
+    var allowOnline: Bool?        // 기기 안 게임(RPG Maker·Electron·MV·MZ, 웹 계열은 빌드 45 부터)의 온라인 접속 허용. nil = 켬 (2026-10-31 사용자 결정: 기본 온라인. 빌드 22 에서 더함, 예전 파일엔 없음 → nil)
     var rubyOverride: String?     // RPG Maker 게임의 Ruby 버전 "18"/"19"/"31". nil = 자동 (빌드 26 에서 더함, 예전 파일엔 없음 → nil). 설정 화면에서 뺐고 더는 읽지 않음 — 저장 파일 호환 때문에 남겨 둠
     var rtpNoticeShown: Bool?     // RTP 가 필요하다는 안내를 이 게임에서 한 번 보였다 (빌드 26)
     var pixelSharp: Bool?         // RPG Maker MV·MZ 화면을 픽셀 그대로(흐리지 않게). nil = 켬 (빌드 27 에서 더함, 예전 파일엔 없음 → nil)
@@ -123,6 +123,9 @@ struct DishPrefs: Codable, Equatable {
     /// 이 게임만의 키 설정(컨트롤러·하드웨어 키보드, Spoon/KeyMap.swift). nil = 전역 키 설정 (2026-11-14 에 더함, 예전 파일엔 없음 → nil).
     /// 게임을 지우면 이 파일과 함께 지워진다
     var keyMap: KeyMap?
+    /// 웹 게임에 준 권한 "camera"·"microphone"·"motion" → 허용/거부. 없는 항목 = 게임이 요청할 때 묻는다 (빌드 45 보안 3차, 예전 파일엔 없음 → nil).
+    /// 게임 자신의 주소에서 온 요청만 기억한다. 게임 안의 다른 사이트 창이 요청하면 늘 묻고 기억하지 않는다
+    var media: [String: Bool]?
 
     /// 실제로 쓸 조작 방식: 직접 고른 값 → 판별 값. 새 모양 Electron 게임이 아니면 nil
     func effectiveInputStyle(_ dish: Dish) -> ElectronInfo.InputStyle? {

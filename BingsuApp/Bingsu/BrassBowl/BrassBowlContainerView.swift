@@ -19,11 +19,27 @@ struct BrassBowlContainerView: View {
     @State private var longSpoon: LongSpoon?
     @State private var teaSpoon: TeaSpoon?   // 애플워치 (Spoon/TeaSpoon.swift)
     @State private var toast: String?
+    @State private var toastTone: ToastTone = .info
     @State private var startError: String?
     @State private var showMenu = false
     @State private var pauseFocus: PauseItem?
-    @State private var lastBackup: Date?
+    /// 저장 (빌드 49·50): 이번 실행에서 지원 안 한다고 답했는지, 저장·불러오기 중인지
+    @State private var scoopUnsupported = false
+    @State private var scoopRunning = false
+    /// 상태 저장 목록 (여러 칸)
+    @StateObject private var stateList: ScoopList
+    @State private var showStates = false
+    /// 일시정지 화면 저장 묶음: 가장 최근 칸과 칸 수
+    @State private var latestSave: Scoop.Entry?
+    /// iPhone Duo 경첩 (반 접기면 게임을 접히는 선 위로)
+    @ObservedObject private var hinge = HingeStore.shared
+    @State private var saveCount = 0
+    /// 자동 저장 (빌드 49): 마지막 시도 시각, 저장하는 동안(나가는 중에도 엔진을 잠깐 더 돌림)
+    @State private var lastAutoTry = Date()
+    @State private var autoSaving = false
     @State private var showSettings = false
+    /// 카메라 피해서 가운데 (iPhone Duo 바깥 화면, GameFrame.avoidCamera)
+    @AppStorage(GameFrame.avoidCameraKey) private var avoidCamera = false
     /// 배치 편집 (일시정지 화면 › 배치 편집). 엔진은 멈춘 채 그 위에 편집기를 띄운다
     @State private var showEditor = false
     @State private var confirmQuit = false
@@ -86,6 +102,7 @@ struct BrassBowlContainerView: View {
     init(dish: Dish, visible: Bool = true, onHome: @escaping () -> Void = {}, onClose: @escaping () -> Void) {
         self.dish = dish; self.visible = visible; self.onHome = onHome; self.onClose = onClose
         _recorder = StateObject(wrappedValue: PerfRecorder(dishID: dish.id, title: dish.title, quality: .high))
+        _stateList = StateObject(wrappedValue: ScoopList(dish: dish))
     }
 
     var body: some View {
@@ -107,6 +124,14 @@ struct BrassBowlContainerView: View {
                     .onChange(of: showKeyboard) { _, _ in applyViewport(geo.size) }
                     .onReceive(Timer.publish(every: 0.15, on: .main, in: .common).autoconnect()) { _ in pollEntrySignal() }
                     .onChange(of: engine.gameAspect) { _, _ in applyViewport(geo.size) }
+                    .onChange(of: avoidCamera) { _, _ in applyViewport(geo.size) }
+                    .onChange(of: hinge.pose) { _, _ in applyViewport(geo.size) }
+                if avoidCamera, geo.size.width > geo.size.height, GameFrame.hasCameraStrip(GameFrame.windowInsets()), !keyboardShown {
+                    CameraSideBands(game: r, screen: geo.size)
+                }
+                if isPlaying, let fold = hinge.pose.halfFoldLine(size: geo.size, insets: GameFrame.windowInsets()) {
+                    HalfFoldPadBase(fold: fold, screen: geo.size, game: r)
+                }
                 if !isPlaying {
                     loadingCover.frame(width: r.width, height: r.height).position(x: r.midX, y: r.midY)
                 }
@@ -114,6 +139,16 @@ struct BrassBowlContainerView: View {
             .ignoresSafeArea()
 
             if padShown && isPlaying && !showEditor { SpoonOverlay(controller: spoon, prefs: padPrefs) }
+            // 반 접기로 세워 두고 컨트롤러로 할 때: 아래 절반에 컨트롤러 상태·저장·불러오기·일시정지
+            if !padShown && isPlaying && !showEditor && !keyboardShown {
+                GeometryReader { geo in
+                    if let fold = hinge.pose.halfFoldLine(size: geo.size, insets: GameFrame.windowInsets()) {
+                        HalfFoldStandPanel(fold: fold, screen: geo.size, onSave: scoopShown ? saveNew : nil,
+                                           onLoad: scoopShown ? openStates : nil, onPause: openPause)
+                    }
+                }
+                .ignoresSafeArea()
+            }
             if keyboardShown {
                 GeometryReader { geo in
                     let ins = geo.safeAreaInsets
@@ -154,15 +189,16 @@ struct BrassBowlContainerView: View {
             }
             if let toast {
                 VStack {
-                    Text(toast).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                        .padding(.horizontal, 14).padding(.vertical, 8).background(.black.opacity(0.6), in: Capsule())
-                        .padding(.top, 10)
+                    ToastBadge(text: toast, tone: toastTone).padding(.top, 10)
                     Spacer()
                 }
+                .allowsHitTesting(false)
                 .transition(.opacity)
+                .zIndex(5)
             }
             if case .ended(let id, let clean) = engine.phase, id == dish.id { endedCover(clean: clean) }
-            if !showMenu && !showEditor { menuButton }
+            // 게임 키보드에는 메뉴 키가 따로 있다 — 눈송이를 또 띄우지 않는다
+            if !showMenu && !showEditor && !keyboardShown { menuButton }
             if showMenu { pauseBoard.zIndex(2) }
             if showEditor {
                 SpoonLayoutEditor(prefs: padPrefs, backdrop: .game, target: dish.title,
@@ -179,6 +215,7 @@ struct BrassBowlContainerView: View {
         } message: {
             Text("게임 안에서 저장하지 않은 진행은 사라져요. 이 게임은 끝낸 뒤 빙수를 다시 열어야 다시 할 수 있어요.")
         }
+        .sheet(isPresented: $showStates, onDismiss: refreshSaves) { ScoopListView(model: stateList) }
         .alert("RTP 가 필요해요", isPresented: $rtpNotice) {
             Button("그냥 열기") { rtpNoticeDone(); startEngine() }
             Button("목록으로", role: .cancel) { rtpNoticeDone(); onClose() }
@@ -205,7 +242,16 @@ struct BrassBowlContainerView: View {
         .sheet(isPresented: $showSettings) { DishSettingsView(dish: dish, onReceipt: openReceiptFromSettings) }
         .sheet(item: $receipt) { r in ReceiptSlipView(dish: dish, live: r.live, screenshot: r.screenshot) }
         .onChange(of: padPrefs.haptics) { _, on in spoon.hapticsEnabled = on }
+        // 자동 저장 간격: 화면이 다시 그려져도 처음부터 세지 않게 화면 수명 동안 도는 작업으로 (보임·앱 상태가 바뀌면 새로)
+        .task(id: "\(visible)|\(scenePhase)") {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(min(30, Scoop.autoEvery / 2)))
+                if visible, scenePhase == .active, !showMenu, !showStates, Date().timeIntervalSince(lastAutoTry) >= Scoop.autoEvery { autoSave("timer") }
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
+            // 앱을 떠나기 직전(아직 그릴 수 있을 때) 자동 저장. 백그라운드에선 엔진이 멈추므로 못 끝내면 돌아와서 끝난다
+            if phase == .inactive, visible, !showMenu, Date().timeIntervalSince(lastAutoTry) > 60 { autoSave("leave") }
             if phase != .active { spoon.releaseAll() }
             if phase == .background {
                 engine.pause()
@@ -219,7 +265,7 @@ struct BrassBowlContainerView: View {
             if !v && showMenu { closePause(resume: false) }
             longSpoon?.enabled = v
             recorder.setActive(v && scenePhase == .active)
-            if v { engine.resume() } else { engine.pause() }
+            if v { engine.resume() } else if !autoSaving { engine.pause() }
         }
         .onChange(of: engine.phase) { _, p in
             if case .ended(let id, _) = p, id == dish.id { spoon.releaseAll() }   // 저장 묶기·올리기는 엔진이 끝날 때 BrassBowlEngine 이
@@ -317,6 +363,8 @@ struct BrassBowlContainerView: View {
 
     /// 엔진 켜기 (RTP 안내를 거친 뒤)
     private func startEngine() {
+        // 예전 빌드가 게임 폴더에 남긴 저장(옛 Essentials Game.rxdata, XP Save1.rxdata)을 저장 데이터 폴더로 (2026-11-17)
+        _ = Delivery.moveGameFolderSaves(dish)
         // iCloud·백업 되돌리기로 save.json 이 바뀌었으면 Game.rxdata 로 풀어 둔다 (게임이 켜지기 전)
         IceTray.sync(dish, allowUnpack: true)
         if let err = engine.start(.init(dish: dish, savesDir: freezer.directory)) {
@@ -333,6 +381,13 @@ struct BrassBowlContainerView: View {
             }
         }
         debugKeys()
+        for (t, step) in Scoop.debugPlan() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { debugScoop(step) }
+        }
+        // 디버그: BINGSU_PAUSE=<초> 면 그 뒤 일시정지 화면을 연다 (시안 스크린샷용)
+        if let t = DevEnv["BINGSU_PAUSE"].flatMap(Double.init) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) { openPause() }
+        }
         // 디버그: BINGSU_RECEIPT=<초> 면 그 뒤 일시정지 화면을 열고 진단 정보를 띄운다 (시뮬레이터 확인용)
         if let t = DevEnv["BINGSU_RECEIPT"].flatMap(Double.init) {
             DispatchQueue.main.asyncAfter(deadline: .now() + t) { openPause(); DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { openReceipt() } }
@@ -370,6 +425,16 @@ struct BrassBowlContainerView: View {
 
     private func goHome() {
         spoon.releaseAll()
+        // 나갈 때 자동 저장: 홈으로 먼저 보내고, 엔진은 저장이 끝날 때까지(1초 안팎) 뒤에서 돌린 뒤 멈춘다
+        if Scoop.autoOn, scoopShown, isPlaying, !scoopRunning, Date().timeIntervalSince(lastAutoTry) > 20 {
+            engine.resume()
+            autoSave("home") {
+                if !visible { engine.pause() }
+                afterPlay(stillRunning: true)
+            }
+            onHome()
+            return
+        }
         engine.pause()
         onHome()
         afterPlay(stillRunning: true)
@@ -384,14 +449,105 @@ struct BrassBowlContainerView: View {
 
     /// 게임이 쓴 저장 파일을 save.json 으로 묶고(Igloo 를 꺼 둬도 백업이 되게) iCloud 로 올린다
     private func afterPlay(stillRunning: Bool) {
+        // 세이브 카드: 게임 안 Ruby 가 임시 폴더에 남긴 옆 정보·사진을 이 게임 자리로 (빌드 49)
+        SaveCard.ingest(dish)
         IceTray.sync(dish, allowUnpack: !stillRunning)
         Igloo.shared.afterPlay(dish, stillRunning: stillRunning)
     }
 
-    private func backup() {
-        IceTray.sync(dish, allowUnpack: false)
-        showToast(freezer.freeze() != nil ? "백업했어요" : "아직 게임 안에서 저장한 데이터가 없어요")
-        lastBackup = freezer.backups().first?.date
+    // MARK: 빠른 저장/불러오기 (빌드 49)
+
+    private var scoopShown: Bool { Scoop.supports(dish) && !scoopUnsupported }
+
+    /// 일시정지 화면을 닫고 게임을 다시 돌린 뒤, 맵 화면이 받아 갈 때 게임의 저장 코드로 저장하거나 불러온다.
+    /// 저장하면 칸 사진으로 일시정지 때 엔진이 찍어 둔 화면(메뉴가 안 찍힌 게임 화면)을 남긴다
+    private func quick(_ op: Scoop.Op, _ slot: Scoop.Slot = .quick) {
+        guard isPlaying, !scoopRunning else { return }
+        // 엔진 화면은 일시정지할 때 찍히므로, 일시정지 화면에서 저장할 때만 쓴다 (아니면 예전 화면일 수 있음)
+        let photo = op == .save && showMenu ? engine.snapshotImage() : nil
+        if showMenu { closePause() }
+        scoopRunning = true
+        Task {
+            let o = await engine.scoop(op, slot, dish: dish)
+            scoopRunning = false
+            if o == .unsupported { scoopUnsupported = true }
+            if o == .ok {
+                if op == .save {
+                    ScoopShelf.keep(photo, dish, slot)
+                    IceTray.sync(dish, allowUnpack: false)
+                    Igloo.shared.afterPlay(dish, stillRunning: true)
+                }
+            }
+            refreshSaves()
+            showToast(Scoop.message(o, op, slot), tone: o == .ok ? .ok : .fail)
+        }
+    }
+
+    /// 자동 저장 칸에 조용히 저장 (알림 없음). 바쁘면(이벤트·메뉴 중) 30초 뒤 다시. 사진은 게임 안 Ruby 가 남기는 맵 화면
+    private func autoSave(_ why: String, then: (() -> Void)? = nil) {
+        guard Scoop.autoOn, scoopShown, isPlaying, !scoopRunning else { then?(); return }
+        lastAutoTry = Date()
+        scoopRunning = true
+        autoSaving = true
+        Task {
+            let o = await engine.scoop(.save, .auto, dish: dish)
+            scoopRunning = false
+            autoSaving = false
+            NSLog("[BrassBowl] auto save (\(why)) → \(o)")
+            if o == .unsupported { scoopUnsupported = true }
+            if o == .ok {
+                IceTray.sync(dish, allowUnpack: false)
+                Igloo.shared.afterPlay(dish, stillRunning: true)
+                refreshSaves()
+            } else if o == .busy || o == .timeout {
+                lastAutoTry = Date().addingTimeInterval(30 - Scoop.autoEvery)
+            }
+            then?()
+        }
+    }
+
+    /// 저장: 바로 비어 있는 새 칸에 (빌드 50). 칸이 다 찼으면 알리고 목록을 연다
+    private func saveNew() {
+        guard let slot = Scoop.freeState(dish) else {
+            showToast("저장 칸이 다 찼어요. 불러오기에서 지우거나 덮어써 주세요", tone: .fail)
+            return
+        }
+        quick(.save, slot)
+    }
+
+    private func refreshSaves() {
+        let all = Scoop.entries(dish)
+        latestSave = all.first
+        saveCount = all.count
+    }
+
+    /// 상태 저장 목록 열기 (일시정지 화면 위 시트). 저장·불러오기는 시트와 일시정지를 닫고 `quick` 으로
+    private func openStates() {
+        stateList.reload()
+        stateList.focus = nil
+        stateList.controllerFocus = anyController
+        stateList.onClose = { showStates = false }
+        stateList.onSave = { slot in
+            showStates = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { quick(.save, slot) }
+        }
+        stateList.onLoad = { slot in
+            showStates = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { quick(.load, slot) }
+        }
+        showStates = true
+    }
+
+    /// 디버그 BINGSU_SCOOP (Scoop.debugPlan)
+    private func debugScoop(_ step: Scoop.DebugStep) {
+        switch step {
+        case .run(let op, let slot): quick(op, slot)
+        case .new:
+            if let slot = Scoop.freeState(dish) { quick(.save, slot) }
+            else { openPause(); openStates(); DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { stateList.saveNew() } }
+        case .list: openPause(); openStates()
+        case .fill: Scoop.debugFill(dish); refreshSaves(); NSLog("[Scoop] fill → \(saveCount)")
+        }
     }
 
     /// 게임이 글자 요청을 켜면 게임 키보드를 저절로 올리고, 끄면 저절로 올린 것만 내린다
@@ -423,13 +579,18 @@ struct BrassBowlContainerView: View {
                 if on { showSpoon = true; padForced = anyController } else { showSpoon = false; spoon.releaseAll() }
             }),
             controllerNames: LongSpoon.connectedNames(),
-            runningQuality: .high, showHUD: $showHUD, lastBackup: lastBackup,
+            runningQuality: .high, showHUD: $showHUD,
             onResume: { closePause() },
             onHome: { closePause(resume: false); goHome() },
             onClose: { confirmQuit = true },
-            onBackup: backup, onMoreSettings: { showSettings = true },
+            onMoreSettings: { showSettings = true },
+            onSave: scoopShown ? saveNew : nil,
+            onLoad: scoopShown ? openStates : nil,
+            latestSave: latestSave,
+            saveCount: saveCount,
             onEditLayout: editLayout,
             onKeyboard: openKeyboard,
+            showsCameraOption: true,
             focus: $pauseFocus)
     }
 
@@ -456,7 +617,7 @@ struct BrassBowlContainerView: View {
         spoon.releaseAll()
         engine.pause()
         IceTray.sync(dish, allowUnpack: false)
-        lastBackup = freezer.backups().first?.date
+        refreshSaves()
         pauseFocus = anyController ? .resume : nil
         longSpoon?.menuInput = { b in pauseInput(b) }
         teaSpoon?.menuInput = { b in pauseInput(b) }
@@ -502,9 +663,9 @@ struct BrassBowlContainerView: View {
         }
     }
 
-    /// iPhone 가로에서 게임 키보드를 열면 세로로 돌려 쓰고, 닫으면 원래대로 (iPad 는 그대로 아래에)
+    /// iPhone 가로에서 게임 키보드를 열면 세로로 돌려 쓰고, 닫으면 원래대로 (iPad·iPhone Duo 안쪽 화면은 그대로 아래에)
     private func lockPortraitForKeyboard(_ on: Bool) {
-        guard UIDevice.current.userInterfaceIdiom == .phone else { return }
+        guard !on || SpoonLayout.currentIdiom == .phone else { return }   // 풀기는 늘 (접었다 편 뒤에도 풀리게)
         AppDelegate.lockOrientation(on ? .portrait : nil)
     }
 
@@ -549,6 +710,7 @@ struct BrassBowlContainerView: View {
 
     /// 일시정지 화면의 컨트롤러 조작 (웹 게임 화면과 같음): 위·아래 초점, 왼·오른쪽 값, A 고르기, B·메뉴·홈 계속하기
     private func pauseInput(_ b: PadButton) {
+        if showStates { stateList.handle(b); return }
         let items = pauseItems
         func step(_ d: Int) {
             guard let f = pauseFocus, let i = items.firstIndex(of: f) else { pauseFocus = items.first; return }
@@ -593,8 +755,10 @@ struct BrassBowlContainerView: View {
             case .mixAudio?: BingsuApp.setPlayInSilent(!BingsuApp.playInSilent(for: dish.id), for: dish.id)
             case .rumble?: UserDefaults.standard.set(!Rumble.shared.enabled, forKey: Rumble.key)
             case .btSafe?: UserDefaults.standard.set(!Rumble.shared.btSafe, forKey: Rumble.btSafeKey)
+            case .avoidCamera?: avoidCamera.toggle()
             case .hud?: showHUD.toggle()
-            case .backup?: backup()
+            case .save?: saveNew()
+            case .load?: openStates()
             case .more?: showSettings = true
             case nil: pauseFocus = items.first
             default: break
@@ -606,21 +770,24 @@ struct BrassBowlContainerView: View {
     /// 일시정지 화면에 보이는 순서대로 (PauseBoard 와 같은 조건, 소리 다시 켜기·초당 프레임·화질 없음)
     private var pauseItems: [PauseItem] {
         let p = padPrefs
-        var out: [PauseItem] = [.resume, .home, .close, .keyboard] + PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
+        var out: [PauseItem] = [.resume, .home, .close] + (GameFrame.isDuo ? [.avoidCamera] : []) + [.keyboard]
+        // 저장 묶음은 계속하기·홈으로 바로 아래 (PauseBoard 와 같은 순서)
+        if scoopShown { out += [.save, .load] }
+        out += PadKind.allCases.map { .kind($0) } + (p.kind == .oneHand ? [.leftHand] : []) + [.size, .opacity, .hidePad, .labels]
         if p.providesStick() { out.append(.floating) }
         out.append(.editLayout)
         if prefsStore.prefs(for: dish.id).pad != nil { out.append(.applyAll) }
         out += [.volume, .mixAudio, .rumble]
         if Rumble.shared.enabled { out += [.rumbleStrength, .btSafe] }
-        out += [.backup, .hud]
+        out.append(.hud)
         if KeyCapture.anyInputConnected { out.append(.keyMap) }
         out.append(.more)
         return out
     }
 
-    private func showToast(_ text: String) {
+    private func showToast(_ text: String, tone: ToastTone = .info) {
         NSLog("[BrassBowl] toast \(text)")
-        withAnimation { toast = text }
+        withAnimation { toast = text; toastTone = tone }
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { withAnimation { if toast == text { toast = nil } } }
     }
 
@@ -638,9 +805,14 @@ struct BrassBowlContainerView: View {
         let area: CGRect
         if keyboardShown {
             let kbTop = H - GameKeyboard.height(width: W, bottomInset: ins.bottom) - 6
-            let top = portrait ? ins.top + BowlContainerView.chrome : ins.top
-            area = CGRect(x: portrait ? 0 : ins.left, y: top,
-                          width: portrait ? W : W - ins.left - ins.right, height: max(0, kbTop - top))
+            let top = ins.top   // 눈송이는 키보드의 메뉴 키로 — 위에 눈송이 줄을 비워 두지 않는다
+            let side = GameFrame.underCamera(ins, landscape: !portrait)
+            // 반 접기: 키보드는 아래 절반, 게임은 접히는 선 위에만
+            let fold = hinge.pose.halfFoldLine(size: size, insets: ins)
+            let bottom = fold.map { min(kbTop, $0 - 8) } ?? kbTop
+            let r = CGRect(x: portrait ? 0 : side.left, y: top,
+                           width: portrait ? W : W - side.left - side.right, height: max(0, bottom - top))
+            area = fold == nil ? r : GameFrame.halfFoldInset(r)
         } else if portrait {
             // 눈송이가 패드 안에 있으면 위쪽 눈송이 줄은 비워 두지 않는다
             let band: CGFloat = menuButtonPlace == .pad && padShown ? 8 : BowlContainerView.chrome
@@ -648,6 +820,10 @@ struct BrassBowlContainerView: View {
             area = GameFrame.portraitArea(size: size, insets: ins, band: band, padTop: padTop)
         } else {
             area = GameFrame.landscapeArea(size: size, insets: ins)
+            // 카메라 피하기: 위에 붙이고 남는 높이는 아래로 (−/+·메뉴 단추가 게임 대신 바탕 위에 놓인다)
+            if GameFrame.avoidCamera, GameFrame.hasCameraStrip(ins) {
+                return GameFrame.avoidCameraLandscape(aspect: aspect, screen: size, insets: ins)
+            }
         }
         return GameFrame.fit(aspect: aspect, in: area)
     }
@@ -669,9 +845,9 @@ struct BrassBowlContainerView: View {
         }
         switch menuButtonPlace {
         case .topRight:
-            VStack { HStack { Spacer(); btn }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
+            CornerOrb(btn, wantLeading: false, inset: BowlContainerView.cornerInset())
         case .topLeft:
-            VStack { HStack { btn; Spacer() }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
+            CornerOrb(btn, wantLeading: true, inset: BowlContainerView.cornerInset())
         case .pad:
             GeometryReader { geo in
                 let ins = geo.safeAreaInsets
@@ -680,7 +856,7 @@ struct BrassBowlContainerView: View {
                 if padShown, isPlaying, let c = l.betweenViewMenu {
                     btn.position(x: c.x - ins.leading, y: min(c.y - ins.top, geo.size.height - 22))
                 } else {
-                    VStack { HStack { Spacer(); btn }; Spacer() }.padding(BowlContainerView.cornerInset()).ignoresSafeArea()
+                    CornerOrb(btn, wantLeading: false, inset: BowlContainerView.cornerInset())
                 }
             }
         }

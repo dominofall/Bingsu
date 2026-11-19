@@ -68,6 +68,9 @@ struct BingsuApp: App {
         WindowGroup {
             MenuBoardView()
                 .environmentObject(menu)
+                // iPhone Duo 경첩 상태 (반 접기·텐트 판단, HingeStore)
+                .background(HingeReader(pose: Binding(get: { HingeStore.shared.pose },
+                                                      set: { HingeStore.shared.pose = $0 })).frame(width: 0, height: 0))
                 .onOpenURL { url in
                     // Files 앱 "다음으로 열기" / 공유 시트로 받은 zip. LSSupportsOpeningDocumentsInPlace 라서
                     // Files 의 원본을 가리키는 security-scoped URL 이 올 수 있다 → Delivery.start 가 접근을 열고 닫는다.

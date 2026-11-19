@@ -23,7 +23,7 @@ struct SpoonOverlay: View {
                               height: geo.size.height + insets.top + insets.bottom)
             let l = SpoonLayout.make(prefs: prefs, size: full, safe: (insets.top, insets.leading, insets.bottom, insets.trailing))
             ZStack(alignment: .topLeading) {
-                SpoonFace(layout: l, opacity: prefs.opacity, scale: prefs.scale, skin: SkinShelf.skin(for: prefs), pressed: controller.pressed.union(Self.debugPressed),
+                SpoonFace(layout: l, opacity: prefs.opacity, scale: prefs.scale, skin: SkinShelf.skin(for: prefs), pressed: controller.pressed.union(Self.debugPressed), pressedCustom: controller.pressedCustom,
                           leftStick: controller.leftStick, rightStick: controller.rightStick,
                           tag: { b in prefs.showLabels ? controller.cutlery.label(b, mode: controller.mode) : nil })
                 SpoonTouchView(controller: controller, layout: l)

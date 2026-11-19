@@ -3,28 +3,25 @@ import PhotosUI
 import UniformTypeIdentifiers
 import WebKit
 
-/// 게임 하나의 설정: 표지 이미지, 이 게임만의 가상 패드 설정, 컨트롤러 진동표, 성능(화질·기록), 저장 데이터(로컬 게임만).
-/// 게임 목록에서 게임칩을 꾹 눌러 열거나, 게임 중 일시정지 시트 "이 게임 설정"으로 연다.
+/// 게임 하나의 설정. 순서: 표지 › 저장 데이터(로컬 게임만) › 조작(패드·컨트롤러·키보드·진동) › 소리·화면 › 인터넷.
+/// 게임 목록에서 게임칩을 꾹 눌러 › 이 게임 설정으로 열거나, 게임 중 일시정지 › 이 게임 설정 더 보기로 연다.
+/// 게임 중에 열었을 때만 맨 아래에 성능 기록과 진단 정보가 더 보인다 (화질·프레임 제한은 일시정지 화면에).
 struct DishSettingsView: View {
     let dish: Dish
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var store = DishPrefsStore.shared
     @State private var photoItem: PhotosPickerItem?
-    @State private var showRumblePicker = false
     @State private var showEditor = false
-    @State private var rumbleCard: RumbleCard?
-    @State private var rumbleIsOwn = false
-    @State private var rumbleNote: String?
-    @State private var rumbleExportURL: URL?
+    /// 조작 › 컨트롤러 진동 줄에 보이는 요약 (진동 화면에서 돌아오면 다시 읽는다)
+    @State private var rumbleSummary = ""
     @State private var showSoundFontPicker = false
     @State private var soundFont: SoundFontShelf.Font? = SoundFontShelf.current
     @State private var soundFontNote: String?
     @StateObject private var freezerModel: FreezerModel
 
-    /// 게임 중에 열었을 때: 진단 정보를 지금 화면 상태와 함께 연다 (게임 컨테이너가 넘긴다). 목록에서 열면 nil
+    /// 게임 중에 열었을 때: 진단 정보를 지금 화면 상태와 함께 연다 (게임 컨테이너가 넘긴다).
+    /// 목록에서 열면 nil — 그때는 성능·진단 칸을 보이지 않는다
     var onReceipt: (() -> Void)?
-    /// 목록에서 열었을 때 띄우는 진단 정보 (화면 상태 없이 이 게임 기록만)
-    @State private var showReceipt = false
 
     init(dish: Dish, onReceipt: (() -> Void)? = nil) {
         self.dish = dish
@@ -33,6 +30,12 @@ struct DishSettingsView: View {
     }
 
     private var prefs: DishPrefs { store.prefs(for: dish.id) }
+    /// 온라인 접속 허용을 고를 수 있는 게임 (가져온 PC 게임)
+    private var allowsOnlineToggle: Bool { dish.recipe == .mkxp || dish.recipe == .electron || dish.recipe == .rpgMakerMV }
+    /// 인터넷 칸에 보일 것이 있는가: 게임 파일 저장(포켓로그)·온라인 접속·웹 권한
+    private var hasInternetSection: Bool {
+        dish.knownWeb == .pokerogue || allowsOnlineToggle || (dish.recipe != .mkxp && !(prefs.media ?? [:]).isEmpty)
+    }
     private var usesOwnPad: Binding<Bool> {
         Binding(get: { prefs.pad != nil },
                 set: { on in store.update(dish.id) { $0.pad = on ? ($0.pad ?? PadPrefs.global()) : nil } })
@@ -90,6 +93,9 @@ struct DishSettingsView: View {
                     .padding(.vertical, 4)
                 }
 
+                // 저장 데이터: 가장 자주 찾는 것이라 표지 바로 아래 (로컬 게임만)
+                if !dish.isRemote { FreezerSection(model: freezerModel) }
+
                 Section {
                     Toggle(isOn: usesOwnPad) {
                         Text("이 게임만의 패드 설정")
@@ -99,23 +105,8 @@ struct DishSettingsView: View {
                         PadPrefsControls(prefs: ownPad, onEditLayout: { showEditor = true })
                         Button("기본 설정 값으로 되돌리기") { ownPad.wrappedValue = PadPrefs.global() }
                     }
-                } header: {
-                    Text("가상 패드")
-                }
-
-                Section {
-                    NavigationLink {
-                        InputView(dish: dish)
-                    } label: {
-                        LabeledContent("컨트롤러·키보드", value: KeyMapStore.shared.usesOwn(dish.id) ? "키: 이 게임만" : "키: 모든 게임 설정")
-                    }
-                } header: {
-                    Text("컨트롤러·키보드")
-                }
-
-                // 터치 조작 (docs/engines/IMPLEMENTATION-touch.md §8): 새 모양 Electron 게임만
-                if dish.isRedBean, let found = dish.electron?.inputStyle {
-                    Section {
+                    // 터치 조작 (docs/engines/IMPLEMENTATION-touch.md §8): 새 모양 Electron 게임만
+                    if dish.isRedBean, let found = dish.electron?.inputStyle {
                         Picker("조작 방식", selection: Binding(get: { prefs.inputStyle.flatMap(ElectronInfo.InputStyle.init(rawValue:)) },
                                                             set: { v in store.update(dish.id) { $0.inputStyle = v?.rawValue } })) {
                             Text("자동 (\(Self.styleName(found)))").tag(ElectronInfo.InputStyle?.none)
@@ -127,11 +118,21 @@ struct DishSettingsView: View {
                             Text("키보드 키 보기")
                             Text("Esc·Enter 같은 키를 화면 옆에 띄워요")
                         }
-                    } header: {
-                        Text("조작")
-                    } footer: {
-                        Text("길게 누르면 설명이 보여요. 조작 방식은 게임을 다시 켜면 적용돼요.")
                     }
+                    NavigationLink {
+                        InputView(dish: dish)
+                    } label: {
+                        LabeledContent("컨트롤러·키보드", value: KeyMapStore.shared.usesOwn(dish.id) ? "이 게임만" : "모든 게임 설정")
+                    }
+                    NavigationLink {
+                        RumbleSettingsView(dish: dish)
+                    } label: {
+                        LabeledContent("컨트롤러 진동", value: rumbleSummary)
+                    }
+                } header: {
+                    Text("조작")
+                } footer: {
+                    if dish.isRedBean, dish.electron?.inputStyle != nil { Text("조작 방식은 게임을 다시 켜면 적용돼요.") }
                 }
 
                 Section {
@@ -152,81 +153,65 @@ struct DishSettingsView: View {
                         }
                         if let soundFontNote { Text(soundFontNote).font(.footnote).foregroundStyle(.secondary) }
                     }
-                } header: {
-                    Text("소리")
-                } footer: {
-                    Text("끄면 무음 모드일 때 이 게임 소리가 나지 않고, 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 소리·진동에서 모든 게임에 같이 정해요."
-                         + (dish.recipe == .mkxp ? " MIDI 배경음악은 사운드폰트가 있어야 소리가 나요. 넣은 사운드폰트는 이런 게임 모두가 같이 쓰고, 게임에 들어 있는 사운드폰트가 먼저예요. 게임을 처음 켤 때 적용돼요." : ""))
-                }
-
-                if dish.recipe == .rpgMakerMV {
-                    Section {
-                        Toggle("픽셀 선명하게", isOn: Binding(get: { prefs.pixelSharp != false },
-                                                         set: { on in store.update(dish.id) { $0.pixelSharp = on ? nil : false } }))
-                    } header: {
-                        Text("화면")
-                    } footer: {
-                        Text("켜면 도트 그림을 흐리지 않고 또렷하게 키워요. 끄면 부드럽게 보여요. 게임을 다시 켜면 적용돼요.")
-                    }
-                }
-
-                if dish.knownWeb == .pokerogue {
-                    Section {
-                        Toggle(isOn: audioCache) {
-                            Text("게임 파일 저장")
-                            Text("한 번 받은 파일은 기다리지 않고 바로 써요")
-                        }
-                    } footer: {
-                        Text("한 번 받은 음악과 효과음, 그림을 이 기기에 저장해 두고, 다음부터는 서버에서 다시 받지 않아요. 오래 플레이할수록 저장 공간을 더 써요. 끄면 저장한 파일을 지워요.")
-                    }
-                }
-
-                if dish.recipe == .mkxp {
-                    Section {
-                        Toggle("온라인 접속 허용", isOn: Binding(get: { prefs.allowOnline != false },
-                                                             set: { on in store.update(dish.id) { $0.allowOnline = on ? nil : false } }))
-                    } header: {
-                        Text("온라인")
-                    } footer: {
-                        Text("켜 두면 게임이 인터넷 서버에 접속해 온라인 멀티를 할 수 있어요. 믿을 수 있는 서버에만 접속하세요. 끄면 인터넷이 없는 것처럼 실행돼요. 바꾼 값은 게임을 처음 켤 때 적용돼요. 이미 한 번 켰다면 빙수를 완전히 닫았다 다시 열어 주세요.")
-                    }
-                }
-
-                Section {
-                    LabeledContent("지금 쓰는 표", value: rumbleSummary)
-                    Button { showRumblePicker = true } label: { Label("JSON 가져오기", systemImage: "square.and.arrow.down") }
-                    if let url = rumbleExportURL {
-                        ShareLink(item: url) {
-                            Label(rumbleCard == nil ? "빈 양식 내보내기" : "지금 표 내보내기", systemImage: "square.and.arrow.up")
+                    if dish.recipe == .rpgMakerMV {
+                        Toggle(isOn: Binding(get: { prefs.pixelSharp != false },
+                                             set: { on in store.update(dish.id) { $0.pixelSharp = on ? nil : false } })) {
+                            Text("픽셀 선명하게")
+                            Text("끄면 부드럽게 보여요. 게임을 다시 켜면 적용돼요")
                         }
                     }
-                    if rumbleIsOwn {
-                        Button(role: .destructive) {
-                            RumbleShelf.removeUserFile(for: dish.id)
-                            refreshRumble()
-                            rumbleNote = "직접 넣은 표를 지웠어요"
-                        } label: { Label("기본 진동표로", systemImage: "arrow.uturn.backward") }
-                    }
-                    if let rumbleNote { Text(rumbleNote).font(.footnote).foregroundStyle(.secondary) }
                 } header: {
-                    Text("컨트롤러 진동")
+                    Text("소리·화면")
                 } footer: {
-                    Text("게임에서 효과음이 날 때 이 표에 맞춰 컨트롤러를 울려요. 형식은 빙수 안내 문서의 진동표 항목(docs/rumble)을 따라요.")
+                    Text("무음 모드 재생을 끄면 다른 앱의 음악과 함께 들려요. 소리 크기는 설정 › 소리·진동에서 정해요."
+                         + (dish.recipe == .mkxp ? " MIDI 배경음악은 사운드폰트가 있어야 나요. 넣은 사운드폰트는 이런 게임 모두가 같이 써요." : ""))
                 }
 
-                PerfSection(dish: dish)
-
-                if !dish.isRemote { FreezerSection(model: freezerModel) }
-
-                // 문제 신고용 기술 정보. 사용자 화면에는 따로 내놓지 않고 여기에만 둔다
-                Section {
-                    Button {
-                        if let onReceipt { onReceipt() } else { showReceipt = true }
-                    } label: {
-                        HStack { Text("진단 정보").foregroundStyle(Color.primary); Spacer(); Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                if hasInternetSection {
+                    Section {
+                        if dish.knownWeb == .pokerogue {
+                            Toggle(isOn: audioCache) {
+                                Text("게임 파일 저장")
+                                Text("한 번 받은 음악·그림을 기기에 두고 바로 써요. 끄면 지워요")
+                            }
+                        }
+                        if allowsOnlineToggle {
+                            Toggle(isOn: Binding(get: { prefs.allowOnline != false },
+                                                 set: { on in store.update(dish.id) { $0.allowOnline = on ? nil : false } })) {
+                                Text("온라인 접속 허용")
+                                Text("믿을 수 있는 서버에만 접속하세요. 끄면 인터넷이 없는 것처럼 실행돼요")
+                            }
+                        }
+                        if dish.recipe != .mkxp, let media = prefs.media, !media.isEmpty {
+                            ForEach(MediaConsent.Kind.allCases.filter { media[$0.rawValue] != nil }, id: \.self) { kind in
+                                Toggle(kind.label, isOn: Binding(get: { prefs.media?[kind.rawValue] == true },
+                                                                 set: { on in store.update(dish.id) { p in var m = p.media ?? [:]; m[kind.rawValue] = on; p.media = m } }))
+                            }
+                            Button("권한 다음에 다시 묻기") { store.update(dish.id) { $0.media = nil } }
+                        }
+                    } header: {
+                        Text("인터넷")
+                    } footer: {
+                        Text(dish.recipe == .mkxp && allowsOnlineToggle
+                             ? "온라인 접속은 게임을 처음 켤 때 적용돼요. 이미 켰다면 빙수를 완전히 닫았다 다시 열어 주세요."
+                             : "바꾼 값은 게임을 다시 켜면 적용돼요.")
                     }
-                } footer: {
-                    Text("문제를 알릴 때 개발자에게 보낼 기술 정보예요. 내용을 보고 직접 공유해요.")
+                }
+
+                // 게임 중(일시정지 › 이 게임 설정 더 보기)에만: 성능 기록과 진단 정보.
+                // 화질·프레임 제한은 일시정지 화면 "화면·성능"에 있어 여기 두지 않는다.
+                // 진단 정보는 지금 화면 상태·게임 화면을 같이 담아야 쓸모가 있어 홈에서는 내놓지 않는다
+                if let onReceipt {
+                    Section {
+                        NavigationLink { PerfRecordView(dish: dish) } label: { Text("성능 기록") }
+                        Button(action: onReceipt) {
+                            HStack { Text("진단 정보").foregroundStyle(Color.primary); Spacer(); Image(systemName: "chevron.right").font(.footnote.weight(.semibold)).foregroundStyle(.tertiary) }
+                        }
+                    } header: {
+                        Text("문제 알리기")
+                    } footer: {
+                        Text("진단 정보는 문제를 알릴 때 개발자에게 보낼 기술 정보예요. 내용을 보고 직접 공유해요.")
+                    }
                 }
             }
             .freezerPresentations(freezerModel)
@@ -244,12 +229,7 @@ struct DishSettingsView: View {
                 photoItem = nil
             }
         }
-        .fileImporter(isPresented: $showRumblePicker, allowedContentTypes: [.json]) { result in
-            guard case .success(let url) = result else { return }
-            importRumble(url)
-        }
-        .sheet(isPresented: $showReceipt) { ReceiptSlipView(dish: dish) }
-        .onAppear(perform: refreshRumble)
+        .onAppear { rumbleSummary = RumbleSettingsView.kind(for: dish) }
         // 창에서 직접 띄우는 선택기 (iPad 에서 시트 안 fileImporter 가 멈추는 문제, GamePicker). 고른 파일은 임시 복사본
         .background(GamePicker(isPresented: $showSoundFontPicker, types: [UTType(filenameExtension: "sf2") ?? .data]) { url in
             guard let url else { return }
@@ -270,24 +250,87 @@ struct DishSettingsView: View {
 
     /// 조작 방식 이름 (화면 문구)
     static func styleName(_ s: ElectronInfo.InputStyle) -> String { s == .pointer ? "터치" : "가상 패드" }
+}
 
-    // MARK: 진동표
+/// 이 게임 설정 › 조작 › 컨트롤러 진동: 지금 쓰는 진동표, JSON 가져오기·내보내기, 기본 표로 되돌리기
+struct RumbleSettingsView: View {
+    let dish: Dish
+    @State private var showRumblePicker = false
+    @State private var rumbleCard: RumbleCard?
+    @State private var rumbleIsOwn = false
+    @State private var rumbleNote: String?
+    @State private var rumbleExportURL: URL?
 
-    private var rumbleSummary: String {
-        guard let card = rumbleCard else { return "없음" }
-        return (rumbleIsOwn ? "직접 넣은 표" : "기본 (\(card.game))") + " · 규칙 \(card.set.rules.count)개"
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("쓰는 표", value: Self.kind(for: dish))
+                LabeledContent("규칙", value: Self.summary(for: dish))
+                if dish.recipe == .mkxp || dish.recipe == .rpgMakerMV {
+                    LabeledContent("화면 흔들림", value: RumbleSet.forDish(dish).shake ? "울려요" : "울리지 않아요")
+                }
+                Button { showRumblePicker = true } label: { Label("JSON 가져오기", systemImage: "square.and.arrow.down") }
+                if let url = rumbleExportURL {
+                    ShareLink(item: url) {
+                        Label(rumbleCard == nil ? "새 표 양식 내보내기" : "지금 표 내보내기", systemImage: "square.and.arrow.up")
+                    }
+                }
+                if rumbleIsOwn {
+                    Button(role: .destructive) {
+                        RumbleShelf.removeUserFile(for: dish.id)
+                        refreshRumble()
+                        rumbleNote = "직접 넣은 표를 지웠어요"
+                    } label: { Label("기본 진동표로", systemImage: "arrow.uturn.backward") }
+                }
+                if let rumbleNote { Text(rumbleNote).font(.footnote).foregroundStyle(.secondary) }
+            } footer: {
+                Text(dish.recipe == .mkxp || dish.recipe == .rpgMakerMV
+                     ? "게임에서 효과음이 나거나 화면이 흔들릴 때 이 표에 맞춰 컨트롤러를 울려요. 형식은 빙수 안내 문서의 진동표 항목(docs/rumble)을 따라요."
+                     : "게임에서 효과음이 날 때 이 표에 맞춰 컨트롤러를 울려요. 형식은 빙수 안내 문서의 진동표 항목(docs/rumble)을 따라요.")
+            }
+        }
+        .navigationTitle("컨트롤러 진동")
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(Palette.accent)
+        .onAppear(perform: refreshRumble)
+        .fileImporter(isPresented: $showRumblePicker, allowedContentTypes: [.json]) { result in
+            guard case .success(let url) = result else { return }
+            importRumble(url)
+        }
     }
 
-    /// 내보낼 파일: 지금 표 파일, 표가 없으면 새로 쓸 수 있는 양식
+
+    /// 어떤 표를 쓰는지 한마디 (게임 설정 › 조작 줄): "직접 넣은 표" / "게임 전용" / "기본" / "없음"
+    static func kind(for dish: Dish) -> String {
+        if RumbleShelf.userCard(for: dish.id) != nil { return "직접 넣은 표" }
+        if RumbleShelf.bundledCard(for: dish) != nil { return "게임 전용" }
+        return RumbleShelf.library.fallback.rules.isEmpty ? "없음" : "기본"
+    }
+
+    /// 규칙 요약: "규칙 N개 + 기본 표 M개" (게임 표), 게임 표가 없으면 "포켓몬 공통 기본 표 · 규칙 N개"
+    static func summary(for dish: Dish) -> String {
+        let own = RumbleShelf.userCard(for: dish.id)
+        guard let card = own ?? RumbleShelf.bundledCard(for: dish) else {
+            let n = RumbleShelf.library.fallback.rules.count
+            return n > 0 ? "포켓몬 공통 기본 표 · \(n)개" : "없음"
+        }
+        let inherited = card.extends.isEmpty ? "" : " + 기본 표 \(card.extends.count)개"
+        return (own != nil ? "" : "\(card.game) · ") + "\(card.ownRules)개" + inherited
+    }
+
+    /// 내보낼 파일: 지금 표 파일, 표가 없으면 기본 표를 물려받는 양식
     private func exportURL() -> URL? {
         if let url = rumbleCard?.url { return url }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("rumble-template.json")
+        let extends = RumbleShelf.fallbackNames.map { "\"\($0)\"" }.joined(separator: ", ")
         let template = """
         {
           "format": 1,
-          "game": "\(dish.title.replacingOccurrences(of: "\"", with: "").prefix(40))",
+          "game": "\(dish.title.replacingOccurrences(of: "\"", with: "").replacingOccurrences(of: "\\", with: "").prefix(40))",
+          "extends": [\(extends)],
           "rules": [
-            { "sound": "hit", "match": "contains", "strong": 0.8, "weak": 0.4, "duration": 0.15 }
+            { "sound": "hit", "match": "exact", "event": "hit_normal" },
+            { "sound": "explosion", "match": "prefix", "strong": 0.9, "weak": 0.4, "duration": 0.3 }
           ]
         }
         """

@@ -70,6 +70,17 @@ struct PadButtonSlot: Identifiable {
     }
 }
 
+/// 사용자가 더한 커스텀 키 자리 (배치 편집 › 요소 추가 › 커스텀 키). 누르면 `send` 를 보낸다
+struct CustomKeySlot: Identifiable {
+    let id: String            // 배치 요소 id ("custom.key:Digit5")
+    let send: KeyTarget
+    let center: CGPoint
+    let radius: CGFloat
+    let glyph: String
+    var hitRadius: CGFloat { radius * 1.5 }
+    func contains(_ p: CGPoint) -> Bool { hypot(p.x - center.x, p.y - center.y) <= hitRadius }
+}
+
 /// 스틱 자리
 struct StickSlot {
     let zone: CGRect          // 손가락이 닿으면 스틱이 생기는 영역 (움직이는 스틱)
@@ -84,6 +95,8 @@ struct StickSlot {
 /// 패드 배치 계산 (가로 화면 기준)
 struct SpoonLayout {
     var buttons: [PadButtonSlot] = []
+    /// 사용자가 더한 커스텀 키 (사용자 배치에만 있다)
+    var customs: [CustomKeySlot] = []
     var leftStick: StickSlot?
     var rightStick: StickSlot?
     var dpadCenter: CGPoint?
@@ -113,6 +126,7 @@ struct SpoonLayout {
             let half = b.width / 2
             add(b.center.x - half, b.center.x + half, center: b.center.x)
         }
+        for b in customs { add(b.center.x - b.radius, b.center.x + b.radius, center: b.center.x) }
         if let s = leftStick { add(s.restCenter.x - s.baseRadius, s.restCenter.x + s.baseRadius, center: s.restCenter.x) }
         if let s = rightStick { add(s.restCenter.x - s.baseRadius, s.restCenter.x + s.baseRadius, center: s.restCenter.x) }
         if let c = dpadCenter { add(c.x - dpadRadius, c.x + dpadRadius, center: c.x) }
@@ -122,7 +136,7 @@ struct SpoonLayout {
 
     /// 패드 요소들의 맨 위 y (세로 화면에서 게임을 그 위 공간에 놓을 때 씀). 요소가 없으면 nil.
     var topEdge: CGFloat? {
-        var ys: [CGFloat] = buttons.map { $0.center.y - $0.radius }
+        var ys: [CGFloat] = buttons.map { $0.center.y - $0.radius } + customs.map { $0.center.y - $0.radius }
         if let s = leftStick { ys.append((s.floating ? s.zone.minY : s.restCenter.y - s.baseRadius)) }
         if let s = rightStick { ys.append(s.restCenter.y - s.baseRadius) }
         if let c = dpadCenter { ys.append(c.y - dpadRadius) }
@@ -136,14 +150,33 @@ struct SpoonLayout {
     typealias Insets = (top: CGFloat, left: CGFloat, bottom: CGFloat, right: CGFloat)
 
     /// iPad 는 화면이 커서 같은 배율이면 버튼이 작게 느껴진다. 설정 배율에 기기 배수를 곱한다 (2026-10-29 iPad 점검).
-    static var deviceFactor: CGFloat { deviceFactor(UIDevice.current.userInterfaceIdiom) }
+    static var deviceFactor: CGFloat { deviceFactor(currentIdiom) }
     static func deviceFactor(_ idiom: UIUserInterfaceIdiom) -> CGFloat { idiom == .pad ? 1.4 : 1 }
+
+    /// 패드 배치를 큰 화면(1.4배·L·R 원호·"pad." 배치)으로 그릴지: 기기 종류가 아니라 화면 크기로 (빌드 50).
+    /// iPhone Duo 는 기기 종류가 iPhone 이지만 펼친 안쪽 화면(짧은 변 669pt)은 iPad mini(744pt)에 가깝다.
+    /// 바깥 화면(466pt)·가장 큰 iPhone(440pt)은 작은 화면. iPad 는 창이 좁아져도(Slide Over) 계속 큰 화면.
+    static let largeScreenSide: CGFloat = 600
+    static func idiom(for size: CGSize, device: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> UIUserInterfaceIdiom {
+        device == .pad || min(size.width, size.height) >= largeScreenSide ? .pad : .phone
+    }
+    /// 지금 창 크기로 본 화면 종류 (창이 없거나 메인 스레드가 아니면 기기 종류)
+    static var currentIdiom: UIUserInterfaceIdiom {
+        guard Thread.isMainThread else { return UIDevice.current.userInterfaceIdiom }
+        return MainActor.assumeIsolated {
+            let w = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows).first { $0.isKeyWindow }
+            return w.map { idiom(for: $0.bounds.size) } ?? UIDevice.current.userInterfaceIdiom
+        }
+    }
 
     /// 패드 설정 한 벌로 배치를 정하는 입구. 이 기기·방향·종류의 사용자 배치(`prefs.layouts`)가 있으면 그것을 풀고,
     /// 없으면 빙수가 계산한 기본 배치. 오버레이·눈송이 자리·게임 자리·미리보기가 모두 이것을 쓴다.
     static func make(prefs: PadPrefs, size: CGSize, safe: Insets,
-                     idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> SpoonLayout {
+                     idiom: UIUserInterfaceIdiom? = nil) -> SpoonLayout {
+        let idiom = idiom ?? Self.idiom(for: size)
         let landscape = size.width >= size.height
+        let safe = landscape ? cameraBandSafe(safe) : safe
         if let a = prefs.arrangement(idiom: idiom, landscape: landscape) {
             return resolve(a, size: size, safe: safe, k: CGFloat(prefs.scale) * deviceFactor(idiom),
                            leftHanded: !landscape && prefs.kind == .oneHand && prefs.leftHanded, floatingStick: prefs.floatingStick)
@@ -152,10 +185,23 @@ struct SpoonLayout {
                     leftHanded: prefs.leftHanded, idiom: idiom)
     }
 
+    /// iPhone Duo 바깥 화면 가로: 카메라·상태 띠는 화면 높이 전체 세로 띠지만, 카메라는 한 구석에만 있다.
+    /// 그래서 띠 대신 카메라를 포함한 가로 띠(카메라 끝까지)를 안전 영역으로 보고, 좌우는 화면 끝까지 쓴다
+    /// (사용자 2026-11-18). 띠가 왼쪽이면 카메라는 왼쪽 위, 오른쪽이면(180° 돌린 가로·텐트 모양) 오른쪽 아래.
+    /// 좌우 안전 영역이 한쪽에만 있을 때만 해당 (GameFrame.hasCameraStrip 과 같은 판단)
+    static func cameraBandSafe(_ safe: Insets) -> Insets {
+        guard abs(safe.left - safe.right) > 1 else { return safe }
+        let band = GameFrame.cameraExtent(strip: max(safe.left, safe.right))
+        return safe.left > safe.right
+            ? (top: max(safe.top, band), left: 0, bottom: safe.bottom, right: 0)
+            : (top: safe.top, left: 0, bottom: max(safe.bottom, band), right: 0)
+    }
+
     /// `shoulderArc`: L·R 을 엄지 원호 위에 둔다 (기본은 iPad 에서만, 2026-10-30 사용자 선택 4-A)
     static func make(size: CGSize, safe: Insets,
                      kind: PadKind, scale requested: CGFloat, floatingStick: Bool, leftHanded: Bool = false,
-                     idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) -> SpoonLayout {
+                     idiom: UIUserInterfaceIdiom? = nil) -> SpoonLayout {
+        let idiom = idiom ?? Self.idiom(for: size)
         let W = size.width, H = size.height
         let shoulderArc = idiom == .pad
         let requested = requested * deviceFactor(idiom)
@@ -208,7 +254,8 @@ struct SpoonLayout {
             l.buttons += arcShoulders(shoulders, size: size, left: stickBase, right: CGPoint(x: cx, y: cy), scale: scale)
         } else {
             // 위쪽 모서리 알약: 트리거가 맨 위, 숄더가 그 아래
-            let pr = 23 * scale, topY = max(safe.top, 10) + 20 * scale
+            // 위 안전 영역이 있으면(Duo 바깥 화면의 카메라 띠) 그 바로 아래에 붙인다
+            let pr = 23 * scale, topY = safe.top > 10 ? safe.top + pr + 4 : max(safe.top, 10) + 20 * scale
             for (b, label) in shoulders {
                 let isLeft = b == .lb || b == .lt
                 let y = (b == .lb || b == .rb) && kind.hasTriggers ? topY + 50 * scale : topY
@@ -305,7 +352,10 @@ struct SpoonLayout {
     static func makePortrait(size: CGSize, safe: Insets,
                              kind: PadKind, scale requested: CGFloat, floatingStick: Bool) -> SpoonLayout {
         let W = size.width, H = size.height
-        let margin = max(safe.left, safe.right, 16) + 12
+        // 좌우 안전 영역이 한쪽에만 있으면(iPhone Duo 바깥 화면의 카메라·상태 띠, 세로에서는 위쪽에만 카메라) 패드 줄 높이에는
+        // 걸리지 않으므로 여백에서 뺀다 — 양쪽에 띠 폭을 잡으면 패드가 줄어든다 (GameFrame.underCamera 와 같은 판단)
+        let side = abs(safe.left - safe.right) > 1 ? 0 : max(safe.left, safe.right)
+        let margin = max(side, 16) + 12
         // 폭 맞춤: 스틱(96) + 사이 공간(36) + ABXY(2*46+2*26=144) 이 (W - 2*margin) 안에 들어가는 최대 배율
         let needed: CGFloat = kind.hasStick ? (96 + 36 + 144) : (124 + 30 + 144)
         let fit = (W - 2 * margin) / needed
@@ -412,6 +462,10 @@ struct SpoonLayout {
                 l.dpadCenter = place(e, halfW: r, halfH: r); l.dpadRadius = r
             case .orb:
                 l.orbCenter = place(e, halfW: r, halfH: r)
+            case .custom:
+                guard let t = e.customTarget, l.customs.count < PadArrangement.maxCustom else { continue }
+                let glyph = (e.label?.isEmpty == false ? e.label : nil) ?? PadArrangement.customGlyph(t)
+                l.customs.append(CustomKeySlot(id: e.id, send: t, center: place(e, halfW: r, halfH: r), radius: r, glyph: glyph))
             case .stick:
                 let right = e.isRightStick
                 let c = place(e, halfW: r, halfH: r)
@@ -461,6 +515,11 @@ struct SpoonLayout {
             e.label = b.label
             out.append(e)
         }
+        for b in layout.customs {
+            var e = el(.custom, center: b.center, radius: b.radius)
+            e.send = b.send.stored
+            out.append(e)
+        }
         if let c = orbCenter {
             var e = el(.orb, center: c, radius: 16)
             e.radius = 16
@@ -475,6 +534,11 @@ struct SpoonLayout {
         let dx = p.x - c.x, dy = p.y - c.y
         guard hypot(dx, dy) <= dpadRadius * 1.3, hypot(dx, dy) > dpadRadius * 0.15 else { return nil }
         return abs(dx) > abs(dy) ? (dx > 0 ? .right : .left) : (dy > 0 ? .down : .up)
+    }
+
+    /// 커스텀 키 판정 (가장 가까운 것)
+    func customKey(at p: CGPoint) -> CustomKeySlot? {
+        customs.filter { $0.contains(p) }.min { hypot(p.x - $0.center.x, p.y - $0.center.y) < hypot(p.x - $1.center.x, p.y - $1.center.y) }
     }
 
     func button(at p: CGPoint) -> PadButton? {

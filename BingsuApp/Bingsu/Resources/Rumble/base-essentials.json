@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "kind": "base",
+  "game": "Pokemon Essentials 신형 (v19~21)",
+  "source": "Audio/SE 이름, 어나더레드(v21.1) 기준. 레조넌스 Audio/SE 도 같은 파일. 이름이 독특해 다른 게임에 써도 안전",
+  "fallback": true,
+  "rules": [
+    {"sound": "battle damage super",  "match": "exact", "event": "hit_super"},
+    {"sound": "battle damage normal", "match": "exact", "event": "hit_normal"},
+    {"sound": "battle damage weak",   "match": "exact", "event": "hit_weak"},
+    {"sound": "pkmn faint",           "match": "exact", "event": "faint"},
+    {"sound": "battle throw",         "match": "exact", "event": "ball_throw"},
+    {"sound": "battle ball hit",      "match": "exact", "event": "ball_hit"},
+    {"sound": "battle ball drop",     "match": "exact", "event": "ball_drop"},
+    {"sound": "battle ball shake",    "match": "exact", "event": "ball_shake"},
+    {"sound": "battle catch click",   "match": "exact", "event": "catch_click"},
+    {"sound": "battle critical catch throw", "match": "exact", "event": "crit_throw"},
+    {"sound": "battle recall",        "match": "exact", "event": "recall"},
+    {"sound": "battle jump to ball",  "match": "exact", "event": "catch_absorb"},
+    {"sound": "battle flee",          "match": "exact", "event": "flee"},
+    {"sound": "pkmn level up",        "match": "exact", "event": "level_up"}
+  ]
+}

@@ -759,6 +759,23 @@ enum BowlScripts {
           return start.apply(this, a);
         };
       } catch (e) {}
+      // RPG Maker MV·MZ 화면 흔들림: Game_Screen 은 게임 스크립트가 늦게 만든다. 0.5초마다 찾아 한 번 건다 (2분까지)
+      let shakeTries = 0;
+      const shakeTimer = setInterval(() => {
+        try {
+          const G = globalThis.Game_Screen;
+          if (G && G.prototype && typeof G.prototype.startShake === "function" && !G.prototype.startShake.__bingsu) {
+            const orig = G.prototype.startShake;
+            const wrapped = function (power, speed, duration) {
+              try { const p = Number(power), d = Number(duration); if (p > 0 && d > 0) post({ shake: Math.min(p, 9), frames: Math.min(d, 600) }); } catch (e) {}
+              return orig.apply(this, arguments);
+            };
+            wrapped.__bingsu = true;
+            G.prototype.startShake = wrapped;
+            clearInterval(shakeTimer);
+          } else if (++shakeTries > 240) clearInterval(shakeTimer);
+        } catch (e) { clearInterval(shakeTimer); }
+      }, 500);
     })();
     """
 
@@ -980,6 +997,95 @@ enum BowlScripts {
       vp.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
     })();
     """
+
+    /// 세이브 카드 (빌드 49, Freezer/SaveCard.swift). MV·MZ 가 세이브 파일을 쓰면(`DataManager.saveGame`, 빙수 상태 저장은
+    /// `Scoop.mvmzScript` 가 `__bingsuCard` 를 직접) 맵 이름·플레이 시간·파티 캐릭터·캐릭터 그림 한 칸·맵 화면을 "mv" 로 보낸다.
+    /// 맵 화면은 메뉴로 넘어갈 때 엔진이 뜨는 `snapForBackground` 직전에 따로 (MV 는 그 사진을 흐리게 하므로) 떠 둔다.
+    /// 그림은 엔진이 이미 읽은 것(암호화 풀린 것)을 캔버스로 자른다. 실패해도 게임에는 영향 없게 모두 try
+    static let saveCard = #"""
+    (function () {
+      "use strict";
+      let mapSnap = null;
+      function post(o) { try { window.webkit.messageHandlers.mv.postMessage(o); } catch (e) {} }
+      function canvasOf(b) { try { return b && (b._canvas || b.canvas || b._image) || null; } catch (e) { return null; } }
+      function shot(bitmap, side) {
+        try {
+          const src = canvasOf(bitmap);
+          if (!src || !src.width || !src.height) return null;
+          const k = Math.min(1, side / Math.max(src.width, src.height));
+          const c = document.createElement("canvas");
+          c.width = Math.max(1, Math.round(src.width * k)); c.height = Math.max(1, Math.round(src.height * k));
+          c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+          return c.toDataURL("image/jpeg", 0.75);
+        } catch (e) { return null; }
+      }
+      function charImage(name, index) {
+        try {
+          const b = ImageManager.loadCharacter(name);
+          if (!b || !b.isReady() || !b.width) return null;
+          const big = ImageManager.isBigCharacter(name);
+          const pw = b.width / (big ? 3 : 12), ph = b.height / (big ? 4 : 8);
+          const i = big ? 0 : Math.max(0, Math.min(7, index | 0));
+          const sx = ((i % 4) * 3 + 1) * pw, sy = Math.floor(i / 4) * 4 * ph;
+          const c = document.createElement("canvas");
+          c.width = Math.round(pw); c.height = Math.round(ph);
+          c.getContext("2d").drawImage(canvasOf(b), sx, sy, pw, ph, 0, 0, pw, ph);
+          return c.toDataURL("image/png");
+        } catch (e) { return null; }
+      }
+      function card(name) {
+        try {
+          let map = "";
+          try { map = $gameMap.displayName() || ""; } catch (e) {}
+          if (!map) { try { const mi = $dataMapInfos[$gameMap.mapId()]; map = (mi && mi.name) || ""; } catch (e) {} }
+          let chars = [];
+          try { chars = $gameParty.charactersForSavefile().slice(0, 4).filter(function (c) { return c && c[0]; }); } catch (e) {}
+          const o = { op: "card", name: String(name), map: String(map).slice(0, 60), play: 0, chars: chars, charImages: [] };
+          try { o.play = $gameSystem.playtime(); } catch (e) {}
+          chars.forEach(function (c) { const u = charImage(c[0], c[1]); if (u) o.charImages.push(u); });
+          const sc = SceneManager._scene;
+          const p = (typeof Scene_Map !== "undefined" && sc instanceof Scene_Map) ? SceneManager.snap() : mapSnap;
+          if (p) o.photo = shot(p, 320);
+          post(o);
+        } catch (e) {}
+      }
+      window.__bingsuCard = card;
+      function install() {
+        if (typeof DataManager === "undefined" || typeof SceneManager === "undefined" || typeof StorageManager === "undefined" ||
+            typeof DataManager.saveGame !== "function" || typeof Scene_Map === "undefined") return false;
+        if (DataManager.__bingsuCard) return true;
+        DataManager.__bingsuCard = true;
+        const mz = typeof StorageManager.saveObject === "function";
+        function fileName(id) {
+          if (mz) return DataManager.makeSavename(id) + ".rmmzsave";
+          try { const p = String(StorageManager.localFilePath(id)); return p.slice(p.lastIndexOf("/") + 1); } catch (e) { return "file" + id + ".rpgsave"; }
+        }
+        const snapBg = SceneManager.snapForBackground;
+        SceneManager.snapForBackground = function () {
+          try {
+            if (this._scene instanceof Scene_Map) {
+              if (mapSnap && mapSnap.destroy) { try { mapSnap.destroy(); } catch (e) {} }
+              mapSnap = this.snap();
+            }
+          } catch (e) {}
+          return snapBg.apply(this, arguments);
+        };
+        const save = DataManager.saveGame;
+        DataManager.saveGame = function (id) {
+          const r = save.apply(this, arguments);
+          const n = fileName(id);
+          if (r && typeof r.then === "function") r.then(function () { card(n); }, function () {});
+          else if (r) card(n);
+          return r;
+        };
+        return true;
+      }
+      if (!install()) {
+        let tries = 0;
+        const t = setInterval(function () { if (install() || ++tries > 120) clearInterval(t); }, 500);
+      }
+    })();
+    """#
 
     private static func jsString(_ s: String) -> String {
         let data = try! JSONSerialization.data(withJSONObject: [s])

@@ -463,9 +463,11 @@ private struct TargetPicker: View {
     private func pick(_ t: KeyTarget) { onPick(t); dismiss() }
 }
 
-/// 키보드 키 격자 (KeyCatalog 묶음 순서)
-private struct KeyGrid: View {
+/// 키보드 키 격자 (KeyCatalog 묶음 순서). 배치 편집의 커스텀 키 고르기도 쓴다
+struct KeyGrid: View {
     let selected: String?
+    /// 이미 쓰인 키 (흐리게, 누를 수 없음)
+    var taken: Set<String> = []
     let onPick: (String) -> Void
 
     var body: some View {
@@ -479,6 +481,7 @@ private struct KeyGrid: View {
                                 .frame(maxWidth: .infinity, minHeight: 30)
                         }
                         .buttonStyle(.bordered)
+                        .disabled(taken.contains(c))
                         .tint(c == selected ? Palette.accent : .gray)
                         .accessibilityLabel("\(KeyCatalog.label(c)) 키")
                     }

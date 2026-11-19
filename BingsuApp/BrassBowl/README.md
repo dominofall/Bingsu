@@ -61,6 +61,13 @@ git clone --depth 1 --branch v2.5.7 https://github.com/FluidSynth/fluidsynth ~/D
 
 다 만든 뒤 디스크가 모자라면 `deps/downloads`(1.4GB 안팎)는 지워도 된다(다시 빌드할 때 다시 받는다).
 
+## 울타리 (fence.c, 빌드 46)
+
+`build-framework.sh` 가 `fence.c` 를 같이 컴파일해 링크한다. 프레임워크 안의 `open`·`stat`·`socket`·`syscall` 등을 같은 이름으로 정의해
+게임 스크립트가 앱 데이터 전체에 닿지 못하게 막는다. 빙수가 `mkxp_fenceAdd`·`mkxp_fenceSetNetwork`·`mkxp_fenceEnable` 로 폴더를 알려 준다.
+엔진을 새로 링크한 뒤에는 `nm -u BrassBowl | grep -E '^_(open|stat|socket|syscall|___syscall)$'` 가 비어 있어야 한다(남아 있으면 그 호출은 울타리를 안 지남).
+엔진에 새 libc 파일·네트워크 함수가 들어오면 `fence.c` 에 감싸기를 더한다. 규칙과 확인: `docs/security/rgss-files.md`. 개발용 `BINGSU_FENCE_PROBE=1`, `BINGSU_NO_FENCE=1`, `BINGSU_FENCE_NET_OFF=1`.
+
 ## 소리 — MIDI (FluidSynth)
 
 포크에는 MIDI 합성기 FluidSynth 가 없다. 그대로 두면 엔진이 실행 중 `@rpath/libfluidsynth.dylib` 를 찾다가 못 찾고 MIDI 를 건너뛰어, MIDI BGM 을 쓰는 게임이 무음이 된다. 그래서 FluidSynth 를 프레임워크 안에 정적으로 넣는다.

@@ -149,7 +149,8 @@ PNG 규칙: 한 변 **32~1024px**, 정사각(알약은 가로가 길어도 됨),
         {"type": "button", "button": "a", "anchor": "bottomRight", "x": -50, "y": -96, "radius": 26},
         {"type": "button", "button": "menu", "anchor": "bottomCenter", "x": 48, "y": -39, "radius": 15, "pill": true, "label": "+"},
         {"type": "stick",  "side": "left", "anchor": "bottomLeft", "x": 94, "y": -94, "radius": 48, "floating": true},
-        {"type": "orb",    "anchor": "bottomCenter", "x": 0, "y": -70}
+        {"type": "orb",    "anchor": "bottomCenter", "x": 0, "y": -70},
+        {"type": "custom", "send": "key:Digit5", "anchor": "bottomRight", "x": -170, "y": -60, "radius": 22}
       ]
     }
   }
@@ -159,7 +160,7 @@ PNG 규칙: 한 변 **32~1024px**, 정사각(알약은 가로가 길어도 됨),
 - 키는 `<기기>.<방향>.<패드 종류>`: 기기 `phone`·`pad`, 방향 `landscape`·`portrait`, 종류 `simple`·`standard`·`full`·`retro`·`oneHand`. 없는 키는 빙수 기본 배치를 씁니다. 한손은 가로에서 기본 배치로 그려지므로 `*.landscape.oneHand` 는 쓰이지 않고 `*.landscape.simple` 을 씁니다.
 - 한손 배치는 **오른손 기준**으로 적습니다. 사용자가 "왼손으로 쓰기"를 켜면 빙수가 좌우를 뒤집어 그립니다.
 - `anchor` 는 안전 영역 안쪽의 기준점: `topLeft` `topCenter` `topRight` `bottomLeft` `bottomCenter` `bottomRight`. `x`·`y` 는 그 기준점에서의 거리(오른쪽·아래가 +), `radius` 는 반지름. 단위는 **배치 포인트**로, 사용자의 크기 슬라이더(0.8~1.3)와 iPad 배율(1.4)이 곱해져 화면 pt 가 됩니다. 기본 반지름: 둥근 버튼 26, 숄더 알약 23, 보기·메뉴 15, 십자키 62, 스틱 48.
-- `type`: `button`(`button` 키 필수, `pill`·`label`·`stretch` 선택), `dpad`, `stick`(`side` left/right, `floating`), `orb`(일시정지 버튼. 사용자의 "일시정지 버튼 자리" 설정이 "패드 안"일 때만 쓰임). `button` 이름: `a` `b` `x` `y` `lb` `rb` `lt` `rt` `view` `menu` `l3` `r3` `home`.
+- `type`: `button`(`button` 키 필수, `pill`·`label`·`stretch` 선택), `dpad`, `stick`(`side` left/right, `floating`), `orb`(일시정지 버튼. 사용자의 "일시정지 버튼 자리" 설정이 "패드 안"일 때만 쓰임). `custom`(커스텀 키. `send` 필수: 키보드 키는 `key:<KeyboardEvent.code>`(예 `key:Digit5`, 빙수 키 설정 표에 있는 키만), 게임 버튼은 `pad:<버튼 이름>`. `label` 선택, 한 배치에 12개까지). `button` 이름: `a` `b` `x` `y` `lb` `rb` `lt` `rt` `view` `menu` `l3` `r3` `home`.
 - 스틱의 `floating` 을 적지 않으면 사용자의 "움직이는 스틱" 설정을 따릅니다.
 - 같은 요소가 두 번 나오면 뒤의 것을, 한 종류에 40개 넘는 요소는 거절합니다. 모르는 `type`·`button`·`anchor` 가 든 요소는 그 요소만 버리고, 모르는 키는 그 키만 버립니다. 숫자가 범위를 벗어나면 범위 안으로 맞춥니다.
 

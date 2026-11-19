@@ -14,6 +14,8 @@ import CryptoKit
 /// - 파일만 바뀜(게임이 저장함) → save.json 으로 묶는다
 /// - 둘 다 바뀜 → save.json 쪽을 쓰고, 지금 파일들은 백업으로 남긴다(사용자가 고른 되돌리기·내려받기가 이김)
 /// 파일이 모두 사라진 경우는 묶지 않는다(지우기를 퍼뜨리지 않음).
+/// 예외: 사용자가 빙수의 세이브 파일 화면에서 지운 파일은 `commit` 이 save.json 에 지움 표식(`<접두사>gone.<16진수 이름>`)을 남기고,
+/// 풀 때(다른 기기·백업 되돌리기) 그 이름의 파일을 지운다. 지우기 전 파일은 백업으로 남긴다.
 enum IceTray {
     /// 저장 파일로 보는 확장자. 그 밖의 파일(로그 등)은 묶지 않는다
     static let saveExtensions: Set<String> = ["rxdata", "rvdata", "rvdata2", "dat", "sav", "bak", "ini", "txt", "json5"]
@@ -126,7 +128,10 @@ enum IceTray {
 
         if jsonChanged, allowUnpack, let snap {
             var backedUp = false
-            if filesChanged, let packed = packData(files, fz: fz, savedAt: now()) {
+            // 지움 표식이 지금 있는 파일을 지우게 되면, 파일이 바뀌지 않았어도 지우기 전 파일을 백업해 둔다
+            let present = Set(files.compactMap { relativeName($0, fz: fz).map(nfc) })
+            let removes = goneNames(snap, fz: fz).contains { present.contains(nfc($0)) }
+            if filesChanged || removes, let packed = packData(files, fz: fz, savedAt: now()) {
                 backedUp = fz.freeze(data: packed) != nil
             }
             guard unpack(snap, fz: fz) else { return .skipped("파일 쓰기 실패") }
@@ -161,8 +166,21 @@ enum IceTray {
         fz.keyPrefix + "file." + name.utf8.map { String(format: "%02x", $0) }.joined()
     }
 
-    static func name(fromKey k: String, fz: Freezer) -> String? {
-        let head = fz.keyPrefix + "file."
+    static func name(fromKey k: String, fz: Freezer) -> String? { hexName(k, head: fz.keyPrefix + "file.") }
+
+    /// 지움 표식 키: 사용자가 세이브 파일 화면에서 지운 파일
+    static func goneKey(_ name: String, fz: Freezer) -> String {
+        fz.keyPrefix + "gone." + name.utf8.map { String(format: "%02x", $0) }.joined()
+    }
+
+    static func goneNames(_ snap: Freezer.Snapshot, fz: Freezer) -> Set<String> {
+        Set(snap.entries.keys.compactMap { hexName($0, head: fz.keyPrefix + "gone.") })
+    }
+
+    /// 한글 이름은 풀어쓴 모양(NFD)·모아쓴 모양(NFC)이 섞여 올 수 있어 비교는 NFC 로
+    private static func nfc(_ s: String) -> String { s.precomposedStringWithCanonicalMapping }
+
+    private static func hexName(_ k: String, head: String) -> String? {
         guard k.hasPrefix(head) else { return nil }
         let hex = Array(k.dropFirst(head.count))
         guard !hex.isEmpty, hex.count % 2 == 0 else { return nil }
@@ -173,6 +191,39 @@ enum IceTray {
             bytes.append(b); i += 2
         }
         return String(bytes: bytes, encoding: .utf8)
+    }
+
+    /// 세이브 파일 화면에서 파일 하나를 바꾸거나 지운 직후: 지금 파일들을 save.json 으로 바로 묶고 표식도 맞춘다.
+    /// 그래야 다음 `sync` 에서 "둘 다 바뀜"으로 보이지 않고, iCloud 에는 새 savedAt 으로 올라간다.
+    /// `gone` 은 방금 지운 이름. 파일이 하나도 안 남아도 지움 표식만 든 save.json 을 쓴다(다른 기기의 파일도 지워지게).
+    /// 게임이 꺼져 있을 때만 부른다.
+    @discardableResult
+    static func commit(_ dish: Dish, gone: [String] = []) -> Bool {
+        guard dish.recipe == .mkxp || dish.recipe == .rpgMakerMV || dish.isRedBean, !dish.isRemote else { return false }
+        lock.lock(); defer { lock.unlock() }
+        let fz = Freezer(dish: dish)
+        let files = saveFiles(fz)
+        let names = Set(files.compactMap { relativeName($0, fz: fz).map(nfc) })
+        var out: [String: String] = [:]
+        var total = 0
+        for f in files {
+            guard let d = try? Data(contentsOf: f) else { return false }
+            let s = d.base64EncodedString()
+            total += s.utf8.count
+            if total > Freezer.maxBytes { return false }
+            out[key(relativeName(f, fz: fz) ?? f.lastPathComponent, fz: fz)] = s
+        }
+        // 전에 남긴 지움 표식은 그 이름의 파일이 다시 생기지 않았으면 이어 둔다
+        let earlier = fz.loadLocalStorage().map { goneNames($0, fz: fz) } ?? []
+        for n in earlier.union(gone) where !names.contains(nfc(n)) { out[goneKey(n, fz: fz)] = "1" }
+        guard !out.isEmpty else { return false }
+        let mark = loadMark(dish)
+        var at = now()
+        if let m = mark?.savedAt, at <= m { at = m + 1 }
+        guard fz.saveLocalStorage(out, savedAt: at) else { return false }
+        saveMark(Mark(savedAt: at, fingerprint: fingerprint(files, fz: fz)), dish)
+        NSLog("[IceTray] \(dish.dataPathApp): 세이브 파일 화면에서 바꿈 → 파일 \(files.count)개 묶음\(gone.isEmpty ? "" : ", 지움 \(gone.count)개")")
+        return true
     }
 
     private static func now() -> Double { (Date().timeIntervalSince1970 * 1000).rounded() }
@@ -199,6 +250,15 @@ enum IceTray {
     /// save.json 의 항목을 파일로. 이름은 Freezer 키 규칙을 지난 것만(경로 구분자·`..` 불가), 값은 base64 여야 한다
     private static func unpack(_ snap: Freezer.Snapshot, fz: Freezer) -> Bool {
         var ok = true
+        // 지움 표식: 같은 규칙을 지난 이름만, 저장 폴더 안의 파일만 지운다
+        for name in goneNames(snap, fz: fz) {
+            let valid = fz.dish.isRedBean ? safeUserDataPath(name) : (safeName(name, recipe: fz.dish.recipe) && name != fz.localStorageFile.lastPathComponent)
+            guard valid else { continue }
+            let dest = name.split(separator: "/").reduce(fz.directory) { $0.appendingPathComponent(String($1)) }.standardizedFileURL
+            guard dest.path.hasPrefix(fz.directory.standardizedFileURL.path + "/"),
+                  (try? dest.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+            try? FileManager.default.removeItem(at: dest)
+        }
         for (k, v) in snap.entries {
             if fz.dish.isRedBean {
                 // userData/ 아래 상대 경로: 조각 규칙을 지난 것만, 폴더는 만들어 둔다

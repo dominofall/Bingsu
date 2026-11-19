@@ -26,6 +26,8 @@ SwiftUI iOS/iPadOS 26+ 런처. 프로젝트 파일은 `project.yml`에서 xcodeg
 | `Documents/Saves/<dataPathApp>/` | 저장 데이터·백업 (iCloud 동기화 대상. 파일 공유는 꺼 둠 — 켜면 iPad 파일 선택기가 빈 화면으로 멈춤. 꺼내기는 앱의 백업 내보내기) |
 | `Documents/Prefs/`, `Documents/Covers/` | 게임별 설정·표지 |
 | `Documents/Perf/` | 성능 기록 (기기마다, 동기화 안 함) |
+| `Library/Application Support/SaveCards/<dataPathApp>/` | 세이브 카드(빌드 49, `Freezer/SaveCard.swift`): 세이브 파일 이름별 옆 정보 `<파일>.json`(맵 이름·플레이 시간·캐릭터·Essentials 트레이너·배지·포켓몬), 사진 `<파일>.jpg`(긴 변 320px), 캐릭터·포켓몬 그림 `<파일>.cN.png`·`.pN.png`. 이 기기에만 — save.json·iCloud 로 안 감. 다른 기기는 세이브 파일 앞부분을 읽어(`SaveCardParse`) 알 수 있는 만큼만. `ScoopShelf/` 에는 상태 저장 칸 이름(`names.json`)만 |
+| `tmp/bingsu-cards/` | RPG Maker XP·VX·Ace 게임 안 Ruby(`BrassBowlEngine.cardScript`)가 저장 순간 남기는 옆 정보·사진. 일시정지·목록을 열 때 `SaveCard.ingest` 가 위 자리로 옮긴다(경로가 그 게임 저장 폴더인 것만) |
 | `Documents/WebGames.json` | 주소로 추가한 웹 게임 |
 | `Library/Caches/Downloads/` | 내려받는 중인 zip (가져오면 지움) |
 
@@ -61,6 +63,8 @@ npx --yes @electron/asar extract <게임 폴더>/resources/app.asar Games/<게�
 |---|---|
 | `BINGSU_OPEN=<dish id>` | 실행 직후 그 게임을 연다 |
 | `BINGSU_IMPORT=<zip 경로>` | 그 zip 을 가져온다 |
+| `BINGSU_SAVEDATA=1` | 실행 직후 "저장 데이터 관리" 시트를 연다 |
+| `BINGSU_SAVEPICK=<파일 경로>` | "PC 세이브 넣기"·"바꾸기"에서 파일 고르기 대신 이 파일을 쓴다 |
 | `BINGSU_ADDWEB="이름\|주소"` | 주소로 웹 게임 추가 |
 | `BINGSU_DOWNLOAD=<주소>` | 내려받기 시작 (`BINGSU_ALLOW_HTTP=1` 이면 http·로컬 주소 허용, Debug 만) |
 | `BINGSU_FORCE_PAD=1` | 컨트롤러가 붙어 있어도 가상 패드 표시 |
@@ -70,6 +74,8 @@ npx --yes @electron/asar extract <게임 폴더>/resources/app.asar Games/<게�
 | `BINGSU_MKXP_LOG=1` | RPG Maker XP 엔진 디버그 로그 |
 | `BINGSU_KEYS="초:코드,…"` | RPG Maker XP 게임에 그 시각(초)마다 키 한 번 (코드는 `KeyC`·`ArrowUp` 같은 KeyboardEvent.code) |
 | `BINGSU_HARDKEYS="초:코드,…"` | 하드웨어 키보드로 그 키를 누른 것처럼 (키 설정의 바뀐 키를 거친다, RPG Maker·웹 게임) |
+| `BINGSU_SCOOP="초:일,…"` | RPG Maker 게임을 연 뒤 그 시각에 (확인 창 없이) 일: `save`·`load` 빠른 저장, `save.3`·`load.3` 상태 저장 3번 칸, `new` 새 칸, `list` 상태 저장 목록, `fill` 빈 칸을 빠른 저장 파일로 30칸까지 채움(상한 확인용), `save.auto` 자동 저장 칸 |
+| `BINGSU_AUTOSCOOP=초` | 자동 저장 간격 (기본 300초) — 확인용으로 짧게 |
 | `BINGSU_KEYMAPTEST=1` | 키 설정 자가 테스트만 (`[Keys] selftest …`) |
 | `BINGSU_CAPTURE_DEMO=1` | 키 설정 "누르세요" 창이 컨트롤러·키보드가 연결된 것처럼 보이고 "받았어요"를 6초 보인다 (스크린숏용) |
 | `BINGSU_AUTOKEY="코드:간격:횟수"` | 12초 뒤부터 그 키를 간격(초)마다 횟수만큼 (글자 입력 중엔 건너뜀) |

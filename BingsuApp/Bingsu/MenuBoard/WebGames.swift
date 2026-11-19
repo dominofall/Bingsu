@@ -76,3 +76,64 @@ enum WebGames {
         return WebGameEntry(id: id, title: t, url: url.absoluteString)
     }
 }
+
+/// 주소로 넣는 게임의 주소 속임수 검사 (보안 3차). 막지는 않고, 넣기 전에 실제 주소와 의심 이유를 보여 주고 묻는다.
+/// - 닮은 글자: 영문이 아닌 글자(키릴 `о` 등)가 든 주소, 그런 주소의 영문 표기(`xn--…`)
+/// - 닮은 주소: 아는 게임·큰 로그인 업체 주소와 한두 글자만 다르거나(`pokeroque.net`), 그 이름을 다른 주소 안에 넣은 것(`pokerogue.net.example.com`)
+enum HostCheck {
+    /// 사칭 대상이 되기 쉬운 주소. 이 주소 자체나 그 하위 주소는 괜찮다
+    static var known: [String] {
+        Dish.KnownWeb.allCases.map(\.host) + ["google.com", "apple.com", "icloud.com", "discord.com", "github.com", "facebook.com",
+                                              "microsoft.com", "naver.com", "kakao.com", "paypal.com", "steampowered.com"]
+    }
+
+    /// 웹 게임을 많이 올리는 공개 호스팅. 하위 주소는 주인이 저마다 달라 이름 비교를 하지 않는다 (github.io 가 github.com 과 닮았다고 걸리지 않게)
+    static let hostingSuffixes = ["github.io", "gitlab.io", "itch.io", "itch.zone", "netlify.app", "vercel.app", "pages.dev", "web.app",
+                                  "firebaseapp.com", "glitch.me", "neocities.org", "newgrounds.com", "gamejolt.net"]
+
+    static func warnings(for rawHost: String) -> [String] {
+        let host = rawHost.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        var out: [String] = []
+        if host.unicodeScalars.contains(where: { !$0.isASCII }) || host.split(separator: ".").contains(where: { $0.hasPrefix("xn--") }) {
+            out.append("영문이 아닌 글자가 섞인 주소예요. 모양이 닮은 글자로 다른 사이트를 흉내 낼 수 있어요.")
+        }
+        let hosted = hostingSuffixes.contains { host == $0 || host.hasSuffix("." + $0) }
+        for k in known where !hosted && host != k && !host.hasSuffix("." + k) {
+            let name = String(k.split(separator: ".").first ?? "")
+            let base = registrable(host)
+            if name.count >= 5 && host.contains(name) {
+                out.append("\(k) 이름을 넣은 다른 사이트예요 (실제: \(base))."); break
+            }
+            if distance(skeleton(base), skeleton(k)) <= (k.count >= 10 ? 2 : 1) {
+                out.append("\(k) 와 철자만 조금 다른 사이트예요 (실제: \(base)). 철자를 확인해 주세요."); break
+            }
+        }
+        return out
+    }
+
+    /// 끝의 두 칸 (예: a.b.example.com → example.com). 공개 접미사 목록은 쓰지 않는 근사값
+    static func registrable(_ host: String) -> String {
+        let parts = host.split(separator: ".")
+        return parts.suffix(2).joined(separator: ".")
+    }
+
+    /// 헷갈리는 글자를 하나로 모은다 (0→o, 1·i→l, rn→m, vv→w, q→g)
+    static func skeleton(_ s: String) -> String {
+        var t = s.lowercased()
+        for (a, b) in [("rn", "m"), ("vv", "w"), ("0", "o"), ("1", "l"), ("i", "l"), ("q", "g"), ("-", "")] { t = t.replacingOccurrences(of: a, with: b) }
+        return t
+    }
+
+    /// 편집 거리 (바꾸기·넣기·빼기 한 번 = 1)
+    static func distance(_ a: String, _ b: String) -> Int {
+        let x = Array(a), y = Array(b)
+        if x.isEmpty { return y.count }; if y.isEmpty { return x.count }
+        var prev = Array(0...y.count)
+        for i in 1...x.count {
+            var cur = [i] + Array(repeating: 0, count: y.count)
+            for j in 1...y.count { cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (x[i - 1] == y[j - 1] ? 0 : 1)) }
+            prev = cur
+        }
+        return prev[y.count]
+    }
+}

@@ -60,8 +60,12 @@
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>게임이 카메라를 쓰려고 할 때, 허락한 경우에만 그 게임에 카메라를 넘겨줘요.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>같은 와이파이에서 게임의 온라인 방을 열거나 참가할 때 필요해요.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>게임이 마이크를 쓰려고 할 때, 허락한 경우에만 그 게임에 마이크를 넘겨줘요.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

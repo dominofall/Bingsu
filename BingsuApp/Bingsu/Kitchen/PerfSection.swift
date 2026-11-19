@@ -1,57 +1,41 @@
 import SwiftUI
 
-/// 이 게임 설정 › 성능: 화질 고르기, 최근 실행 요약, fps 추이, 기록 지우기.
-struct PerfSection: View {
+/// 이 게임 설정(게임 중) › 문제 알리기 › 성능 기록: 벤치마크, 다시 불러온 횟수, 최근 실행, fps 추이, 기록 지우기
+struct PerfRecordView: View {
     let dish: Dish
     @ObservedObject private var log = PerfLogStore.shared
-    @ObservedObject private var prefs = DishPrefsStore.shared
     @State private var confirmClear = false
 
     private var record: PerfRecord? { log.record(for: dish.id) }
-    private var quality: Binding<Quality?> {
-        Binding(get: { prefs.prefs(for: dish.id).quality },
-                set: { q in prefs.update(dish.id) { $0.quality = q } })
-    }
-    private var autoLabel: String {
-        "자동" + (prefs.prefs(for: dish.id).recommendedQuality.map { " (\($0.label))" } ?? "")
-    }
-    private var fpsLimit: Binding<FpsLimit?> {
-        Binding(get: { prefs.prefs(for: dish.id).fpsLimit },
-                set: { v in prefs.update(dish.id) { $0.fpsLimit = v } })
-    }
-    private var fpsAutoLabel: String {
-        "자동" + (FpsLimit.autoCap(for: dish).map { " (초당 \($0))" } ?? "")
-    }
 
     var body: some View {
-        Section {
-            Picker("화질", selection: quality) {
-                Text(autoLabel).tag(Quality?.none)
-                ForEach(Quality.allCases, id: \.self) { Text($0.label).tag(Quality?.some($0)) }
+        Form {
+            Section {
+                if let b = record?.benchmark {
+                    LabeledContent("벤치마크", value: "\(b.quality.label) · 평균 \(Int(b.avgFps.rounded()))fps · \(b.at.formatted(date: .abbreviated, time: .omitted))")
+                }
+                if let rs = record?.restarts, !rs.isEmpty { PerfRestartRow(restarts: rs) }
+                if let sessions = record?.sessions, let last = sessions.last {
+                    PerfSessionRow(session: last)
+                    if sessions.count > 1 { PerfTrend(sessions: sessions).listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)) }
+                } else {
+                    Text("아직 기록이 없어요").foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text("성능 기록은 화면 표시를 꺼도 항상 남아요 (최근 30번). 화질 자동은 첫 실행 벤치마크로 정해요.")
             }
-            Picker("프레임 제한", selection: fpsLimit) {
-                Text(fpsAutoLabel).tag(FpsLimit?.none)
-                ForEach(FpsLimit.allCases, id: \.self) { Text($0.label).tag(FpsLimit?.some($0)) }
+            if record?.sessions.isEmpty == false {
+                Section {
+                    Button("기록 지우기", role: .destructive) { confirmClear = true }
+                        .confirmationDialog("이 게임의 성능 기록을 지울까요?", isPresented: $confirmClear, titleVisibility: .visible) {
+                            Button("기록 지우기", role: .destructive) { log.clear(dish.id) }
+                        } message: { Text("다음 실행 때 벤치마크를 다시 해요") }
+                }
             }
-            if let b = record?.benchmark {
-                LabeledContent("벤치마크", value: "\(b.quality.label) · 평균 \(Int(b.avgFps.rounded()))fps · \(b.at.formatted(date: .abbreviated, time: .omitted))")
-            }
-            if let rs = record?.restarts, !rs.isEmpty { PerfRestartRow(restarts: rs) }
-            if let sessions = record?.sessions, let last = sessions.last {
-                PerfSessionRow(session: last)
-                if sessions.count > 1 { PerfTrend(sessions: sessions).listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16)) }
-                Button("기록 지우기", role: .destructive) { confirmClear = true }
-                    .confirmationDialog("이 게임의 성능 기록을 지울까요?", isPresented: $confirmClear, titleVisibility: .visible) {
-                        Button("기록 지우기", role: .destructive) { log.clear(dish.id) }
-                    } message: { Text("다음 실행 때 벤치마크를 다시 해요") }
-            } else {
-                Text("아직 기록이 없어요").foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("성능")
-        } footer: {
-            Text("화질과 프레임 제한은 다음 실행부터 적용돼요. 초당 30 으로 제한하면 화면을 그리는 일이 절반으로 줄어 기기가 덜 뜨거워져요(턴제 게임에 알맞아요). 자동이면 기기가 많이 뜨거워질 때 30 으로 낮췄다가 식으면 되돌려요. 낮음은 화면 해상도를 낮춰 더 부드럽게 돌리고 메모리도 덜 써요. 게임 중 갑자기 처음 화면으로 돌아가는 건 대개 iOS가 메모리 부족으로 게임을 닫은 것이라, 자주 생기면 낮음으로 바꿔 보세요. 성능 기록은 화면 표시를 꺼도 항상 남아요 (최근 30번).")
         }
+        .navigationTitle("성능 기록")
+        .navigationBarTitleDisplayMode(.inline)
+        .tint(Palette.accent)
     }
 }
 

@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// 가상 패드 배치 편집 (화면 "배치 편집"). 지금 기기 방향 하나의 배치를 끌어 옮기고, 크기를 바꾸고, 요소를 더하거나 숨긴다.
+/// 가상 패드 배치 편집 (화면 "배치 편집"). 지금 기기 방향 하나의 배치를 끌어 옮기고, 크기를 바꾸고, 요소를 더하거나 지운다 (지운 요소는 요소 추가에서 다시 놓는다).
 /// 여는 곳: 일시정지 화면 › 조작 (이 게임, 멈춘 게임 위), 설정 › 가상 패드 (모든 게임), 이 게임 설정 › 가상 패드.
 /// 저장은 `PadPrefs.layouts[<기기>.<방향>.<종류>]` 하나 (`PadArrangement`). 한손+왼손은 거울로 보여 주고 오른손 기준으로 저장한다.
 /// 그리기는 게임과 같은 `SpoonFace`(지금 스킨·불투명도)에 선택 테두리·안내선만 더한다.
@@ -39,6 +39,8 @@ struct SpoonLayoutEditor: View {
     // 알림·시트
     @State private var pendingKey: String?
     @State private var showAdd = false
+    /// 고른 커스텀 키의 입력 바꾸기
+    @State private var rebinding: String?
     @State private var confirmReset = false
     @State private var confirmCancel = false
     @State private var sharing: ShareItem?
@@ -47,7 +49,8 @@ struct SpoonLayoutEditor: View {
     private let haptic = UIImpactFeedbackGenerator(style: .light)
     private static let maxUndo = 50
 
-    private var idiom: UIUserInterfaceIdiom { UIDevice.current.userInterfaceIdiom }
+    /// 기기 종류가 아니라 지금 창 크기로 (iPhone Duo 안쪽 화면은 큰 화면 배치)
+    private var idiom: UIUserInterfaceIdiom { SpoonLayout.currentIdiom }
     private var k: CGFloat { CGFloat(prefs.scale) * SpoonLayout.deviceFactor(idiom) }
     private var skin: SpoonSkin { SkinShelf.skin(for: prefs) }
     /// 한손 + 왼손 + 세로: 거울로 보여 준다
@@ -58,7 +61,9 @@ struct SpoonLayoutEditor: View {
         GeometryReader { geo in
             let ins = geo.safeAreaInsets
             let full = CGSize(width: geo.size.width + ins.leading + ins.trailing, height: geo.size.height + ins.top + ins.bottom)
-            let safe: SpoonLayout.Insets = (ins.top, ins.leading, ins.bottom, ins.trailing)
+            // 게임 화면의 패드(SpoonLayout.make(prefs:))와 같은 안전 영역: Duo 바깥 화면 가로는 카메라를 포함한 맨 위 띠만 피한다
+            let raw: SpoonLayout.Insets = (ins.top, ins.leading, ins.bottom, ins.trailing)
+            let safe = full.width >= full.height ? SpoonLayout.cameraBandSafe(raw) : raw
             let newKey = PadArrangement.key(idiom: idiom, landscape: full.width >= full.height, kind: prefs.kind)
             let layout = SpoonLayout.resolve(working, size: full, safe: safe, k: k, floatingStick: prefs.floatingStick)
             ZStack(alignment: .topLeading) {
@@ -88,6 +93,17 @@ struct SpoonLayoutEditor: View {
             .onAppear { keyChanged(newKey, full: full, safe: safe) }
             .onChange(of: newKey) { _, k in keyChanged(k, full: full, safe: safe) }
             .sheet(isPresented: $showAdd) { addSheet(full: full, safe: safe, layout: layout) }
+            .sheet(isPresented: Binding(get: { rebinding != nil }, set: { if !$0 { rebinding = nil } })) {
+                NavigationStack {
+                    let current = rebinding.flatMap { working.element($0)?.customTarget }
+                    // 지금 입력은 고를 수 있게(체크 표시) 두고, 다른 커스텀 키가 쓰는 것만 막는다
+                    CustomKeyPicker(current: current, taken: customTaken.subtracting(current.map { [$0] } ?? [])) { t in
+                        rebind(rebinding, to: t); rebinding = nil
+                    }
+                    .toolbar { ToolbarItem(placement: .cancellationAction) { Button("취소") { rebinding = nil } } }
+                }
+                .presentationDetents([.large])
+            }
         }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
@@ -206,7 +222,7 @@ struct SpoonLayoutEditor: View {
             if let sel = selected, let i = working.elements.firstIndex(where: { $0.id == sel }) {
                 elementTools(i)
             } else {
-                Text("요소를 끌어 옮기고, 눌러서 크기를 바꾸거나 숨겨요. \(full.width >= full.height ? "세로" : "가로") 배치는 기기를 돌려서 편집해요.")
+                Text("요소를 끌어 옮기고, 눌러서 크기를 바꾸거나 지워요. \(full.width >= full.height ? "세로" : "가로") 배치는 기기를 돌려서 편집해요.")
                     .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -240,9 +256,18 @@ struct SpoonLayoutEditor: View {
                 Spacer()
             }
             Button(role: .destructive) { mutate { $0.elements.removeAll { $0.id == e.id } }; selected = nil } label: {
-                Text("숨기기").font(.footnote)
+                Image(systemName: "trash").font(.footnote.weight(.semibold))
             }
             .buttonStyle(.bordered)
+            .tint(.red)   // 패널 전체 tint(Palette.accent) 가 destructive 빨강을 덮으므로 따로 준다
+            .accessibilityLabel("삭제")
+        }
+        if e.type == .custom {
+            HStack {
+                Button { rebinding = e.id } label: { Label("입력 바꾸기", systemImage: "keyboard").font(.footnote) }
+                    .buttonStyle(.bordered)
+                Spacer()
+            }
         }
         if e.type == .stick || e.pill == true {
             HStack(spacing: 14) {
@@ -271,6 +296,7 @@ struct SpoonLayoutEditor: View {
             if best == nil || d < best!.1 { best = (id, d) }
         }
         for s in layout.buttons { consider("button." + s.button.name, s.center, s.contains(p)) }
+        for s in layout.customs { consider(s.id, s.center, s.contains(p)) }
         if let c = layout.dpadCenter { consider("dpad", c, hypot(p.x - c.x, p.y - c.y) <= layout.dpadRadius * 1.1) }
         for s in [layout.leftStick, layout.rightStick].compactMap({ $0 }) {
             consider(s.isRight ? "stick.right" : "stick.left", s.restCenter, hypot(p.x - s.restCenter.x, p.y - s.restCenter.y) <= s.baseRadius * 1.15)
@@ -288,6 +314,7 @@ struct SpoonLayoutEditor: View {
         case "stick.right": return layout.rightStick.map { box($0.restCenter, $0.baseRadius, $0.baseRadius) }
         case "orb": return layout.orbCenter.map { box($0, 16, 16) }
         default:
+            if let s = layout.customs.first(where: { $0.id == id }) { return box(s.center, s.radius, s.radius) }
             guard let s = layout.buttons.first(where: { "button." + $0.button.name == id }) else { return nil }
             return box(s.center, s.width / 2, s.radius)
         }
@@ -429,8 +456,9 @@ struct SpoonLayoutEditor: View {
     private var currentGeometry: (CGSize, SpoonLayout.Insets)? {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         guard let w = scenes.first?.windows.first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first else { return nil }
-        let i = w.safeAreaInsets
-        return (w.bounds.size, (i.top, i.left, i.bottom, i.right))
+        let i = w.safeAreaInsets, size = w.bounds.size
+        let raw: SpoonLayout.Insets = (i.top, i.left, i.bottom, i.right)
+        return (size, size.width >= size.height ? SpoonLayout.cameraBandSafe(raw) : raw)
     }
 
     private func exportLayouts() {
@@ -470,9 +498,31 @@ struct SpoonLayoutEditor: View {
         return out
     }
 
+    /// 이 배치에 이미 놓인 커스텀 키 입력들
+    private var customTaken: Set<KeyTarget> {
+        Set(working.elements.compactMap { $0.type == .custom ? $0.customTarget : nil })
+    }
+    private var customCount: Int { working.elements.filter { $0.type == .custom }.count }
+
     private func addSheet(full: CGSize, safe: SpoonLayout.Insets, layout: SpoonLayout) -> some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink {
+                        CustomKeyPicker(current: nil, taken: customTaken) { t in
+                            showAdd = false
+                            add(.init(type: .custom, send: t.stored, anchor: .bottomRight, x: 0, y: 0,
+                                      radius: PadArrangement.defaultRadius(.custom, button: nil)), full: full, safe: safe, layout: layout)
+                        }
+                    } label: {
+                        Label("커스텀 키 추가", systemImage: "plus.square.dashed").foregroundStyle(Palette.accent)
+                    }
+                    .disabled(customCount >= PadArrangement.maxCustom)
+                } footer: {
+                    Text(customCount >= PadArrangement.maxCustom
+                         ? "커스텀 키는 \(PadArrangement.maxCustom)개까지 놓을 수 있어요."
+                         : "패드에 없는 키보드 키나 버튼을 하나 더 놓아요. 예: 숫자 5·6")
+                }
                 let items = missing
                 if items.isEmpty { Text("더할 수 있는 요소가 다 있어요").foregroundStyle(.secondary) }
                 ForEach(items) { e in
@@ -501,7 +551,7 @@ struct SpoonLayoutEditor: View {
             switch e.type {
             case .dpad: return true
             case .stick: return !e.isRightStick
-            case .orb: return false
+            case .orb, .custom: return false
             case .button: return [.lb, .lt, .view, .l3].contains(e.button ?? .a)
             }
         }()
@@ -521,6 +571,50 @@ struct SpoonLayoutEditor: View {
         place(e.id, at: c, full: full, safe: safe)
         selected = e.id
         haptic.impactOccurred(intensity: 0.5)
+    }
+}
+
+extension SpoonLayoutEditor {
+    /// 고른 커스텀 키의 입력을 바꾼다. 그 입력의 키가 이미 있으면 바꾸지 않는다
+    fileprivate func rebind(_ id: String?, to t: KeyTarget) {
+        guard let id, let i = working.elements.firstIndex(where: { $0.id == id }), working.elements[i].customTarget != t,
+              !customTaken.contains(t) else { return }
+        mutate { $0.elements[i].send = t.stored; $0.elements[i].label = nil }
+        selected = working.elements[i].id
+    }
+}
+
+/// 커스텀 키에 보낼 입력 고르기: 키보드 키 · 게임 버튼. 이미 놓인 것은 고를 수 없다
+struct CustomKeyPicker: View {
+    let current: KeyTarget?
+    let taken: Set<KeyTarget>
+    let onPick: (KeyTarget) -> Void
+
+    var body: some View {
+        Form {
+            Section {
+                KeyGrid(selected: { if case .key(let c) = current { return c }; return nil }(),
+                        taken: Set(taken.compactMap { if case .key(let c) = $0 { return c }; return nil })) { c in onPick(.key(c)) }
+                    .padding(.vertical, 4)
+            } header: { Text("키보드 키") } footer: {
+                Text("게임이 키보드로만 받는 동작도 누를 수 있어요.")
+            }
+            Section("게임 버튼") {
+                ForEach(KeyMap.remappable, id: \.self) { b in
+                    let t = KeyTarget.pad(b)
+                    Button { onPick(t) } label: {
+                        HStack {
+                            Text(b.displayName).foregroundStyle(taken.contains(t) && current != t ? Color.secondary : Color.primary)
+                            Spacer()
+                            if current == t { Image(systemName: "checkmark").foregroundStyle(Palette.accent) }
+                        }
+                    }
+                    .disabled(taken.contains(t))
+                }
+            }
+        }
+        .navigationTitle("어느 버튼 입력을 할당할까요?")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

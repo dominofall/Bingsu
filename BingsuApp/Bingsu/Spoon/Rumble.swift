@@ -161,6 +161,22 @@ final class Rumble {
         fire { self.emit(intensity: base, sharpness: strong >= weak ? 0.2 : 0.7, at: 0, duration: d, controller: $0, pulse: $1) }
     }
 
+    /// 진동을 부른 쪽: 효과음 표 또는 화면 흔들림
+    enum Source { case sfx, shake }
+    private var lastMix: (at: Date, source: Source, power: Float) = (.distantPast, .sfx, 0)
+
+    /// 효과음과 화면 흔들림은 같은 순간(타격음 + 흔들림)에 함께 오는 일이 많다.
+    /// 다른 쪽이 0.15초 안에 이미 울렸고 이번 것이 더 약하면 건너뛴다 (같은 쪽끼리는 지금처럼 다 울림)
+    /// 건너뛰면 false
+    @discardableResult
+    func play(_ p: RumbleSet.Pattern, from source: Source) -> Bool {
+        let now = Date(), power = min(1, max(p.strong, p.weak * 0.6))
+        if lastMix.source != source, now.timeIntervalSince(lastMix.at) < 0.15, power <= lastMix.power { return false }
+        lastMix = (now, source, power)
+        play(p)
+        return true
+    }
+
     /// 효과음 진동표의 패턴. 반복이 있으면 간격을 두고 이어 울린다.
     func play(_ p: RumbleSet.Pattern) {
         guard enabled else { return }

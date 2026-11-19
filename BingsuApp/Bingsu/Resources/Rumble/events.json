@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "kind": "events",
+  "source": "상황마다 진동 하나. 값은 2026-10-30 포켓로그·레조넌스 표에서 이어받음. 게임 표의 규칙은 \"event\" 로 이 이름을 쓴다",
+  "events": {
+    "hit_weak":    {"strong": 0.25, "weak": 0.3, "duration": 0.1,  "note": "효과가 별로인 타격"},
+    "hit_normal":  {"strong": 0.6,  "weak": 0.4, "duration": 0.16, "note": "일반 타격"},
+    "hit_super":   {"strong": 1.0,  "weak": 0.6, "duration": 0.28, "note": "효과가 굉장한 타격 (가장 센 축)"},
+    "faint":       {"strong": 0.8,  "weak": 0.2, "duration": 0.45, "note": "기절"},
+    "ball_throw":  {"strong": 0.2,  "weak": 0.5, "duration": 0.1,  "note": "볼 던지기"},
+    "ball_hit":    {"strong": 0.5,  "weak": 0.3, "duration": 0.08, "note": "볼이 맞거나 튕김"},
+    "ball_drop":   {"strong": 0.3,  "weak": 0.3, "duration": 0.08, "note": "볼이 땅에 떨어짐"},
+    "ball_shake":  {"strong": 0.45, "weak": 0.2, "duration": 0.12, "note": "볼 흔들림 한 번 (게임이 흔들릴 때마다 소리를 냄)"},
+    "catch_click": {"strong": 0.7,  "weak": 0.5, "duration": 0.3,  "note": "포획 확정"},
+    "crit_throw":  {"strong": 0.5,  "weak": 0.7, "duration": 0.14, "note": "크리티컬 캡처"},
+    "recall":      {"strong": 0.2,  "weak": 0.4, "duration": 0.1,  "note": "볼이 열림: 내보내기·돌아오기"},
+    "catch_absorb": {"strong": 0.35, "weak": 0.4, "duration": 0.12, "note": "포켓몬이 볼에 빨려 들어감 (포획 중)"},
+    "flee":        {"strong": 0.3,  "weak": 0.3, "duration": 0.18, "note": "도망"},
+    "level_up":    {"strong": 0.2,  "weak": 0.5, "duration": 0.2,  "note": "레벨 업"}
+  }
+}

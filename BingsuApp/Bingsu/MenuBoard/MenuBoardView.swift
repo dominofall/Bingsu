@@ -25,6 +25,11 @@ struct MenuBoardView: View {
     @State private var whatsNew: [WhatsNew.Note] = []
     @State private var showWhatsNew = false
     @State private var editing: Dish?
+    /// 길게 누르기 › 세이브 가져오기·내보내기
+    @State private var saveSheet: SaveSheetItem?
+    /// 디버그: BINGSU_SAVEDATA=1 이면 저장 데이터 관리 화면을 시트로 연다 (시뮬레이터 확인용)
+    @State private var showSavedData = false
+    @State private var didDebugSavedData = false
     /// 길게 누르기 › 게임 정보 시트
     @State private var info: Dish?
     /// 패치 적용 시트 ("업데이트"로 고른 zip 이 패치였을 때·패치만 든 zip 가져오기에서 게임을 골랐을 때)
@@ -61,7 +66,7 @@ struct MenuBoardView: View {
     private let chipMin: CGFloat = 150, chipSpacing: CGFloat = 18
     private var columns: [GridItem] { [GridItem(.adaptive(minimum: chipMin, maximum: UIDevice.current.userInterfaceIdiom == .pad ? 280 : 220), spacing: chipSpacing, alignment: .top)] }
     /// 홈이 보이고 시트가 하나도 없을 때만 컨트롤러 입력을 받는다
-    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showTableSpoon && !showWhatsNew && editing == nil && deleting == nil && conflict == nil && patching == nil }
+    private var homeActive: Bool { !showBowl && !showSettings && !showDelivery && !showPicker && !showAddMenu && !showAddWeb && !showDownload && !showTableSpoon && !showWhatsNew && editing == nil && deleting == nil && conflict == nil && patching == nil && saveSheet == nil }
     /// 칩 수 = 게임 수 + "게임 추가" 칩
     private var chipCount: Int { menu.dishes.isEmpty ? 0 : menu.dishes.count + 1 }
 
@@ -88,6 +93,8 @@ struct MenuBoardView: View {
                 .zIndex(1)
             }
         }
+        // 세이브 파일 화면이 켜져 있는 게임의 파일을 바꾸지 않게 (Freezer/IceCube.swift)
+        .onChange(of: running?.dataPathApp, initial: true) { _, f in SaveDoor.shared.runningFolder = f }
         // 게임별 "무음 모드에서도 소리 재생": 게임이 보일 때 그 게임 값, 홈이면 전역 값으로 오디오 세션을 맞춘다
         .onChange(of: showBowl ? running?.id : nil) { _, id in
             BingsuApp.audioDishID = id
@@ -277,6 +284,8 @@ struct MenuBoardView: View {
             if phase == .active { Task { await Igloo.shared.syncAll(except: Set([running?.dataPathApp].compactMap { $0 })) } }
         }
         .sheet(item: $editing) { dish in DishSettingsView(dish: dish) }
+        .sheet(item: $saveSheet) { item in SaveFilesSheet(dish: item.dish, start: item.start) }
+        .sheet(isPresented: $showSavedData) { NavigationStack { SavedDataView(dishes: menu.dishes) } }
         .sheet(item: $info) { dish in
             ReceiptView(dish: dish, onUpdate: {
                 info = nil
@@ -328,6 +337,7 @@ struct MenuBoardView: View {
             // 디버그: BINGSU_OPEN=<게임 id> 면 실행 직후 그 게임을 연다
             if running == nil, let id = DevEnv["BINGSU_OPEN"], let d = dishes.first(where: { $0.id == id }) { serve(d) }
             // 디버그: BINGSU_EDIT=<게임 id> 면 그 게임 설정 시트를 연다 (시뮬레이터 확인용)
+            if DevEnv["BINGSU_SAVEDATA"] == "1", !dishes.isEmpty, !didDebugSavedData { didDebugSavedData = true; showSavedData = true }
             if editing == nil, let id = DevEnv["BINGSU_EDIT"], let d = dishes.first(where: { $0.id == id }) { editing = d }
             // 디버그: BINGSU_INFO=<게임 id> 면 그 게임 정보 시트를 연다 (시뮬레이터 확인용)
             if info == nil, let id = DevEnv["BINGSU_INFO"], let d = dishes.first(where: { $0.id == id }) { info = d }
@@ -462,6 +472,13 @@ struct MenuBoardView: View {
 
     @ViewBuilder
     private func contextMenu(for dish: Dish) -> some View {
+        // 세이브 가져오기·내보내기를 맨 위에 (Delta 처럼). 주소로 넣은 웹 게임은 세이브 파일이 없다
+        if !dish.isRemote {
+            Section {
+                Button { saveSheet = SaveSheetItem(dish: dish, start: .pick) } label: { Label("세이브 가져오기", systemImage: "square.and.arrow.down") }
+                Button { saveSheet = SaveSheetItem(dish: dish, start: .export) } label: { Label("세이브 내보내기", systemImage: "square.and.arrow.up") }
+            }
+        }
         Button { editing = dish } label: { Label("이 게임 설정", systemImage: "slider.horizontal.3") }
         if !dish.isRemote && !MenuBoardStore.isBuiltIn(dish) {
             // 가져온 게임만: 어느 파일(패치)에서 왔는지
@@ -471,6 +488,7 @@ struct MenuBoardView: View {
             Button { update(dish) } label: { Label("업데이트", systemImage: "arrow.down.circle") }
         }
         if MenuBoardStore.isCustomWeb(dish) || (!dish.isRemote && !MenuBoardStore.isBuiltIn(dish)) {
+            Divider()
             // 메뉴가 닫힌 뒤에 알림을 띄운다 (닫히는 중에 띄우면 iPad 에서 무시될 때가 있다)
             Button(role: .destructive) { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { deleting = dish } } label: {
                 Label("게임 삭제", systemImage: "trash")
@@ -665,4 +683,11 @@ struct AddGameChip: View {
                 .padding(.horizontal, 2)
         }
     }
+}
+
+/// 길게 누르기 › 세이브 가져오기·내보내기 시트
+struct SaveSheetItem: Identifiable {
+    let id = UUID()
+    let dish: Dish
+    let start: SaveFilesView.Start
 }

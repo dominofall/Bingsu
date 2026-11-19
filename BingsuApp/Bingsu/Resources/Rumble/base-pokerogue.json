@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "kind": "base",
+  "game": "PokeRogue 효과음 이름",
+  "source": "pokerogue-assets audio/se (rev 9378069). 레조넌스 Battle/audio/sfx 도 같은 파일. pb_·crit_ 이름만 (hit·faint 같은 흔한 이름은 게임 표에)",
+  "fallback": true,
+  "rules": [
+    {"sound": "crit_throw", "match": "exact",  "event": "crit_throw"},
+    {"sound": "pb_throw",   "match": "exact",  "event": "ball_throw"},
+    {"sound": "pb_bounce_", "match": "prefix", "event": "ball_hit"},
+    {"sound": "pb_move",    "match": "exact",  "event": "ball_shake", "note": "볼 흔들림"},
+    {"sound": "pb_catch",   "match": "exact",  "event": "catch_click"},
+    {"sound": "pb_lock",    "match": "exact",  "strong": 0.3, "weak": 0.6, "duration": 0.1}
+  ]
+}

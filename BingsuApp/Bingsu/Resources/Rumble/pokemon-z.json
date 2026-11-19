@@ -1,0 +1,13 @@
+{
+  "format": 1,
+  "game": "Pokemon Z",
+  "source": "Audio/SE (Pokemon Essentials 구형), Pokemon Z V2.18. 흔한 이름(throw·faint·recall·Flee)은 이 게임에만",
+  "detect": {"localExact": ["pokemon z", "pokemon-z"]},
+  "extends": ["base-essentials-classic", "base-essentials"],
+  "rules": [
+    {"sound": "throw",      "match": "exact", "event": "ball_throw"},
+    {"sound": "recall",     "match": "exact", "event": "recall", "note": "Z 는 내보낼 때도 이 소리 (2026-11-19 시뮬레이터 전투)"},
+    {"sound": "faint",      "match": "exact", "event": "faint"},
+    {"sound": "flee",       "match": "exact", "event": "flee"}
+  ]
+}

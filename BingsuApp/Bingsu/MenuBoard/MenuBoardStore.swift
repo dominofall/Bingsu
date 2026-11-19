@@ -112,8 +112,7 @@ final class MenuBoardStore: ObservableObject {
     func removeWebGame(_ dish: Dish) {
         guard Self.isCustomWeb(dish) else { return }
         WebGames.save(WebGames.load().filter { $0.id != dish.id })
-        let id = GlassBowl.storeID(for: dish)
-        Task { try? await WKWebsiteDataStore.remove(forIdentifier: id) }
+        Task { await GlassBowl.removeStore(for: dish) }
         refresh()
     }
 

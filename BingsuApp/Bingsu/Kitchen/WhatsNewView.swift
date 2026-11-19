@@ -48,6 +48,37 @@ enum WhatsNew {
 
     /// 새 빌드는 맨 위에. 빌드마다 세 줄 이하
     static let notes: [Note] = [
+        // 48~52 글은 사용자 문장 (2026-11-19). 48·49·50 은 내부 빌드, 외부는 52(47 → 52)라 네 글을 함께 본다. 51 은 올렸지만 외부로 내지 않고 52 로 다시 냄 (사용자 2026-11-19)
+        Note(build: 52, title: "게임 진동 업데이트", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "gamecontroller", text: "빙수가 진동을 지원하지 않는 게임들의 진동 지원 범위가 넓어졌습니다."),
+            Item(symbol: "waveform", text: "포켓몬 팬게임에서 여러 상황을 빙수가 인식하여 상황에 맞게 진동이 출력됩니다."),
+        ]),
+        Note(build: 50, title: "iPhone Duo 지원", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "iphone", text: "빙수가 이제 iPhone Duo를 지원합니다."),
+            Item(symbol: "rectangle.split.1x2", text: "iPhone Duo에 맞는 화면을 새롭게 디자인했습니다. 접힌 상태, 텐트 상태, 반쯤 접힌 상태, 펼친 상태 각각에서 나타나는 화면이 다릅니다."),
+            Item(symbol: "camera", text: "Duo 전면 카메라가 게임 화면을 가리지 않도록 화면 크기를 조절하는 기능을 추가했습니다."),
+        ]),
+        Note(build: 49, title: "빠른 저장, 자동 저장 추가", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "bolt", text: "일시정지 화면에서 바로 저장하고 불러올 수 있습니다."),
+            Item(symbol: "clock.arrow.circlepath", text: "자동저장 기능이 추가되었습니다."),
+            Item(symbol: "info.circle", text: "세이브에 맵 이름, 플레이 시간, 파티가 함께 남아 어떤 세이브인지 알아볼 수 있습니다."),
+        ]),
+        Note(build: 48, title: "세이브 관리 기능 추가", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "externaldrive", text: "저장 기능이 업그레이드 되었습니다. 이제 PC 나 다른 앱에서 하던 세이브본을 적용할 수 있고, 외부로 세이브본을 내보낼 수 있습니다."),
+        ]),
+        // 47 은 외부 빌드(44 → 47). 제목·요점은 사용자 결정 "크래시 수정, 커스텀 버튼 추가" (2026-11-17)
+        Note(build: 47, title: "크래시 수정, 커스텀 버튼 추가", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "ladybug", text: "게임을 저장 데이터까지 삭제할 때 앱이 종료되던 문제를 수정했습니다."),
+            Item(symbol: "plus.square.dashed", text: "배치 편집 › 요소 추가 › 커스텀 키 추가에서 키보드 키나 버튼을 가상 패드에 하나 더 놓을 수 있습니다."),
+        ]),
+        // 45·46 은 내부 빌드, 제목은 사용자 결정 "기타 보안 패치" (2026-11-15). 47 과 함께 외부로 보인다.
+        // 한 줄 설명은 사용자 문장 (2026-11-17). 46 의 "zip 파일 속 게임" = RPG Maker 게임 파일 접근 제한(fence)
+        Note(build: 46, title: "기타 보안 패치", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "lock.shield", text: "zip 파일 보안 패치를 적용했습니다. 악의적인 목적으로 만든 zip 파일 속 게임이 다른 게임이나 앱 설정에 접근하지 못하도록 막았습니다."),
+        ]),
+        Note(build: 45, title: "기타 보안 패치", message: "불편한 점은 Q&A로", items: [
+            Item(symbol: "lock.shield", text: "웹 게임 보안 패치를 적용했습니다. 비밀번호 입력, 카메라, 마이크 사용 시 확인 창이 뜰 수 있습니다."),
+        ]),
         // 41·42 제목은 사용자 문장 (2026-11-13). 41 은 내부 테스트만 나가서 42 와 함께 외부로 나간다. 41 항목도 사용자 문장(메뉴 이름만 앱에 맞춤)
         // 44 글은 사용자 문장 (2026-11-15). 외부 테스터는 40 → 44 로 와 42·43·44 글을 함께 본다
         Note(build: 44, title: "컨트롤러 및 키보드 키 설정 기능 추가", message: "불편한 점은 Q&A로", items: [

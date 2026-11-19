@@ -17,6 +17,8 @@ final class SpoonController: ObservableObject {
     }
 
     @Published private(set) var pressed: Set<PadButton> = []
+    /// 눌린 커스텀 키 (배치 요소 id). 그리기용
+    @Published private(set) var pressedCustom: Set<String> = []
     @Published private(set) var leftStick = StickState()
     @Published private(set) var rightStick = StickState()
     @Published var mode: CutlerySet.Mode = .field
@@ -117,9 +119,31 @@ final class SpoonController: ObservableObject {
     private var directHeld: [String: Int] = [:]
     private var directSent: Set<String> = []
 
+    /// 커스텀 키 누름: 키보드 키는 그 키를 바로, 게임 버튼은 그 버튼을 누른다
+    func pressCustom(_ slot: CustomKeySlot) {
+        guard !pressedCustom.contains(slot.id) else { return }
+        pressedCustom.insert(slot.id)
+        if hapticsEnabled { haptic.impactOccurred(intensity: 0.6) }
+        switch slot.send {
+        case .key(let c): setDirectKey(c, down: true)
+        case .pad(let b): press(b, haptic: false)
+        case .off: break
+        }
+    }
+
+    func releaseCustom(_ slot: CustomKeySlot) {
+        guard pressedCustom.remove(slot.id) != nil else { return }
+        switch slot.send {
+        case .key(let c): setDirectKey(c, down: false)
+        case .pad(let b): release(b)
+        case .off: break
+        }
+    }
+
     func releaseAll() {
         for w in pendingRelease.values { w.cancel() }
         pendingRelease.removeAll()
+        pressedCustom.removeAll()
         directHeld.removeAll()
         pressed.removeAll()
         leftStick = StickState(); rightStick = StickState()
